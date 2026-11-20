@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { JobsProvider, useJobStore, useRunningJobs } from "./jobs";
 import {
   Add, Breadcrumb, Complete, Delete, Dropdown, Locked, ProjectFolder, SettingsGear,
-  StageAnalysis, StageBrief, StageDecision, StageDesign, StageOptions, StageQuestions, StageReference,
+  StageAnalysis, StageBrief, StageDecision, StageDesign, StageOptions, StageQuestions, StageReference, StageStudio,
   type LucideIcon,
 } from "./components/icons";
 import { api } from "./api";
@@ -15,15 +15,17 @@ import Options from "./stages/Options";
 import Questions from "./stages/Questions";
 import Reference from "./stages/Reference";
 import Settings from "./stages/Settings";
+import RobotStudio from "./stages/Studio";
 import type { TrackedJob } from "@robode/studio-core";
 import type { Project, ProjectSummary } from "./types";
 
-type StageId = "brief" | "reference" | "questions" | "design" | "options" | "analysis" | "decision" | "settings";
+type StageId = "brief" | "reference" | "questions" | "design" | "studio" | "options" | "analysis" | "decision" | "settings";
 const STAGES: { id: Exclude<StageId, "settings">; title: string; icon: LucideIcon }[] = [
   { id: "brief", title: "Brief", icon: StageBrief },
   { id: "reference", title: "Reference", icon: StageReference },
   { id: "questions", title: "Questions", icon: StageQuestions },
   { id: "design", title: "Design", icon: StageDesign },
+  { id: "studio", title: "Robot studio", icon: StageStudio },
   { id: "options", title: "Robot options", icon: StageOptions },
   { id: "analysis", title: "Analysis", icon: StageAnalysis },
   { id: "decision", title: "Decision", icon: StageDecision },
@@ -35,10 +37,10 @@ function stageState(p: Project | null, cid: string | null) {
   const approved = p?.approved_version != null;
   const analysed = (p?.analyses?.length ?? 0) > 0;
   const open: Record<string, boolean> = {
-    brief: true, reference: !!p, questions: !!p, design: designed, options: approved, analysis: approved && (analysed || !!cid), decision: analysed,
+    brief: true, reference: !!p, questions: !!p, design: designed, studio: approved, options: approved, analysis: approved && (analysed || !!cid), decision: analysed,
   };
   const done: Record<string, boolean> = {
-    brief: !!p, reference: !!(p?.reference?.text || p?.reference?.files?.length), questions: designed, design: approved, options: (p?.candidates_count ?? 0) > 0,
+    brief: !!p, reference: !!(p?.reference?.text || p?.reference?.files?.length), questions: designed, design: approved, studio: p?.studio?.approved_build != null, options: (p?.candidates_count ?? 0) > 0,
     analysis: analysed, decision: !!p?.decision,
   };
   return { open, done };
@@ -56,11 +58,12 @@ function startStage(p: Project): StageId {
 function jobStage(job: TrackedJob, hasVersions: boolean): StageId {
   if (job.kind === "revise") return "design";
   if (job.kind === "search") return "options";
+  if (job.kind === "studio_build" || job.kind === "studio_pdf") return "studio";
   if (job.kind === "analyse") return "analysis";
   const status = (job.result as { status?: string } | null)?.status;
   return status === "designed" || (status === undefined && hasVersions) ? "design" : "questions";
 }
-const JOB_NAMES: Record<string, string> = { design: "Design", revise: "Revision", search: "Robot search", analyse: "Analysis" };
+const JOB_NAMES: Record<string, string> = { design: "Design", revise: "Revision", search: "Robot search", analyse: "Analysis", studio_build: "Robot build", studio_pdf: "Build approval" };
 
 function toastText(job: TrackedJob) {
   const name = JOB_NAMES[job.kind] ?? "Job";
@@ -79,6 +82,7 @@ export default function App() {
 function Studio() {
   const store = useJobStore();
   const running = useRunningJobs();
+  const [briefNotice, setBriefNotice] = useState("");
   const [toast, setToast] = useState<Toast | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [project, setProject] = useState<Project | null>(null);
@@ -134,6 +138,7 @@ function Studio() {
 
   async function open(id: string, target?: StageId, subject?: string | null) {
     setOpening(true);
+    setBriefNotice("");
     try {
       void store.adopt(id).catch(() => undefined);
       const p = await load(id);
@@ -142,7 +147,7 @@ function Studio() {
     catch (e) { setError((e as Error).message); }
     finally { setOpening(false); }
   }
-  async function created(id: string) { await loadList(); try { await load(id); setCid(null); setStage("reference"); } catch (e) { setError((e as Error).message); } }
+  async function created(id: string, notice = "") { await loadList(); try { await load(id); setCid(null); setBriefNotice(notice); setStage(notice ? "brief" : "reference"); } catch (e) { setError((e as Error).message); } }
   function newProject() { setProject(null); setCid(null); setStage("brief"); }
   async function remove() {
     if (!project || !window.confirm(`Delete the project "${project.title || project.id}" and all its versions?`)) return;
@@ -158,13 +163,14 @@ function Studio() {
 
   let content;
   if (stage === "settings") content = <Settings />;
-  else if (stage === "brief" || !project) content = <Brief project={project} onCreated={created} next={() => go("reference")} />;
+  else if (stage === "brief" || !project) content = <Brief project={project} onCreated={created} reload={reload} notice={briefNotice} next={() => go("reference")} />;
   else if (stage === "reference") content = <Reference project={project} reload={reload} next={() => go("questions")} />;
   else if (stage === "questions") content = <Questions project={project} reload={reload} designed={() => go("design")} />;
   else if (stage === "design") content = <Design project={project} reload={reload} approved={() => go("options")} />;
+  else if (stage === "studio") content = <RobotStudio project={project} reload={reload} />;
   else if (stage === "options") content = <Options project={project} reload={reload} analyse={analyse} />;
   else if (stage === "analysis") content = <Analysis project={project} reload={reload} cid={cid} setCid={setCid} decide={() => go("decision")} />;
-  else content = <Decision project={project} reload={reload} cid={cid} />;
+  else content = <Decision project={project} reload={reload} cid={cid} openStudio={() => go("studio")} />;
 
   return (
     <div className="shell">

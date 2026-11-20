@@ -50,7 +50,8 @@ class FixtureLLM(ScriptedLLM):
                                    'cache_read': 0, 'output': 1, 'cost_usd': 0.0, 'turns': 1, 'structured': True, 'ok': True,
                                    'web_calls': 0})
                 return answer if isinstance(answer, str) else json.dumps(answer)
-        self._log(None, system_prompt, input, len(images))
+        if self.role != 'objects':          # object models are optional: a fixture without a rule for them is no finding
+            self._log(None, system_prompt, input, len(images))
         raise AssertionError('No scripted answer for this prompt: ' + system_prompt[:120])
 
     def _log(self, match, system_prompt, input, images=0):

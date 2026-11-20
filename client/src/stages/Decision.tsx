@@ -4,7 +4,7 @@ import { StageHead } from "../components/common";
 import { Download } from "../components/icons";
 import type { Candidate, Project } from "../types";
 
-export default function Decision({ project, reload, cid }: { project: Project; reload: () => Promise<void>; cid: string | null }) {
+export default function Decision({ project, reload, cid, openStudio }: { project: Project; reload: () => Promise<void>; cid: string | null; openStudio?: () => void }) {
   const analysed = project.analyses ?? [];
   const [pick, setPick] = useState(cid && analysed.includes(cid) ? cid : analysed[0] ?? "");
   const [cands, setCands] = useState<Candidate[]>([]);
@@ -20,7 +20,7 @@ export default function Decision({ project, reload, cid }: { project: Project; r
   const d = project.decision;
   return (
     <div className="page narrow">
-      <StageHead step="Step 7 of 7" title="Decision">Choose the robot to go forward with, based on the analysis. Prices and specifications are web estimates; confirm them with the manufacturer before buying.</StageHead>
+      <StageHead artifact="decision" step="Step 7 of 7" title="Decision">Choose the robot to go forward with, based on the analysis. Prices and specifications are web estimates; confirm them with the manufacturer before buying.</StageHead>
       {d && <div className="notice ok" role="status">Decision recorded: {d.action === "approve" ? "approved" : "opened in Robot studio"} for {name(d.candidate_id)}.</div>}
       <div className="panel">
         <label className="field"><span>Analysed robot</span>
@@ -33,8 +33,9 @@ export default function Decision({ project, reload, cid }: { project: Project; r
         {error && <div className="notice error" role="alert">{error}</div>}
       </div>
       <div className="panel sunk">
-        <h3>Robot studio is coming later</h3>
-        <p className="small muted">Robot studio will take the chosen robot through control set-up and testing. For now, download the design package: the generated URDF and 3D model, the specification, requirements, simulation summary and the analysis.</p>
+        <h3>Robot studio</h3>
+        <p className="small muted">Robot studio turns the approved design into a build: sized motors and electronics from real shops, CAD parts, a digital twin and a manufacturer package. You can also download the design package: the generated URDF and 3D model, the specification, requirements, simulation summary and the analysis.</p>
+        {openStudio && <div><button className="primary" disabled={project.approved_version == null} onClick={openStudio}>Open Robot studio</button>{project.approved_version == null && <span className="small muted"> Approve a design version first.</span>}</div>}
         <div><a className="button" href={`/api/v1/projects/${project.id}/export`} download><Download size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> Download design package</a></div>
       </div>
     </div>

@@ -1,0 +1,1104 @@
+{
+  "$defs": {
+    "BuildFile": {
+      "properties": {
+        "path": {
+          "maxLength": 300,
+          "title": "Path",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "step",
+            "stl",
+            "urdf",
+            "pdf",
+            "zip",
+            "csv",
+            "png",
+            "json"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "sha256": {
+          "default": "",
+          "maxLength": 64,
+          "title": "Sha256",
+          "type": "string"
+        },
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ],
+      "title": "BuildFile",
+      "type": "object"
+    },
+    "BuildPart": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "qty": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Qty",
+          "type": "integer"
+        },
+        "material": {
+          "default": "",
+          "maxLength": 120,
+          "title": "Material",
+          "type": "string"
+        },
+        "process": {
+          "enum": [
+            "printed",
+            "machined",
+            "cut",
+            "purchased",
+            "standard"
+          ],
+          "title": "Process",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "custom",
+            "standard",
+            "purchased"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "mass_kg": {
+          "default": 0.0,
+          "title": "Mass Kg",
+          "type": "number"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        },
+        "joint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Joint"
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BuildFile"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "spec": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Spec",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "process",
+        "source"
+      ],
+      "title": "BuildPart",
+      "type": "object"
+    },
+    "Calc": {
+      "description": "A traceable calculation: what was computed, how, from what.",
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Quantity"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "result": {
+          "title": "Result",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "inputs",
+        "result",
+        "unit"
+      ],
+      "title": "Calc",
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Passed"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "calc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Calc"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "requirement_id",
+        "name",
+        "required",
+        "actual",
+        "unit",
+        "passed"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "Drive": {
+      "description": "The transmission between motor and joint. ratio = motor turns per joint turn; for a leadscrew or belt-driven\nlinear axis, ratio = motor rad per metre of travel (2*pi/lead or 2*pi/(pulley pitch circumference)).",
+      "properties": {
+        "type": {
+          "enum": [
+            "direct",
+            "planetary",
+            "harmonic",
+            "belt",
+            "leadscrew",
+            "rack",
+            "wheel_gearbox"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "ratio": {
+          "exclusiveMinimum": 0,
+          "title": "Ratio",
+          "type": "number"
+        },
+        "efficiency": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Efficiency",
+          "type": "number"
+        },
+        "lead_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lead M"
+        },
+        "name": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ratio",
+        "efficiency"
+      ],
+      "title": "Drive",
+      "type": "object"
+    },
+    "ElectronicsItem": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "driver",
+            "controller",
+            "power_supply",
+            "battery",
+            "other"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "shop",
+            "defined"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "qty": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Qty",
+          "type": "integer"
+        },
+        "for_joints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "For Joints",
+          "type": "array"
+        },
+        "shop": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Shop",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Url",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShopPrice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "name",
+        "source"
+      ],
+      "title": "ElectronicsItem",
+      "type": "object"
+    },
+    "JointSizing": {
+      "description": "What a joint needs, computed in code from the design (gravity_torques over the task frames and a stretched pose,\nlink inertia times acceleration, RMS over the frames, safety factors).",
+      "properties": {
+        "joint": {
+          "title": "Joint",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "revolute",
+            "prismatic",
+            "wheel"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "static_torque": {
+          "title": "Static Torque",
+          "type": "number"
+        },
+        "accel_torque": {
+          "title": "Accel Torque",
+          "type": "number"
+        },
+        "continuous": {
+          "title": "Continuous",
+          "type": "number"
+        },
+        "peak": {
+          "title": "Peak",
+          "type": "number"
+        },
+        "speed": {
+          "title": "Speed",
+          "type": "number"
+        },
+        "torque_unit": {
+          "default": "N*m",
+          "title": "Torque Unit",
+          "type": "string"
+        },
+        "speed_unit": {
+          "default": "rad/s",
+          "title": "Speed Unit",
+          "type": "string"
+        },
+        "calcs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Calc"
+          },
+          "title": "Calcs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "joint",
+        "kind",
+        "static_torque",
+        "accel_torque",
+        "continuous",
+        "peak",
+        "speed"
+      ],
+      "title": "JointSizing",
+      "type": "object"
+    },
+    "MotorAlternative": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "shop": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Shop",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Url",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShopPrice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "motor_type": {
+          "default": "other",
+          "enum": [
+            "stepper",
+            "bldc",
+            "servo",
+            "dc_gear",
+            "other"
+          ],
+          "title": "Motor Type",
+          "type": "string"
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "drive": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Drive"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "passes": {
+          "default": false,
+          "title": "Passes",
+          "type": "boolean"
+        },
+        "reason": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "MotorAlternative",
+      "type": "object"
+    },
+    "MotorChoice": {
+      "properties": {
+        "joint": {
+          "title": "Joint",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "shop",
+            "defined"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "alternative_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alternative Id"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "shop": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Shop",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Url",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShopPrice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "motor_type": {
+          "default": "other",
+          "enum": [
+            "stepper",
+            "bldc",
+            "servo",
+            "dc_gear",
+            "other"
+          ],
+          "title": "Motor Type",
+          "type": "string"
+        },
+        "values": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "drive": {
+          "$ref": "#/$defs/Drive"
+        },
+        "required": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {},
+          "title": "Required",
+          "type": "object"
+        },
+        "provided": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {},
+          "title": "Provided",
+          "type": "object"
+        },
+        "margins": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {},
+          "title": "Margins",
+          "type": "object"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "alternatives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MotorAlternative"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "joint",
+        "source",
+        "name",
+        "drive"
+      ],
+      "title": "MotorChoice",
+      "type": "object"
+    },
+    "Quantity": {
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "ShopPrice": {
+      "description": "A price as a shop listed it on a date: an estimate for planning, never a quote.",
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "currency": {
+          "default": "INR",
+          "maxLength": 8,
+          "title": "Currency",
+          "type": "string"
+        },
+        "seen": {
+          "maxLength": 40,
+          "title": "Seen",
+          "type": "string"
+        },
+        "shop": {
+          "maxLength": 80,
+          "title": "Shop",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 800,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "quote": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seen",
+        "shop",
+        "source_url"
+      ],
+      "title": "ShopPrice",
+      "type": "object"
+    },
+    "SpecValue": {
+      "description": "One value of a motor or part. verified = quoted on the shop/datasheet page and the quote contains the number\n(checked in code); assumed = from a standard table or rule (e.g. NEMA frame size); defined = a value we specify\nfor procurement because nothing suitable was found.",
+      "properties": {
+        "key": {
+          "pattern": "^[a-z][a-z0-9_]{0,62}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "text": {
+          "default": "",
+          "maxLength": 120,
+          "title": "Text",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Unit",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "assumed",
+            "defined"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "quote": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        },
+        "source_url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "status"
+      ],
+      "title": "SpecValue",
+      "type": "object"
+    },
+    "StructureStyle": {
+      "properties": {
+        "style": {
+          "enum": [
+            "extrusion_printed",
+            "machined_aluminium"
+          ],
+          "title": "Style",
+          "type": "string"
+        },
+        "proposed": {
+          "enum": [
+            "extrusion_printed",
+            "machined_aluminium"
+          ],
+          "title": "Proposed",
+          "type": "string"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "forced": {
+          "default": false,
+          "title": "Forced",
+          "type": "boolean"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "style",
+        "proposed"
+      ],
+      "title": "StructureStyle",
+      "type": "object"
+    },
+    "TwinJointLimit": {
+      "properties": {
+        "joint": {
+          "title": "Joint",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "revolute",
+            "prismatic",
+            "wheel"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "number"
+        },
+        "max_speed": {
+          "title": "Max Speed",
+          "type": "number"
+        },
+        "max_accel": {
+          "title": "Max Accel",
+          "type": "number"
+        },
+        "max_torque": {
+          "title": "Max Torque",
+          "type": "number"
+        }
+      },
+      "required": [
+        "joint",
+        "kind",
+        "lower",
+        "upper",
+        "max_speed",
+        "max_accel",
+        "max_torque"
+      ],
+      "title": "TwinJointLimit",
+      "type": "object"
+    },
+    "TwinLimits": {
+      "properties": {
+        "joints": {
+          "items": {
+            "$ref": "#/$defs/TwinJointLimit"
+          },
+          "title": "Joints",
+          "type": "array"
+        },
+        "gripper": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TwinJointLimit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dt_s": {
+          "default": 0.02,
+          "title": "Dt S",
+          "type": "number"
+        },
+        "accel_ramp_s": {
+          "default": 0.2,
+          "title": "Accel Ramp S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "joints"
+      ],
+      "title": "TwinLimits",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "build": {
+      "title": "Build",
+      "type": "integer"
+    },
+    "design_version": {
+      "title": "Design Version",
+      "type": "integer"
+    },
+    "member": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Member"
+    },
+    "parent_build": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Build"
+    },
+    "created": {
+      "title": "Created",
+      "type": "string"
+    },
+    "request": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Request",
+      "type": "string"
+    },
+    "summary": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Summary",
+      "type": "string"
+    },
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "search_date": {
+      "default": "",
+      "title": "Search Date",
+      "type": "string"
+    },
+    "sizing": {
+      "items": {
+        "$ref": "#/$defs/JointSizing"
+      },
+      "title": "Sizing",
+      "type": "array"
+    },
+    "motors": {
+      "items": {
+        "$ref": "#/$defs/MotorChoice"
+      },
+      "title": "Motors",
+      "type": "array"
+    },
+    "electronics": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ElectronicsItem"
+      },
+      "title": "Electronics",
+      "type": "array"
+    },
+    "style": {
+      "$ref": "#/$defs/StructureStyle"
+    },
+    "parts": {
+      "items": {
+        "$ref": "#/$defs/BuildPart"
+      },
+      "title": "Parts",
+      "type": "array"
+    },
+    "urdf": {
+      "title": "Urdf",
+      "type": "string"
+    },
+    "twin_limits": {
+      "$ref": "#/$defs/TwinLimits"
+    },
+    "checks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "files": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/BuildFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "approved": {
+      "default": false,
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "approved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved At"
+    }
+  },
+  "required": [
+    "build",
+    "design_version",
+    "created",
+    "family",
+    "sizing",
+    "motors",
+    "style",
+    "parts",
+    "urdf",
+    "twin_limits"
+  ],
+  "title": "StudioBuild",
+  "type": "object"
+}

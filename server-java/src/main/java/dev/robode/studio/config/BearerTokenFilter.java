@@ -12,6 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** With STUDIO_TOKEN set, every /api/v1 call needs "Authorization: Bearer <token>" (CORS preflights excepted). */
 @Component
+@org.springframework.core.annotation.Order(10)
 public class BearerTokenFilter extends OncePerRequestFilter {
     private final byte[] token;
 

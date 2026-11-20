@@ -48,7 +48,7 @@ public class ProjectStore {
     /** Reference photos plus answer images that go to the spec agent (the Claude CLI's cap). */
     public static final int MAX_SPEC_IMAGES = 8;
     public static final String GENERAL = "_general";
-    static final String BUDGET_MESSAGE = "At most " + MAX_SPEC_IMAGES + " images in total go to the spec agent (reference photos count too)";
+    public static final String BUDGET_MESSAGE = "At most " + MAX_SPEC_IMAGES + " images in total go to the spec agent (reference photos count too)";
     private static final Pattern VERSION_FILE = Pattern.compile("^v(\\d+)\\.json$");
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -255,7 +255,7 @@ public class ProjectStore {
                 Files.createDirectories(folder);
                 if (!Files.exists(folder.resolve(name))) {
                     if (images(pid).size() >= MAX_IMAGES) throw StudioException.value("At most " + MAX_IMAGES + " reference images");
-                    if (images(pid).size() + answerImages(pid).size() >= MAX_SPEC_IMAGES) throw StudioException.value(BUDGET_MESSAGE);
+                    if (specImageCount(pid) >= MAX_SPEC_IMAGES) throw StudioException.value(BUDGET_MESSAGE);
                 }
                 Json.move(source, folder.resolve(name));
             } catch (IOException e) {
@@ -299,7 +299,7 @@ public class ProjectStore {
     }
 
     /** Total images that would go to the spec agent: reference photos plus answer images. */
-    public int specImageCount(String pid) { return images(pid).size() + answerImages(pid).size(); }
+    public int specImageCount(String pid) { return images(pid).size() + answerImages(pid).size() + briefImages(pid).size(); }
 
     static String sniffMime(Path file) {
         try (var in = Files.newInputStream(file)) {
@@ -369,6 +369,96 @@ public class ProjectStore {
         return out;
     }
 
+    // -- brief ----------------------------------------------------------------------------------------------------
+    public static final String BRIEF_FROZEN = "The design is approved; the brief is frozen";
+
+    private void requireNotApproved(String pid) {
+        JsonNode frozen = meta(pid).get("approved_version");
+        if (frozen != null && !frozen.isNull() && frozen.asInt() != 0) throw StudioException.conflict(BRIEF_FROZEN);
+    }
+
+    /** Replaces the brief; pending questions are cleared and the round restarts. Existing versions stay. */
+    public void setBrief(String pid, String brief) {
+        locked(pid, () -> {
+            requireNotApproved(pid);
+            update(pid, m -> {
+                m.put("brief", brief);
+                m.set("questions", arr());
+                m.put("round", 0);
+                m.put("brief_updated", Time.now());
+                if ("questions".equals(Json.text(m, "stage"))) m.put("stage", "brief");
+            });
+        });
+    }
+
+    private Path briefDir(String pid) { return dir(pid).resolve("brief").resolve("images"); }
+
+    private Path briefIndex(String pid) { return dir(pid).resolve("brief").resolve("images.json"); }
+
+    /** The brief-image index: [{name, mime}], oldest first. */
+    public ArrayNode briefImages(String pid) {
+        JsonNode data = Json.read(briefIndex(pid));
+        ArrayNode out = arr();
+        if (data instanceof ArrayNode array)
+            for (JsonNode e : array) if (Files.isRegularFile(briefDir(pid).resolve(Json.text(e, "name")))) out.add(e);
+        return out;
+    }
+
+    public boolean hasBriefImage(String pid, String name) {
+        for (JsonNode e : briefImages(pid)) if (name.equals(Json.text(e, "name"))) return true;
+        return false;
+    }
+
+    public void addBriefImage(String pid, String name, Path source) {
+        locked(pid, () -> {
+            try {
+                requireNotApproved(pid);
+                ArrayNode index = briefImages(pid);
+                if (!hasBriefImage(pid, name) && specImageCount(pid) >= MAX_SPEC_IMAGES) throw StudioException.value(BUDGET_MESSAGE);
+                Files.createDirectories(briefDir(pid));
+                Path target = briefDir(pid).resolve(name);
+                Json.move(source, target);
+                ArrayNode next = arr();
+                for (JsonNode e : index) if (!name.equals(Json.text(e, "name"))) next.add(e);
+                next.add(obj().put("name", name).put("mime", sniffMime(target)));
+                Json.write(briefIndex(pid), next);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    public void removeBriefImage(String pid, String name) {
+        locked(pid, () -> {
+            requireNotApproved(pid);
+            boolean found = false;
+            ArrayNode next = arr();
+            for (JsonNode e : briefImages(pid)) { if (name.equals(Json.text(e, "name"))) found = true; else next.add(e); }
+            if (!found) throw StudioException.notFound("Image not found");
+            try {
+                Files.deleteIfExists(briefDir(pid).resolve(name));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            Json.write(briefIndex(pid), next);
+        });
+    }
+
+    public JsonNode briefImage(String pid, String name) {
+        for (JsonNode e : briefImages(pid)) if (name.equals(Json.text(e, "name"))) return e;
+        throw StudioException.notFound("Image not found");
+    }
+
+    public Path briefImagePath(String pid, String name) { return Ids.inside(briefDir(pid), name); }
+
+    /** The images as the design task takes them: [{path, name}]. */
+    public ArrayNode briefImagesForTask(String pid) {
+        ArrayNode out = arr();
+        for (JsonNode e : briefImages(pid))
+            out.add(obj().put("path", briefDir(pid).resolve(Json.text(e, "name")).toString()).put("name", Json.text(e, "name")));
+        return out;
+    }
+
     // -- versions -----------------------------------------------------------------------------------------------
     private Path versionsDir(String pid) { return dir(pid).resolve("versions"); }
 
@@ -408,6 +498,43 @@ public class ProjectStore {
 
     public void saveParsed(String pid, int n, JsonNode parsed) {
         Json.write(versionPath(pid, n, ".parsed.json"), parsed);
+    }
+
+    /** The {rid: parsed} sidecar of a fleet version, or null when it has not been written yet. */
+    public JsonNode fleetParsedSidecar(String pid, int n) {
+        ObjectNode data = Json.readObject(versionPath(pid, n, ".fleet.parsed.json"));
+        return data == null ? null : Json.withoutSchemaVersion(data);
+    }
+
+    public void saveFleetParsed(String pid, int n, JsonNode parsed) {
+        Json.write(versionPath(pid, n, ".fleet.parsed.json"), parsed);
+    }
+
+    /** Sets meta.fleet from a task's fleet_advice (suggested, reasons, source); a new entry is also enabled. */
+    public void applyFleetAdvice(String pid, JsonNode advice) {
+        if (advice == null || !advice.isObject()) return;
+        update(pid, m -> {
+            ObjectNode fleet = m.get("fleet") instanceof ObjectNode f ? f : fleetDefaults();
+            boolean fresh = !(m.get("fleet") instanceof ObjectNode);
+            fleet.put("suggested", true);
+            if (fresh) fleet.put("enabled", true);
+            fleet.set("reasons", advice.get("reasons") instanceof ArrayNode r ? r : arr());
+            fleet.put("source", Json.text(advice, "source") == null ? "spec" : Json.text(advice, "source"));
+            m.set("fleet", fleet);
+        });
+    }
+
+    /** A fresh meta.fleet entry. */
+    public static ObjectNode fleetDefaults() {
+        ObjectNode f = obj();
+        f.put("suggested", false);
+        f.put("enabled", false);
+        f.set("reasons", arr());
+        f.put("source", "user");
+        f.putNull("limits");
+        f.putNull("assignment");
+        f.putNull("member");
+        return f;
     }
 
     /**
@@ -584,10 +711,24 @@ public class ProjectStore {
         versions(pid).forEach(versions::add);
         view.set("versions", versions);
         view.set("approved_version", orNull(m, "approved_version"));
+        if (m.get("fleet") instanceof ObjectNode f) view.set("fleet", f);
         if (m.get("answer_comments") instanceof ObjectNode c && !c.isEmpty()) view.set("answer_comments", c);
         if (m.get("answer_notes") instanceof ArrayNode n && !n.isEmpty()) view.set("answer_notes", n);
         ArrayNode answerImages = answerImages(pid);
         if (!answerImages.isEmpty()) view.set("answer_images", answerImages);
+        if (m.hasNonNull("brief_updated")) view.set("brief_updated", m.get("brief_updated"));
+        ArrayNode briefImages = briefImages(pid);
+        if (!briefImages.isEmpty()) view.set("brief_images", briefImages);
+        List<Integer> builds = builds(pid);
+        if (!builds.isEmpty()) {
+            ObjectNode studio = obj();
+            ArrayNode numbers = arr();
+            builds.forEach(numbers::add);
+            studio.set("builds", numbers);
+            JsonNode approvedBuild = m.path("studio").get("approved_build");
+            if (approvedBuild == null || approvedBuild.isNull()) studio.putNull("approved_build"); else studio.set("approved_build", approvedBuild);
+            view.set("studio", studio);
+        }
         view.put("candidates_count", candidates(pid).size());
         view.set("selected_candidate", orNull(m, "selected_candidate"));
         ArrayNode analyses = arr();
@@ -597,6 +738,26 @@ public class ProjectStore {
         view.set("created", orNull(m, "created"));
         view.set("updated", orNull(m, "updated"));
         return view;
+    }
+
+    // -- robot studio builds (runtime/projects/<id>/studio/b<n>/, written by StudioStore) --------------------------
+    private static final Pattern BUILD_DIR = Pattern.compile("^b(\\d+)$");
+
+    public Path studioDir(String pid) { return dir(pid).resolve("studio"); }
+
+    public Path buildDir(String pid, int n) { return studioDir(pid).resolve("b" + n); }
+
+    /** Build numbers (ascending) that have a build.json. */
+    public List<Integer> builds(String pid) {
+        Path studio = studioDir(pid);
+        if (!Files.isDirectory(studio)) return List.of();
+        try (Stream<Path> list = Files.list(studio)) {
+            return list.map(p -> BUILD_DIR.matcher(p.getFileName().toString())).filter(java.util.regex.Matcher::matches)
+                    .filter(mt -> Files.isRegularFile(studio.resolve(mt.group(0)).resolve("build.json")))
+                    .map(mt -> Integer.parseInt(mt.group(1))).sorted().toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static JsonNode orNull(ObjectNode node, String key) {

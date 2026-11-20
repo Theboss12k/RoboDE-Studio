@@ -1,0 +1,295 @@
+{
+ "rules": [
+  {
+   "match": "connection test",
+   "answers": [
+    "ready"
+   ]
+  },
+  {
+   "match": "3D scene",
+   "answers": [
+    {
+     "floor_size_m": [
+      3.0,
+      3.0
+     ],
+     "boxes": [
+      {
+       "id": "table_a",
+       "kind": "table",
+       "center": [
+        0.5,
+        0.3,
+        0.375
+       ],
+       "size": [
+        0.3,
+        0.3,
+        0.75
+       ]
+      },
+      {
+       "id": "table_b",
+       "kind": "table",
+       "center": [
+        0.5,
+        -0.3,
+        0.375
+       ],
+       "size": [
+        0.3,
+        0.3,
+        0.75
+       ]
+      }
+     ],
+     "markers": [
+      {
+       "id": "a",
+       "name": "A",
+       "position": [
+        0.5,
+        0.3,
+        0.75
+       ],
+       "note": ""
+      },
+      {
+       "id": "b",
+       "name": "B",
+       "position": [
+        0.5,
+        -0.3,
+        0.75
+       ],
+       "note": ""
+      }
+     ],
+     "objects": [
+      {
+       "id": "bottle",
+       "shape": "cylinder",
+       "center": [
+        0.5,
+        0.3,
+        0.86
+       ],
+       "size": [
+        0.07,
+        0.07,
+        0.22
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "kind of robot",
+   "answers": [
+    {
+     "family": "serial_arm",
+     "name": "Bottle mover arm",
+     "rationale": "A 6-axis arm reaches both points.",
+     "params": {
+      "dof": 6
+     }
+    }
+   ]
+  },
+  {
+   "match": "find real motors",
+   "answers": [
+    {
+     "candidates": [
+      {
+       "name": "NEMA 23 Stepper Motor 3 N.m 76mm",
+       "url": "https://robu.in/product/nema23-3nm",
+       "motor_type": "stepper",
+       "values": [
+        {
+         "key": "holding_torque_nm",
+         "value": 3.0,
+         "unit": "N.m",
+         "quote": "Holding Torque: 3.0 N.m"
+        },
+        {
+         "key": "current_a",
+         "value": 4.2,
+         "unit": "A",
+         "quote": "Rated Current: 4.2 A"
+        },
+        {
+         "key": "voltage_v",
+         "value": 24,
+         "unit": "V",
+         "quote": "Rated Voltage: 24 V"
+        },
+        {
+         "key": "rated_speed_rpm",
+         "value": 600,
+         "unit": "rpm",
+         "quote": "Rated Speed: 600 rpm"
+        }
+       ],
+       "price": {
+        "amount": 2499,
+        "currency": "INR",
+        "quote": "Rs. 2,499.00 (inclusive of GST)",
+        "source_url": "https://robu.in/product/nema23-3nm"
+       }
+      },
+      {
+       "name": "Nema 23 Stepper Motor 1.26Nm",
+       "url": "https://www.omc-stepperonline.com/nema23-1-26nm",
+       "motor_type": "stepper",
+       "values": [
+        {
+         "key": "holding_torque_nm",
+         "value": 1.26,
+         "unit": "N.m",
+         "quote": "Holding Torque 1.26 N.m"
+        },
+        {
+         "key": "current_a",
+         "value": 2.8,
+         "unit": "A",
+         "quote": "Rated Current/phase 2.8 A"
+        },
+        {
+         "key": "voltage_v",
+         "value": 24,
+         "unit": "V",
+         "quote": "Rated Voltage 24 V"
+        }
+       ],
+       "price": {
+        "amount": 18.5,
+        "currency": "USD",
+        "quote": "Price: US $18.50",
+        "source_url": "https://www.omc-stepperonline.com/nema23-1-26nm"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "structure style of a robot",
+   "answers": [
+    {
+     "style": "extrusion_printed",
+     "reasons": [
+      "Light task, a printed bracket is enough (fixture answer)."
+     ]
+    }
+   ]
+  },
+  {
+   "match": "requirements engineer",
+   "answers": [
+    {
+     "spec": {
+      "title": "Bottle A to B",
+      "summary": "Move a bottle between two points on a table.",
+      "frame": "World frame: metres, z up, origin on the floor.",
+      "actions": [
+       {
+        "verb": "pick",
+        "object": "bottle",
+        "target": "a",
+        "duration_s": 0.0,
+        "description": "pick bottle at A"
+       },
+       {
+        "verb": "place",
+        "object": "bottle",
+        "target": "b",
+        "duration_s": 0.0,
+        "description": "place bottle at B"
+       }
+      ],
+      "objects": [
+       {
+        "id": "bottle",
+        "name": "Bottle",
+        "mass_kg": 0.3,
+        "size_m": [
+         0.07,
+         0.07,
+         0.22
+        ],
+        "shape": "cylinder",
+        "grip": "parallel",
+        "fragile": false,
+        "start_marker": "a"
+       }
+      ],
+      "markers": [
+       {
+        "id": "a",
+        "name": "A",
+        "position": [
+         0.5,
+         0.3,
+         0.75
+        ],
+        "note": ""
+       },
+       {
+        "id": "b",
+        "name": "B",
+        "position": [
+         0.5,
+         -0.3,
+         0.75
+        ],
+        "note": ""
+       }
+      ],
+      "locomotion": {
+       "required": false,
+       "path": [],
+       "terrain": "flat indoor floor",
+       "slope_deg": 0.0
+      },
+      "environment": "indoor",
+      "duty_cycle": "",
+      "accuracy_m": 0.005,
+      "speed_target": "",
+      "payload_description": "",
+      "physics_inputs": {
+       "object_mass_kg": 0.3,
+       "object_size_m": [
+        0.07,
+        0.07,
+        0.22
+       ],
+       "tool_mass_kg": null,
+       "grip": "parallel",
+       "friction_coefficient": 0.4,
+       "contact_count": 2,
+       "cycle_time_s": 6.0,
+       "positional_accuracy_m": 0.005,
+       "safety_factor": 1.5,
+       "clearance_m": 0.05,
+       "approach_height_m": 0.1,
+       "peak_acceleration_m_s2": 2.0,
+       "travel_distance_m": 0.0,
+       "travel_speed_m_s": null,
+       "slope_deg": 0.0,
+       "rolling_resistance": 0.015,
+       "vehicle_mass_kg": null,
+       "wheel_radius_m": null,
+       "shifts_per_day": 1.0,
+       "cycles_per_hour": null
+      },
+      "assumptions": [],
+      "reference": ""
+     }
+    }
+   ]
+  }
+ ]
+}

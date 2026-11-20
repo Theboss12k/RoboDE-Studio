@@ -1,6 +1,7 @@
 package dev.robode.studio.api;
 
 import dev.robode.studio.common.StudioException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,13 +14,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-/** Every error body is {"detail": message}, as the client expects. */
+/** Every error body is {"detail": message, "error_code"?: code}, as the client expects. */
 @RestControllerAdvice
 class ApiErrors {
     private static final Logger LOG = LoggerFactory.getLogger(ApiErrors.class);
 
     @ExceptionHandler(StudioException.class)
-    ResponseEntity<Map<String, String>> studio(StudioException e) { return body(e.status(), e.getMessage()); }
+    ResponseEntity<Map<String, String>> studio(StudioException e) { return body(e.status(), e.getMessage(), e.code()); }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    ResponseEntity<Map<String, String>> tooLarge(Exception e) { return body(413, "The request body is too large (64 MB at most)"); }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class})
@@ -42,7 +46,13 @@ class ApiErrors {
         return body(500, e.getClass().getSimpleName() + ": " + e.getMessage());
     }
 
-    private static ResponseEntity<Map<String, String>> body(int status, String detail) {
-        return ResponseEntity.status(status).body(Map.of("detail", detail == null ? "Error" : detail));
+    private static ResponseEntity<Map<String, String>> body(int status, String detail) { return body(status, detail, null); }
+
+    /** {detail, error_code?}: the code only when the failure has one. */
+    private static ResponseEntity<Map<String, String>> body(int status, String detail, String code) {
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("detail", detail == null ? "Error" : detail);
+        if (code != null) out.put("error_code", code);
+        return ResponseEntity.status(status).body(out);
     }
 }

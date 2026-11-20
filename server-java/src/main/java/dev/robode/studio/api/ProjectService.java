@@ -95,6 +95,8 @@ public class ProjectService {
             if (!notes.isEmpty()) input.set("notes", notes);
             ArrayNode images = store.answerImagesForTask(pid);
             if (!images.isEmpty()) input.set("answer_images", images);
+            ArrayNode briefImages = store.briefImagesForTask(pid);
+            if (!briefImages.isEmpty()) input.set("brief_images", briefImages);
             if (autoRepair != null) input.put("auto_repair", autoRepair);
             try (TaskResult r = runner.run(job.id(), "design", input, llm.resolveRoles(), pid, "design", job.listener())) {
                 JsonNode data = r.data();
@@ -119,6 +121,8 @@ public class ProjectService {
                     m.put("title", title.substring(0, Math.min(80, title.length())));
                 });
                 int n = store.addVersion(pid, version, null, data.get("parsed"), null);
+                saveFleetParsed(pid, n, data.get("fleet_parsed"));
+                store.applyFleetAdvice(pid, data.get("fleet_advice"));
                 return Json.obj().put("status", "designed").put("version", n);
             }
         });
@@ -147,6 +151,24 @@ public class ProjectService {
             }
         }
         version.set("parsed", parsed);
+        if (version.get("fleet") instanceof ObjectNode fleet) {
+            JsonNode fp = store.fleetParsedSidecar(pid, n);
+            if (fp == null) {
+                synchronized (flight(pid + "/v" + n + "/fleet.parsed")) {
+                    fp = store.fleetParsedSidecar(pid, n);
+                    if (fp == null) {
+                        ObjectNode made = Json.obj();
+                        if (fleet.get("members") instanceof ArrayNode members)
+                            for (JsonNode member : members)
+                                if (Json.text(member, "id") != null && Json.text(member, "urdf") != null)
+                                    made.set(Json.text(member, "id"), parsedFor(Json.text(member, "urdf")));
+                        fp = made;
+                        store.saveFleetParsed(pid, n, fp);
+                    }
+                }
+            }
+            version.set("fleet_parsed", fp);
+        }
         return version;
     }
 
@@ -212,9 +234,107 @@ public class ProjectService {
                     JsonNode now = meta.get("approved_version");
                     if (now != null && !now.isNull() && now.asInt() != 0) throw StudioException.conflict(frozenMessage(now));
                 });
+                saveFleetParsed(pid, n, r.data().get("fleet_parsed"));
+                store.applyFleetAdvice(pid, r.data().get("fleet_advice"));
                 return Json.obj().put("version", n);
             }
         });
+    }
+
+    private void saveFleetParsed(String pid, int n, JsonNode fleetParsed) {
+        if (fleetParsed != null && fleetParsed.isObject()) store.saveFleetParsed(pid, n, fleetParsed);
+    }
+
+    // -- fleet --------------------------------------------------------------------------------------------------
+    private static final ObjectNode DEFAULT_LIMITS = Json.obj().put("max_robots", 2);
+
+    private JsonNode fleetLimits(ObjectNode meta) {
+        JsonNode limits = meta.path("fleet").get("limits");
+        return limits == null || limits.isNull() ? DEFAULT_LIMITS.deepCopy() : limits;
+    }
+
+    /** Stores the user's choices (enabled, limits, member) in meta.fleet; the controller has validated them. */
+    public ObjectNode setFleet(String pid, Boolean enabled, boolean hasLimits, JsonNode limits, boolean hasMember, String member) {
+        store.require(pid);
+        store.update(pid, m -> {
+            ObjectNode fleet = m.get("fleet") instanceof ObjectNode f ? f : ProjectStore.fleetDefaults();
+            if (enabled != null) fleet.put("enabled", enabled);
+            if (hasLimits) fleet.set("limits", limits == null ? Json.MAPPER.nullNode() : limits);
+            if (hasMember) { if (member == null) fleet.putNull("member"); else fleet.put("member", member); }
+            m.set("fleet", fleet);
+        });
+        return store.view(pid);
+    }
+
+    /** Synchronous fleet_assign (no LLM): previews the assignment and stores it in meta.fleet.assignment. */
+    public JsonNode fleetAssign(String pid, Integer baseVersion, JsonNode assignment) {
+        store.require(pid);
+        List<Integer> versions = store.versions(pid);
+        Integer base;
+        if (baseVersion != null) {
+            base = baseVersion;
+        } else {
+            JsonNode ap = store.meta(pid).get("approved_version");
+            base = ap != null && !ap.isNull() && ap.asInt() != 0 ? Integer.valueOf(ap.asInt()) : (versions.isEmpty() ? null : versions.get(versions.size() - 1));
+        }
+        if (base == null) throw StudioException.value("There is no design to plan a fleet for yet");
+        if (!versions.contains(base)) throw StudioException.value("Unknown base version " + base);
+        boolean user = assignment != null && !assignment.isNull();
+        ObjectNode input = Json.obj();
+        input.set("version", Json.withoutSchemaVersion(store.version(pid, base)));
+        input.set("limits", fleetLimits(store.meta(pid)));
+        input.set("assignment", user ? assignment : Json.MAPPER.nullNode());
+        try (TaskResult r = runner.run(taskId("f-"), "fleet_assign", input, LlmSettings.none(), pid, "fleet_assign", null)) {
+            JsonNode data = r.data();
+            if (data.get("assignment") instanceof ObjectNode a) {
+                ObjectNode stored = a.deepCopy();
+                stored.put("confirmed", user);
+                if (user) stored.put("source", "user");
+                store.update(pid, m -> {
+                    ObjectNode fleet = m.get("fleet") instanceof ObjectNode f ? f : ProjectStore.fleetDefaults();
+                    fleet.set("assignment", stored);
+                    m.set("fleet", fleet);
+                });
+            }
+            return data.deepCopy();
+        }
+    }
+
+    /** The fleet_design job: plans the fleet on a base version and commits the result as a child version. */
+    public ObjectNode fleetDesign(String pid, Integer baseVersion) {
+        store.require(pid);
+        JsonNode frozen = store.meta(pid).get("approved_version");
+        if (frozen != null && !frozen.isNull() && frozen.asInt() != 0) throw StudioException.conflict(frozenMessage(frozen));
+        List<Integer> versions = store.versions(pid);
+        Integer base0 = baseVersion != null ? baseVersion : (versions.isEmpty() ? null : versions.get(versions.size() - 1));
+        if (base0 == null) throw StudioException.value("There is no design to change yet");
+        if (!versions.contains(base0)) throw StudioException.value("Unknown base version " + base0);
+        ObjectNode meta = store.meta(pid);
+        JsonNode assignment = meta.path("fleet").get("assignment");
+        if (assignment == null || assignment.isNull()) throw StudioException.conflict("Assign the robots first");
+        ObjectNode base = Json.withoutSchemaVersion(store.version(pid, base0));
+        ObjectNode input = Json.obj();
+        input.set("base", base);
+        input.set("limits", fleetLimits(meta));
+        input.set("assignment", assignment);
+        final int baseFinal = base0;
+        return jobs.start("fleet_design", pid, "v" + base0, job -> {
+            try (TaskResult r = runner.run(job.id(), "fleet_design", input, llm.resolveRoles(), pid, "fleet_design", job.listener())) {
+                int n = store.addVersion(pid, r.data().get("version"), baseFinal, r.data().get("parsed"), m -> {
+                    JsonNode now = m.get("approved_version");
+                    if (now != null && !now.isNull() && now.asInt() != 0) throw StudioException.conflict(frozenMessage(now));
+                });
+                saveFleetParsed(pid, n, r.data().get("fleet_parsed"));
+                return Json.obj().put("version", n);
+            }
+        });
+    }
+
+    /** `member` for search and analyse: set when the approved version is a fleet and the user picked a member. */
+    private void addMember(String pid, ObjectNode version, ObjectNode input) {
+        if (!version.hasNonNull("fleet")) return;
+        String member = Json.text(store.meta(pid).path("fleet"), "member");
+        if (member != null && !member.isBlank()) input.put("member", member);
     }
 
     /** Python's {:g} for the moment limit message. */
@@ -243,6 +363,7 @@ public class ProjectService {
             ObjectNode input = Json.obj();
             input.set("version", Json.withoutSchemaVersion(version));
             input.put("limit", 6);
+            addMember(pid, version, input);
             try (TaskResult r = runner.run(job.id(), "find", input, llm.resolveRoles(), pid, "search", job.listener())) {
                 JsonNode candidates = r.data().get("candidates");
                 store.saveCandidates(pid, candidates);
@@ -262,6 +383,7 @@ public class ProjectService {
             ObjectNode input = Json.obj();
             input.set("version", Json.withoutSchemaVersion(version));
             input.set("candidate", candidate);
+            addMember(pid, version, input);
             if (url.isEmpty()) input.putNull("datasheet_url"); else input.put("datasheet_url", url);
             var stored = url.isEmpty() ? store.documentPath(pid, cid) : java.util.Optional.<Path>empty();
             if (stored.isPresent()) {
@@ -354,6 +476,32 @@ public class ProjectService {
         return store.answerImages(pid);
     }
 
+    /** Replaces the brief (10 to 20000 characters after trimming); 409 when approved or while a design step runs. */
+    public ObjectNode updateBrief(String pid, String brief) {
+        store.require(pid);
+        String text = brief == null ? "" : brief.strip();
+        if (text.length() < 10 || text.length() > 20000) throw StudioException.value("brief must be 10 to 20000 characters");
+        store.locked(pid, () -> {
+            if (jobs.busy(pid)) throw StudioException.conflict("This project is still working on another design step");
+            store.setBrief(pid, text);
+        });
+        return store.view(pid);
+    }
+
+    /** A photo of the task, objects or workcell attached to the brief; returns the updated list. */
+    public ArrayNode uploadBriefImage(String pid, String filename, byte[] payload) {
+        store.require(pid);
+        String name = Ids.safeName(filename);
+        if (store.meta(pid).path("approved_version").asInt(0) != 0) throw StudioException.conflict(ProjectStore.BRIEF_FROZEN);
+        if (store.specImageCount(pid) >= ProjectStore.MAX_SPEC_IMAGES && !store.hasBriefImage(pid, name))
+            throw StudioException.value(ProjectStore.BUDGET_MESSAGE);
+        Staged staged = inspect(name, payload, "image");
+        try (TaskResult result = staged.result()) {
+            store.addBriefImage(pid, name, staged.file());
+        }
+        return store.briefImages(pid);
+    }
+
     public ObjectNode uploadDatasheet(String pid, String cid, String filename, byte[] payload) {
         store.require(pid);
         store.candidate(pid, cid);
@@ -392,6 +540,26 @@ public class ProjectService {
         summary.set("checks", sim.path("checks"));
         summary.set("events", sim.path("events"));
         put(files, "sim_summary.json", Json.pretty(summary));
+        JsonNode fleet = version.get("fleet");
+        boolean isFleet = fleet != null && fleet.isObject();
+        if (isFleet) {
+            ObjectNode trimmedFleet = (ObjectNode) fleet.deepCopy();
+            if (trimmedFleet.get("members") instanceof ArrayNode members)
+                for (JsonNode member : members)
+                    if (member instanceof ObjectNode mo) {
+                        mo.remove("urdf");
+                        if (mo.get("sim") instanceof ObjectNode ms) ms.remove("frames");
+                    }
+            put(files, "fleet.json", Json.pretty(trimmedFleet));
+            if (fleet.get("members") instanceof ArrayNode members)
+                for (JsonNode member : members) {
+                    String rid = Json.text(member, "id");
+                    if (rid != null && Json.text(member, "urdf") != null && rid.matches("[A-Za-z0-9_-]{1,40}"))
+                        put(files, "members/" + rid + "/design.urdf", Json.text(member, "urdf"));
+                }
+            readme += "\nFleet: the top-level files describe member " + Json.text(fleet, "primary")
+                    + "; the full task is in fleet.json\n";
+        }
         String glbNote = null;
         byte[] glb = null;
         try {

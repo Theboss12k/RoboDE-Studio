@@ -48,4 +48,5 @@ def llms(spec=None, scene=None, robot=None, delay=0.0, stamps=None):
     stamps = {} if stamps is None else stamps
     return {'spec': ScriptedLLM([('requirements engineer', spec if spec is not None else {'spec': spec_dict()})]),
             'scene': SlowLLM([('3D scene', scene or scene_dict())], 'scene', stamps, delay),
-            'robot': SlowLLM([('kind of robot', robot or ROBOT)], 'robot', stamps, delay)}
+            'robot': SlowLLM([('kind of robot', robot or ROBOT)], 'robot', stamps, delay),
+            'objects': ScriptedLLM([])}          # no rule: no object models (the designs stay as before)

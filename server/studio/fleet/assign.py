@@ -71,67 +71,115 @@ def _radius(points) -> float:
     return float(enclosing_circle([np.array(p) for p in pts])[1])
 
 
-def _evaluate(spec, st, pos, cuts):
-    """Members' step indices, handovers [(object, giver k, receiver k, midpoint)] and xy radius of every member for
-    the contiguous split of the positioned steps `pos` at `cuts` (positions in `pos` where a member starts)."""
+def _evaluate(spec, st, pos, cuts, relays=()):
+    """A split of the step chain: working members cut at `cuts` (indices into the positioned steps `pos` where a
+    member starts; positionless steps stay with the member before them) and relay members (no task steps, they pass
+    the object on) inserted at the boundaries listed in `relays` (boundary b sits before working member b).
+    Returns (members [step indices], handovers [(object, giver, receiver, xyz)], xy radius per member) or None when
+    a relay sits on a boundary where nothing is held."""
     bounds = [0, *cuts, len(pos)]
-    groups = []
+    work = []
     for k in range(len(bounds) - 1):
         first = 0 if k == 0 else pos[bounds[k]]
         last = len(st) if k == len(bounds) - 2 else pos[bounds[k + 1]]
-        groups.append(list(range(first, last)))    # positionless steps stay with the member before them
-    hands = []
-    for k in range(1, len(groups)):
-        held = _held_after(spec, groups[k][0])
-        if held:
-            g_last = next(st[i].point for i in reversed(groups[k - 1]) if st[i].point is not None)
-            r_first = next(st[i].point for i in groups[k] if st[i].point is not None)
-            hands.append((held, k - 1, k, (g_last + r_first) / 2))
+        work.append(list(range(first, last)))
+    members, hands = [work[0]], []
+    for b in range(1, len(work)):
+        held = _held_after(spec, work[b][0])
+        n_relay = relays.count(b)
+        if n_relay and not held:
+            return None
+        giver = len(members) - 1
+        members += [[] for _ in range(n_relay)]
+        members.append(work[b])
+        if held:                               # handovers evenly spaced from the giver's last to the receiver's first point
+            p = next(st[i].point for i in reversed(work[b - 1]) if st[i].point is not None)
+            q = next(st[i].point for i in work[b] if st[i].point is not None)
+            for j in range(n_relay + 1):
+                hands.append((held, giver + j, giver + j + 1, p + (j + 1) / (n_relay + 2) * (q - p)))
     radii = []
-    for k, g in enumerate(groups):
+    for k, g in enumerate(members):
         pts = [st[i].point[:2] for i in g if st[i].point is not None]
         pts += [h[3][:2] for h in hands if k in (h[1], h[2])]
         radii.append(_radius(pts))
-    return groups, hands, radii
+    return members, hands, radii
 
 
 def _member_name(spec, k, group, st):
     first = next((st[i] for i in group if st[i].point is not None), None)
     if first is None:
-        return f'Robot {k + 1}'
+        return f'Robot {k + 1} (relay)'
     m = next((m for m in spec.markers if m.id == first.marker), None)
     return f'Robot {k + 1} ({first.verb} at {m.name if m else first.marker})'[:80]
 
 
-def auto_assign(spec: TechnicalSpec, limits: FleetLimits, reach: dict[str, float] | None = None) -> FleetAssignment:
-    """Smallest k in 2..limits.max_robots with a contiguous split of the step chain such that every member's points
-    (its task points plus its handover midpoints) fit within FIT_SHARE x its reach budget of one centre (xy).
-    Among the splits that fit: fewest handovers, then the smallest worst radius share. When no k fits, the best split
-    with k = max_robots is returned (the fleet checks report what does not fit)."""
+def _splits(n_pos, k):
+    """(cuts, relays) for k members: j working members (2..k, at most n_pos) and k - j relays on the boundaries."""
+    for j in range(min(k, n_pos), 1, -1):
+        for cuts in itertools.combinations(range(1, n_pos), j - 1):
+            for relays in itertools.combinations_with_replacement(range(1, j), k - j):
+                yield cuts, relays
+
+
+MAX_SIZED_EVALS = 24          # candidate splits sized per robot count when the user gave a reach limit
+
+
+def auto_assign(spec: TechnicalSpec, limits: FleetLimits, reach: dict[str, float] | None = None,
+                min_robots: int = 2) -> FleetAssignment:
+    """Smallest k in min_robots..limits.max_robots with a contiguous split of the step chain that fits. A split may
+    insert relay members that only pass a held object on (needed when one hop is longer than two reaches).
+
+    Without a reach limit from the user, a split fits when every member's points (its task points plus its
+    handovers) lie within FIT_SHARE x its reach budget of one centre (xy). With `limits.max_reach_m`, the split must
+    also fit by the metric the reach check uses: each member is laid out, its sub-spec sized by every allowed family
+    (fleet.fit), and some family's sized reach must be within the limit (at most MAX_SIZED_EVALS splits per k, in the
+    order below). Among the splits that fit: fewest handovers, then the smallest worst reach share. When no k fits,
+    the split with k = max_robots that comes closest is returned (the fleet checks report what does not fit)."""
     st = steps(spec)
     pos = [i for i, s in enumerate(st) if s.point is not None]
     if len(pos) < 2:
         raise ValueError('A fleet needs at least two task points to share between robots')
-    best_any = None
-    for k in range(2, limits.max_robots + 1):
-        if k > len(pos):
-            break
+    sized = limits.max_reach_m is not None and not reach
+    geo_fb = size_fb = None                    # (k, share or sized ratio, members, hands): largest k, then smallest
+    for k in range(max(2, min_robots), limits.max_robots + 1):
         budgets = [reach_budget(f'r{j + 1}', limits, reach) for j in range(k)]
-        best = None
-        for cuts in itertools.combinations(range(1, len(pos)), k - 1):
-            groups, hands, radii = _evaluate(spec, st, pos, cuts)
+        cands = []
+        for cuts, relays in _splits(len(pos), k):
+            ev = _evaluate(spec, st, pos, cuts, relays)
+            if ev is None:
+                continue
+            members, hands, radii = ev
             share = max(r / (FIT_SHARE * b) for r, b in zip(radii, budgets))
-            key = (len(hands), share) if share <= 1 + 1e-9 else (math.inf, share)
-            if best is None or key < best[0]:
-                best = (key, groups, hands)
-            if k == limits.max_robots and (best_any is None or share < best_any[0]):
-                best_any = (share, groups, hands)
-        if best is not None and best[0][0] != math.inf:
-            return _assignment(spec, st, best[1], best[2])
-    if best_any is None:                       # fewer task points than robots allowed: use as many as there are
-        groups, hands, _ = _evaluate(spec, st, pos, tuple(range(1, len(pos))))
-        return _assignment(spec, st, groups, hands)
-    return _assignment(spec, st, best_any[1], best_any[2])
+            cands.append(((len(hands), share), members, hands))
+            if geo_fb is None or (k, -share) > (geo_fb[0], -geo_fb[1]):
+                geo_fb = (k, share, members, hands)
+        cands.sort(key=lambda c: c[0])
+        if not sized:
+            fit = [c for c in cands if c[0][1] <= 1 + 1e-9]
+            if fit:
+                return _assignment(spec, st, fit[0][1], fit[0][2])
+            continue
+        from .fit import sized_fit              # fit imports layout and subspec, which import this module
+        evaluated = 0
+        for (_, share), members, hands in cands:
+            if share * FIT_SHARE > 1 + 1e-9:     # wider than the limit itself: no family can fit (necessary test)
+                continue
+            if evaluated >= MAX_SIZED_EVALS:
+                break
+            evaluated += 1
+            a = _assignment(spec, st, members, hands)
+            try:
+                ratio = sized_fit(spec, validate_assignment(spec, a, limits), limits)[0]
+            except ValueError:
+                continue
+            if ratio <= 1 + 1e-9:
+                return a
+            if size_fb is None or (k, -ratio) > (size_fb[0], -size_fb[1]):
+                size_fb = (k, ratio, members, hands)
+    fb = size_fb if size_fb is not None and (geo_fb is None or size_fb[0] >= geo_fb[0]) else geo_fb
+    if fb is None:
+        raise ValueError(f'No split into {max(2, min_robots)}..{limits.max_robots} robots exists for this task')
+    return _assignment(spec, st, fb[2], fb[3])
 
 
 def _assignment(spec, st, groups, hands):
@@ -214,9 +262,8 @@ def member_sequence(spec: TechnicalSpec, a: FleetAssignment, member_id: str) -> 
             out.append(Item(i, act.verb, act.object, act.target))
     if held:
         give()
-    for h in incoming:                         # a pass-through member: takes the object and hands it on at its end
-        if h.id not in used and not held:
-            receive(h.object)
+    for h in incoming:                         # a relay: takes the object and hands it on at its end
+        if h.id not in used and not held and receive(h.object):
             give()
     left = [h for h in a.handovers if h.id not in used and member_id in (h.from_member, h.to_member)]
     if left:
@@ -243,8 +290,10 @@ def validate_assignment(spec: TechnicalSpec, a: FleetAssignment, limits: FleetLi
     owner: dict[int, str] = {}
     label = lambda i: spec.actions[i].description or spec.actions[i].verb   # noqa: E731
     for m in a.members:
-        if not m.actions:
-            raise ValueError(f'{m.id} has no actions: give it at least one or remove it')
+        relay = any(h.to_member == m.id for h in a.handovers) and any(h.from_member == m.id for h in a.handovers)
+        if not m.actions and not relay:
+            raise ValueError(f'{m.id} has no actions: give it at least one, make it a relay (a handover to it and '
+                             'one from it) or remove it')
         if m.family and m.family not in FIXED_BASE_FAMILIES:
             raise ValueError(f'{m.id}: family "{m.family}" is not a fixed-base robot ({", ".join(FIXED_BASE_FAMILIES)})')
         if m.family and limits.families and m.family not in limits.families:

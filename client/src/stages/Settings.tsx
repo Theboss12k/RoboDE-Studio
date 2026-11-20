@@ -18,7 +18,9 @@ const ROLES: Record<string, string> = {
   search: "Searches the web for real robots and their prices",
   extract: "Reads manufacturer datasheets and quotes the values it finds",
   analysis: "Explains what each difference means for your task",
+  objects: "Builds simple 3D models of the task objects (a small, fast model is enough)",
 };
+const ROLE_LABELS: Record<string, string> = { objects: "Object models" };
 
 const PROVIDERS: Record<string, { label: string; note: string }> = {
   claude_cli: { label: "Claude (Claude Code CLI)", note: "Uses the Claude Code sign-in on this computer. No key needed." },
@@ -68,13 +70,13 @@ export default function Settings() {
 
   return (
     <div className="page">
-      <StageHead title="Settings and AI models">Assign models to workflow stages, manage provider connections, and review usage.</StageHead>
+      <StageHead artifact="settings" title="Settings and AI models">Assign models to workflow stages, manage provider connections, and review usage.</StageHead>
       {error && <div className="notice error">{error}</div>}
       <Usage />
       <div className="panel">
         <h3>Who does what</h3>
         <table><tbody>{Object.entries(ROLES).map(([role, text]) => (
-          <tr key={role}><td><b>{role[0].toUpperCase() + role.slice(1)}</b><div className="small muted">{text}</div>
+          <tr key={role}><td><b>{ROLE_LABELS[role] ?? role[0].toUpperCase() + role.slice(1)}</b><div className="small muted">{text}</div>
             {needsKey(profileById[settings.roles[role]]) && <div className="small warn-text">Needs a Gemini API key (below)</div>}</td>
             <td><select aria-label={`Model for ${role}`} value={settings.roles[role]} onChange={(e) => void setRole(role, e.target.value)}>{settings.profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td></tr>))}</tbody></table>
       </div>

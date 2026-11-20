@@ -3,6 +3,7 @@ import { api } from "../api";
 import { JobStatus, StageHead, fmt, screenChips } from "../components/common";
 import { useProjectJob } from "../jobs";
 import { RobotPlaceholder } from "../components/icons";
+import FleetMemberNote from "../components/fleet/FleetMemberNote";
 import type { Candidate, PriceEstimate, Project, SourcedValue } from "../types";
 
 function Image({ url }: { url: string }) {
@@ -68,9 +69,10 @@ export default function Options({ project, reload, analyse }: { project: Project
   }
   return (
     <div className="page wide">
-      <StageHead step="Step 5 of 7" title="Robot options">
+      <StageHead artifact="options" step="Step 5 of 7" title="Robot options">
         Search the web for real robots that could do this task. Prices are web estimates with a date and a source, not quotes. The quick screen compares only the published payload and reach.
       </StageHead>
+      <FleetMemberNote project={project} />
       <div className="row"><button className="go big" disabled={job.busy} onClick={() => void search()}>{cands.length ? "Search again" : "Find real robots"}</button></div>
       <JobStatus {...job} label="Searching" />
       {loadError && <div className="notice error" role="alert">{loadError}</div>}

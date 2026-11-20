@@ -1,0 +1,354 @@
+{
+ "rules": [
+  {
+   "match": "connection test",
+   "answers": [
+    "ready"
+   ]
+  },
+  {
+   "match": "Fleet member r1.",
+   "answers": [
+    {
+     "family": "serial_arm",
+     "name": "Carton arm",
+     "rationale": "A 6-axis arm for its share of the line.",
+     "params": {
+      "dof": 6
+     }
+    },
+    {
+     "family": "gantry",
+     "name": "Carton gantry",
+     "rationale": "A short gantry over its share of the line.",
+     "params": {}
+    }
+   ]
+  },
+  {
+   "match": "Fleet member r2.",
+   "answers": [
+    {
+     "family": "gantry",
+     "name": "Carton gantry",
+     "rationale": "A short gantry over its share of the line.",
+     "params": {}
+    }
+   ]
+  },
+  {
+   "match": "Fleet member r3.",
+   "answers": [
+    {
+     "family": "gantry",
+     "name": "Carton gantry",
+     "rationale": "A short gantry over its share of the line.",
+     "params": {}
+    }
+   ]
+  },
+  {
+   "match": "kind of robot",
+   "answers": [
+    {
+     "family": "serial_arm",
+     "name": "Long-reach carton arm",
+     "rationale": "One arm in the middle.",
+     "params": {
+      "dof": 6
+     }
+    }
+   ]
+  },
+  {
+   "match": "3D scene",
+   "answers": [
+    {
+     "floor_size_m": [
+      6.5,
+      3.0
+     ],
+     "boxes": [
+      {
+       "id": "conveyor_a",
+       "kind": "conveyor",
+       "center": [
+        -2.5,
+        0.0,
+        0.15
+       ],
+       "size": [
+        0.4,
+        0.4,
+        0.3
+       ]
+      },
+      {
+       "id": "conveyor_b",
+       "kind": "conveyor",
+       "center": [
+        2.5,
+        0.0,
+        0.15
+       ],
+       "size": [
+        0.4,
+        0.4,
+        0.3
+       ]
+      }
+     ],
+     "markers": [
+      {
+       "id": "a",
+       "name": "Conveyor A",
+       "position": [
+        -2.5,
+        0.0,
+        0.3
+       ],
+       "note": ""
+      },
+      {
+       "id": "b",
+       "name": "Conveyor B",
+       "position": [
+        2.5,
+        0.0,
+        0.3
+       ],
+       "note": ""
+      }
+     ],
+     "objects": [
+      {
+       "id": "carton",
+       "shape": "box",
+       "center": [
+        -2.5,
+        0.0,
+        0.425
+       ],
+       "size": [
+        0.3,
+        0.3,
+        0.25
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "change an existing",
+   "answers": [
+    {
+     "targets": [
+      "fleet"
+     ],
+     "fleet": {
+      "members": [
+       {
+        "id": "r2",
+        "family": "gantry",
+        "params": {
+         "tool_yaw": true,
+         "beam_size_m": 0.1
+        }
+       }
+      ]
+     },
+     "summary": "r2 gets a tool yaw axis and wider beams."
+    }
+   ]
+  },
+  {
+   "match": "find real robots",
+   "answers": [
+    {
+     "candidates": [
+      {
+       "manufacturer": "Acme",
+       "model": "RA-6",
+       "family": "serial_arm",
+       "product_url": "https://acme.example/ra6",
+       "payload_kg": {
+        "value": "6",
+        "unit": "kg",
+        "quote": "Rated payload 6 kg",
+        "source_url": "https://acme.example/ra6"
+       },
+       "reach_m": {
+        "value": "900",
+        "unit": "mm",
+        "quote": "Reach 900 mm",
+        "source_url": "https://acme.example/ra6"
+       },
+       "price": {
+        "low": 9000,
+        "currency": "USD",
+        "date": "2026-01-01",
+        "source_url": "https://shop.example/ra6",
+        "quote": "Price $9,000",
+        "note": "arm only"
+       }
+      },
+      {
+       "manufacturer": "Acme",
+       "model": "RA-6",
+       "family": "serial_arm",
+       "product_url": "https://acme.example/ra6b",
+       "payload_kg": {
+        "value": "2",
+        "unit": "kg",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       },
+       "reach_m": {
+        "value": "1.2 m",
+        "unit": "",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       },
+       "price": {
+        "low": 100,
+        "source_url": "",
+        "quote": "",
+        "date": ""
+       }
+      },
+      {
+       "manufacturer": "Bad",
+       "model": "Ftp",
+       "family": "serial_arm",
+       "product_url": "ftp://bad.example/x"
+      },
+      {
+       "manufacturer": "Mystery",
+       "model": "M1",
+       "family": "gantry",
+       "product_url": "https://m.example/m1",
+       "payload_kg": {
+        "value": "heavy",
+        "unit": "",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "requirements engineer",
+   "answers": [
+    {
+     "spec": {
+      "title": "Carton transfer",
+      "summary": "Move 5 kg cartons 5 m along a line between two conveyors every 10 s.",
+      "frame": "World frame: metres, z up, origin on the floor.",
+      "actions": [
+       {
+        "verb": "pick",
+        "object": "carton",
+        "target": "a",
+        "duration_s": 0.0,
+        "description": "pick carton at A"
+       },
+       {
+        "verb": "place",
+        "object": "carton",
+        "target": "b",
+        "duration_s": 0.0,
+        "description": "place carton at B"
+       }
+      ],
+      "objects": [
+       {
+        "id": "carton",
+        "name": "Carton",
+        "mass_kg": 5.0,
+        "size_m": [
+         0.3,
+         0.3,
+         0.25
+        ],
+        "shape": "box",
+        "grip": "parallel",
+        "fragile": false,
+        "start_marker": "a"
+       }
+      ],
+      "markers": [
+       {
+        "id": "a",
+        "name": "Conveyor A",
+        "position": [
+         -2.5,
+         0.0,
+         0.3
+        ],
+        "note": ""
+       },
+       {
+        "id": "b",
+        "name": "Conveyor B",
+        "position": [
+         2.5,
+         0.0,
+         0.3
+        ],
+        "note": ""
+       }
+      ],
+      "locomotion": {
+       "required": false,
+       "path": [],
+       "terrain": "flat indoor floor",
+       "slope_deg": 0.0
+      },
+      "environment": "indoor",
+      "duty_cycle": "",
+      "accuracy_m": 0.005,
+      "speed_target": "",
+      "payload_description": "",
+      "physics_inputs": {
+       "object_mass_kg": 5.0,
+       "object_size_m": [
+        0.3,
+        0.3,
+        0.25
+       ],
+       "tool_mass_kg": null,
+       "grip": "parallel",
+       "friction_coefficient": 0.4,
+       "contact_count": 2,
+       "cycle_time_s": 10.0,
+       "positional_accuracy_m": 0.005,
+       "safety_factor": 1.5,
+       "clearance_m": 0.05,
+       "approach_height_m": 0.1,
+       "peak_acceleration_m_s2": null,
+       "travel_distance_m": 0.0,
+       "travel_speed_m_s": null,
+       "slope_deg": 0.0,
+       "rolling_resistance": 0.015,
+       "vehicle_mass_kg": null,
+       "wheel_radius_m": null,
+       "shifts_per_day": 1.0,
+       "cycles_per_hour": null
+      },
+      "assumptions": [
+       "The arms reach at most 1.3 m (the user said so)."
+      ],
+      "reference": ""
+     },
+     "fleet": {
+      "robots_needed": 3,
+      "reason": "A and B are 5 m apart and the arms reach at most 1.3 m, so one arm cannot serve both ends."
+     }
+    }
+   ]
+  }
+ ]
+}

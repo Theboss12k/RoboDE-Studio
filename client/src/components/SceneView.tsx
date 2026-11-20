@@ -1,16 +1,69 @@
 // The task scene in 3D: floor, boxes, marker pins, task objects and the robot, all in one canvas.
 // World coordinates are z-up (as the server uses); one group converts them to three.js y-up.
-import { useMemo, useRef, type RefObject } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, type MutableRefObject, type RefObject } from "react";
+import { BufferGeometry, Float32BufferAttribute } from "three";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
 import { Vector3 } from "three";
 import { linkFrames, objectCenters, robotExtent, Z_UP } from "@robode/studio-core";
 import { RobotGeometry } from "../RobotView";
+import { ObjectModel, objectKind } from "./objectModels";
+import { ModelParts } from "./objectParts";
 import type { BasePose, Frame, Marker, Parsed, SceneObject, SceneSpec, Vec3 } from "../types";
 
 type Base = { x: number; y: number; z: number; yaw: number };
+/** One robot of a fleet: its parsed URDF, current joint positions and base pose. */
+export type FleetRobot = { id: string; parsed: Parsed; positions?: Record<string, number>; base: Base };
+/** The assignment preview drawn over the scene: base markers, handover points and reachable-workspace samples. */
+export type FleetOverlay = {
+  bases?: Record<string, { position: Vec3; yaw: number }>; handovers?: Record<string, Vec3>; samples?: Record<string, Vec3[]>;
+};
+const FALLBACK_COLORS = ["#b54423", "#286c52", "#1c65b6"];
+/** One colour per member from the design tokens (accent, ok, focus), in member order. */
+export function memberColors(): string[] {
+  try {
+    const css = getComputedStyle(document.documentElement);
+    return ["--accent", "--ok", "--focus"].map((name, i) => css.getPropertyValue(name).trim() || FALLBACK_COLORS[i]);
+  } catch { return FALLBACK_COLORS; }
+}
+
+function Cloud({ points, color }: { points: Vec3[]; color: string }) {
+  const geometry = useMemo(() => {
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(points.flat(), 3));
+    return g;
+  }, [points]);
+  return <points geometry={geometry}><pointsMaterial color={color} size={0.02} sizeAttenuation transparent opacity={0.55} /></points>;
+}
+
+function overlayIds(overlay: FleetOverlay, robots?: FleetRobot[]) {
+  return robots?.map((r) => r.id) ?? [...new Set([...Object.keys(overlay.bases ?? {}), ...Object.keys(overlay.samples ?? {})])];
+}
+
+function Overlay({ overlay, ids }: { overlay: FleetOverlay; ids: string[] }) {
+  const colors = useMemo(memberColors, []);
+  const colorOf = (id: string) => colors[Math.max(0, ids.indexOf(id)) % colors.length];
+  return (
+    <>
+      {Object.entries(overlay.samples ?? {}).map(([id, pts]) => pts.length ? <Cloud key={`s${id}`} points={pts} color={colorOf(id)} /> : null)}
+      {Object.entries(overlay.bases ?? {}).map(([id, b]) => (
+        <group key={`b${id}`} position={[b.position[0], b.position[1], 0.01]} rotation={[0, 0, b.yaw]}>
+          <mesh><cylinderGeometry args={[0.12, 0.12, 0.02, 24]} /><meshStandardMaterial color={colorOf(id)} transparent opacity={0.8} /></mesh>
+          <mesh position={[0.16, 0, 0]} rotation={[0, 0, -Math.PI / 2]}><coneGeometry args={[0.05, 0.12, 12]} /><meshStandardMaterial color={colorOf(id)} /></mesh>
+        </group>
+      ))}
+      {Object.entries(overlay.handovers ?? {}).map(([id, p]) => (
+        <mesh key={`h${id}`} position={p}><octahedronGeometry args={[0.05]} /><meshStandardMaterial color="#f2b705" /></mesh>
+      ))}
+    </>
+  );
+}
 
 function ObjectMesh({ o, centre }: { o: SceneObject; centre: Vec3 }) {
+  // The agent's model (own frame: box centre, z up), else the keyword models, else the plain primitive.
+  if (o.model) return <group position={centre}><ModelParts model={o.model} /></group>;
+  const kind = objectKind(o.name, o.id, o.shape);
+  if (kind !== "primitive") return <group position={centre}><ObjectModel o={o} name={o.name} kind={kind} /></group>;
   return (
     <mesh position={centre} rotation={o.shape === "cylinder" ? [Math.PI / 2, 0, 0] : [0, 0, 0]} castShadow>
       {o.shape === "sphere" ? <sphereGeometry args={[o.size[0] / 2, 24, 16]} />
@@ -41,7 +94,34 @@ function Pin({ marker, labels }: { marker: Marker; labels: RefObject<Map<string,
   );
 }
 
-function bounds(scene: SceneSpec, parsed: Parsed | undefined, initialBase: BasePose, first: Frame | undefined) {
+/** Camera views the studio uses for snapshots; `capture` renders one frame and returns the canvas as a PNG. */
+export type SceneViewName = "iso" | "front" | "side" | "top";
+export type SceneViewHandle = { capture: (view: SceneViewName) => Promise<Blob> };
+
+/** Inside the canvas: gives the parent a handle that moves the camera round `target` at distance `d` and grabs a PNG. */
+function ViewProbe({ handle, target, d }: { handle: MutableRefObject<SceneViewHandle | null>; target: [number, number, number]; d: number }) {
+  const { camera, gl, scene, controls } = useThree();
+  useEffect(() => {
+    handle.current = {
+      capture: (view) => {
+        const [tx, ty, tz] = target;
+        const at: Record<SceneViewName, [number, number, number]> = {
+          iso: [tx + d * 0.7, ty + d * 0.7, tz + d * 0.9], front: [tx, ty, tz + d], side: [tx + d, ty, tz], top: [tx + 1e-4, ty + d, tz],
+        };
+        camera.position.set(...at[view]);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(tx, ty, tz);
+        (controls as { update?: () => void } | null)?.update?.();
+        gl.render(scene, camera);
+        return new Promise<Blob>((done, fail) => gl.domElement.toBlob((blob) => (blob ? done(blob) : fail(new Error("The 3D view could not be captured"))), "image/png"));
+      },
+    };
+    return () => { handle.current = null; };
+  }, [handle, target[0], target[1], target[2], d, camera, gl, scene, controls]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function bounds(scene: SceneSpec, parsed: Parsed | undefined, initialBase: BasePose, first: Frame | undefined, robots?: FleetRobot[], overlay?: FleetOverlay) {
   const xs: number[] = [], ys: number[] = [], zs: number[] = [0];
   function add([x, y, z]: Vec3, width = 0, height = width) {
     xs.push(x - width, x + width);
@@ -57,12 +137,21 @@ function bounds(scene: SceneSpec, parsed: Parsed | undefined, initialBase: BaseP
 
   const [x, y, z] = initialBase.position;
   const pose = first?.base ? { x: first.base[0], y: first.base[1], z, yaw: first.base[2] } : { x, y, z, yaw: initialBase.yaw };
-  if (parsed) {
+  if (robots?.length) {
+    for (const r of robots) {
+      const { centre, radius } = robotExtent(r.parsed, linkFrames(r.parsed, r.positions ?? {}, r.base));
+      add([centre.x, centre.y, centre.z], radius);
+    }
+  } else if (parsed) {
     const { centre, radius } = robotExtent(parsed, linkFrames(parsed, first?.joints ?? {}, pose));
     add([centre.x, centre.y, centre.z], radius);
   } else {
     add([pose.x, pose.y, pose.z], 0.4);
   }
+
+  for (const b of Object.values(overlay?.bases ?? {})) add(b.position, 0.3);
+  for (const p of Object.values(overlay?.handovers ?? {})) add(p, 0.1);
+  for (const pts of Object.values(overlay?.samples ?? {})) for (const p of pts) add(p);
 
   const [fx, fy] = scene.floor_size_m;
   const min = [Math.min(...xs), Math.min(...ys), Math.min(...zs)];
@@ -72,13 +161,20 @@ function bounds(scene: SceneSpec, parsed: Parsed | undefined, initialBase: BaseP
   return { cx, cy, cz, fx, fy, floorX, floorY, radius };
 }
 
-export default function SceneView({ scene, parsed, frame, frames = [], index = 0, base, initialBase, height = 420 }: {
+export default function SceneView({ scene, parsed, frame, frames = [], index = 0, base, initialBase, height = 420, robots, centres: given, overlay, meshBase, handle }: {
   scene: SceneSpec; parsed: Parsed | undefined; frame?: Frame; frames?: Frame[]; index?: number; base: Base; initialBase: BasePose; height?: number;
+  /** A fleet: every robot is drawn (replaces `parsed`/`frame`/`base`), and `centres` carries the objects on the shared clock. */
+  robots?: FleetRobot[]; centres?: Record<string, Vec3>; overlay?: FleetOverlay;
+  /** Url folder that URDF mesh uris are relative to (Robot studio builds); without it meshes show as placeholders. */
+  meshBase?: string;
+  /** Receives a handle for snapshots from set camera views (Robot studio approval). */
+  handle?: MutableRefObject<SceneViewHandle | null>;
 }) {
   const labels = useRef(new Map<string, HTMLSpanElement>());
   const first = frames[0];
-  const b = useMemo(() => bounds(scene, parsed, initialBase, first), [scene, parsed, initialBase, first]);
-  const centres = useMemo(() => objectCenters(scene.objects, frames, index), [scene.objects, frames, index]);
+  const b = useMemo(() => bounds(scene, parsed, initialBase, first, robots?.map((r) => ({ ...r, positions: {} })), overlay), [scene, parsed, initialBase, first, robots?.map((r) => r.id).join(","), overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+  const own = useMemo(() => objectCenters(scene.objects, frames, index), [scene.objects, frames, index]);
+  const centres = given ?? own;
   const objectMap = Object.fromEntries(scene.objects.map((o) => [o.id, o]));
   const target: [number, number, number] = [b.cx, b.cz, -b.cy];
   const d = b.radius * 2.8;
@@ -98,9 +194,12 @@ export default function SceneView({ scene, parsed, frame, frames = [], index = 0
           ))}
           {scene.markers.map((m) => <Pin key={m.id} marker={m} labels={labels} />)}
           {scene.objects.map((o) => <ObjectMesh key={o.id} o={objectMap[o.id]} centre={centres[o.id]} />)}
-          {parsed && <RobotGeometry parsed={parsed} positions={frame?.joints} base={base} />}
+          {robots ? robots.map((r) => <RobotGeometry key={r.id} parsed={r.parsed} positions={r.positions} base={r.base} meshBase={meshBase} />)
+            : parsed && <RobotGeometry parsed={parsed} positions={frame?.joints} base={base} meshBase={meshBase} />}
+          {overlay && <Overlay overlay={overlay} ids={overlayIds(overlay, robots)} />}
         </group>
         <OrbitControls target={target} makeDefault />
+        {handle && <ViewProbe handle={handle} target={target} d={d} />}
       </Canvas>
       <div className="pin-labels" aria-hidden="true">
         {scene.markers.map(({ id, name }) => (

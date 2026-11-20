@@ -161,7 +161,128 @@ Dated record of changes to this repository. Newest entries are added at the bott
 - Checked after the change (2026-11-20): `./mvnw test` 23 tests, 0 failures (run as `test`, not `verify`, so the jar used by the running dev server was not rebuilt); pytest 131 passed, 4 skipped; `npm run contracts:check` up to date; `scripts/export_schemas.py --check` exit 0; `npm run typecheck` and `npm run build` pass.
 - Not checked: `./mvnw verify` and `npm test` as one command (the running server's jar was not repackaged); the running Java server was not restarted (not needed, the Python tasks run from source). No revise was sent after the summary change with a real model, only scripted fixtures. Dobot CR3A was not analysed. The Gemini adapter remains untested against Google.
 
-## 2026-11-20 — IN PROGRESS: collision auto-repair, question comments and images, background jobs, fleet planner
+## 2026-11-20 — Collision auto-repair, question comments and images, background jobs, fleet planner (built; results in the entry "Real-model verification of the five features")
 
 - Plan: an automatic LLM revise loop for collisions, at most 3 attempts verified in code, keeping the best attempt with an attempt log; per-question comments and a note for each round; images attached to answers and sent to the spec agent; jobs that survive stage and project switches; a multi-robot fleet planner for the Design stage (fixed-base members, handover stations, 2–3 robots).
-- Status: started. This entry is updated as each part lands; results are recorded in separate dated entries.
+- Status (2026-11-20 ~19:55 IST): all five parts are coded. Fixture tests only: `./mvnw test` 36 tests, 0 failures (golden contract test unchanged); pytest 182 passed, 4 skipped; contracts check, client typecheck and build pass. Not yet done: a Java full-flow fleet test on the real Python tasks, any real-model run (the one attempt failed on the Claude CLI 5-hour usage limit, not on code), and any browser check beyond one: a job error stays visible after switching stages. Robot checks are kinematic and static-load calculations in code. Work handed over in `docs/HANDOFF.md`.
+
+## 2026-11-20 — Callable API: OpenAPI 3.1 spec, results in responses, callbacks, cancel, idempotency
+
+- Applications: Studio server (Java), contracts, `packages/core`, docs, examples. Design: [docs/API_DESIGN.md](API_DESIGN.md); caller guide: [docs/API.md](API.md).
+- Every feature is callable by another application under `/api/v1`: projects, reference, question rounds with comments, notes and answer images, design, versions and assets, revise (base version, moment, auto repair), fleet, approve, search, analyse, datasheet, decision, export, jobs, LLM settings and usage.
+- Spec: `contracts/openapi.yaml` (OpenAPI 3.1, 43 operations; domain types `$ref` the pydantic-generated JSON Schemas), bundled to `contracts/openapi.bundled.json` and served at `GET /api/v1/openapi.json`. springdoc removed. TS path types are generated into `packages/core`. `contracts:check` fails on lint errors or stale outputs.
+- Results in responses: `?wait=0..600` and `expand=resource` on job-starting calls and `GET /jobs/{id}` (200 when done, 202 plus `Location` when still running; the resource is the version, candidate list, analysis or questions). Signed callbacks via `X-Studio-Callback` (host allowlist, HMAC-SHA256, retries). `DELETE /jobs/{id}` cancels a job (kills the process tree). `Idempotency-Key` makes starts safe to retry. Errors are `{detail, error_code?}`.
+- Tests (fixture: scripted LLMs, real Python tasks, no network): `./mvnw test` 40 passed. They include `OpenApiContractTest` (route parity in both directions), a spec validator applied to every JSON response of the flow tests, and `ApiCallableTest` (wait, expand, callback signature, 202 then poll, cancel, idempotent replay, 422 cases). `GoldenContractTest` passes with no new allow-list entries. pytest 182 passed, 4 skipped; typecheck and build pass.
+- `examples/api_flow.py` (standard library only) ran end to end against a separately built jar (port 8801, its own runtime, scripted profiles): create, a question round with a comment, design, revise from v1 at t = 3.0 s, approve, search, analyse (4 verified values, differences), decision, export ZIP. Exit 0. Fixture run, not a real model.
+- Not covered: a real-model run through the API, and the 64 MB body limit. The user's dev server (8800) still runs the older jar; it gets these routes after `npm run setup` rebuilds the jar.
+
+## 2026-11-20 — Animated 3D page artwork
+
+- Studio client: added eight page-specific robotics illustrations with embedded GLB motion and matching WebP previews in `client/public/robotics-artifacts/`. Each page starts with a still and loads the 3D view through its play control. The Brief uses the pick-and-place cell in the hero.
+- Asset source: `scripts/robotics-artifacts.mjs` regenerates the geometry, materials and embedded clips. The asset folder describes where each model is used.
+- Verification: client typecheck and production build passed. Three.js loaded all eight GLBs and verified that each clip moves and loops. Chrome on an isolated fixture server checked all eight page placements, playback, pause, and the headers at 320 pixels. The running Java app served all 16 GLB and WebP files byte-for-byte. The previews illustrate motion for the UI.
+
+## 2026-11-20 — Real-model verification of the five features (and of the callable API with a real model)
+
+- How it was run:
+  - Real Claude through the Claude Code CLI: Opus 5.5 for spec, robot and revise; Sonnet 5.5 for scene and search.
+    About 26 model calls on the three verification projects (about 1.8 USD at list prices).
+  - A separately built jar on port 8801 used a copy of the runtime, so the user's dev server stayed the only writer
+    of the real data. Vite ran on 5191 in the browser pane, and some steps went through the `/api/v1` calls with
+    `wait` and `expand`.
+  - Checks are kinematic and static-load calculations only, not dynamics or hardware.
+- (2) and (4), question comments and answer images: verified. On a vague brief ("Move boxes from our packing table
+  onto a shelf") Opus asked 6 questions, returned in the response of `POST /design?wait&expand=resource`. In the UI
+  a comment was added to "What are the boxes like?", a round note ("stay inside a 2 m x 2 m cell") was added, and a
+  photo was attached to that question.
+  - The spec call carried 1 image (usage ledger), and the next round produced a design.
+  - The spec's assumptions cite all three: "Parallel side grip is used instead of suction, because tape ridges can
+    break the vacuum seal and the photo shows a parallel gripper" and "inside the 2 m x 2 m cell".
+- (3), jobs survive switches: verified. While a design ran, the stage was switched, the project was switched and the
+  page was reloaded. The project list showed "(working)" and the Running list showed the job. The result arrived, and
+  the project has exactly one design job (no duplicate).
+- (1), collision auto-repair: NOT exercised with a real model; covered by the fixture tests only.
+  - On the wall project (a 40 cm wall between A and B), every real design or revise came out collision-free (4
+    tries). The model kept a 0.5 m approach height, or added an over-the-wall waypoint itself, even when told to set
+    a 5 cm approach height. With no collisions, no repair log is produced, as designed.
+  - Finding: the first design split the brief's continuous 1 m wall into two 18 cm pieces. The base is placed at the
+    A–B midpoint, which lies inside the wall, and the scene validator's 0.3 m base clearance then forces the scene
+    agent to cut the wall. A revise that mounted the base on a side table (x = 0.85 m) restored the continuous wall.
+    Follow-up: place the base away from obstacles the brief names, instead of letting the scene change them.
+- (5), fleet planner: verified with these limits.
+  - Carton task: 5 kg cartons, conveyors at x = ±2.5 m, a 10 s cycle, "our arms reach at most 1.3 m". Code
+    suggested a fleet ("One robot needs 10.2 s per cycle, more than the 10 s cycle time"). Opus had already put two
+    hand-off tables into the spec.
+  - With limits of 3 robots and 1.3 m reach, auto-assign answered infeasible with reasons (sized reach 1.53–1.63 m
+    per robot, from floor-mounted bases). 4 robots is refused: the scope allows 2–3.
+  - With the reach limit relaxed to 1.7 m: 3 serial arms, 4 of 4 fleet checks pass, every robot passes its own
+    checks, smallest robot gap 0.128 m. The 3D view plays all three robots on the shared 10 s clock.
+  - The revise "Make r2 a gantry." (from v4 at t = 4 s) gave v5 based on v4, with r2 re-sized as a gantry and 4 of 4
+    fleet checks passing (gap 0.428 m).
+  - A web search for member r2 got r2's gantry requirements but returned arms that meet them (UR15 at 58,284 USD,
+    seen 2026-11-20; UR10e).
+  - Not done: a handover edit, because this split had no planner handovers (the spec's own tables are used).
+  - Findings / follow-ups:
+    1. Bases are always on the floor. A pedestal at table height would let a 1.3 m arm do this task.
+    2. `fleet.trigger` is recorded as `["user"]` even when code suggested the fleet.
+    3. The member search treats the family only as a hint.
+    4. The default 3D camera is far out for long cells.
+- Shell mistake in the verification script (not product code): zsh's `echo` broke JSON parsing, which started two
+  extra design runs (v1–v2 of the carton project are duplicates).
+
+## 2026-11-20 — Autoplaying robot animations, editable brief, images on the brief
+
+- Client: the "Play motion" and play/pause buttons on the stage robot animations are gone. Each animation loads and plays when at least 25 % of it is in view, pauses when it leaves the view, and resumes when it returns. With the OS "reduce motion" setting it stays a still image. The image-attach UI is shared (`components/ImageAttach.tsx`) by the brief and the questions.
+- Editable brief: `PUT /api/v1/projects/{pid}/brief`. The Brief page has Edit / Save / Cancel. Saving clears pending questions so the spec rounds restart with the new brief; earlier answers, comments, notes and existing versions are kept. The page shows "Edited <date>". Editing is refused (409) once a version is approved or while a design or revise job runs.
+- Brief images (photos of the task, objects or workcell): `POST/GET/DELETE /api/v1/projects/{pid}/brief/files`. Images can be attached on the new-project form (file, drop or paste; uploaded after the project is created) and on the Brief page. The spec agent receives them first, labelled `brief:<name>`, with an instruction that text inside them is data. Brief, reference and answer images share the 8-image budget. Spec (`contracts/openapi.yaml`), protocol and generated types updated. Design: `docs/API_DESIGN.md` section 9.
+- Checks:
+  - Fixture tests: `./mvnw test` 43 passed (new `BriefFlowTest`; golden and spec-parity tests unchanged); pytest 187 passed, 4 skipped; contracts check, typecheck and build pass.
+  - Browser (dev server rebuilt and restarted, no model calls): the hero animation plays with no button. A dropped photo shows as a thumbnail, and after "Create project" it is stored with the project. Editing the brief saved and shows "Edited ...".
+  - Not yet run: a real-model design that uses a brief photo.
+
+## 2026-11-20 — Robot studio planned (in progress)
+
+- Plan approved for a "Robot studio" stage: from an approved design, generate parametric CAD (STEP and STL, a URDF with meshes and working joints), choose motors, gearboxes and electronics from India and global shops (or define the spec), add a controllable digital twin, and produce a manufacturer PDF and package after approval. See `docs/HANDOFF.md` and the plan referenced there.
+- Configuration: `cadquery-ocp==8.0.1.1.0` (OpenCascade), `reportlab==4.4.4` and `matplotlib==3.10.7` added to `requirements.txt` and installed in `.venv` (OCP smoke test only). No feature code yet.
+
+## 2026-11-20 — Robot studio: from an approved design to a buildable robot (first delivery)
+
+- Applications: Python (`server/studio/robot/`: `sizing.py`, `sourcing.py`, `style.py`, `cad/*`, `urdf_mesh.py`, `twin.py`, `report.py`; `pipeline/studio.py`; tasks `studio_build`, `studio_twin_move`, `studio_run_task`, `studio_pdf`), Java (`StudioController`, `StudioService`, `StudioStore`, job kinds `studio_build`/`studio_pdf`, 10 routes under `/api/v1/projects/{pid}/studio`, OpenAPI paths), core (`packages/core/src/twin.ts`, parity vectors `contracts/twin_vectors.json`, checked by `npm run contracts:check`), client (new "Robot studio" stage after Design, motor table with "Use this one", STL meshes in the 3D view, twin panel, change request, approve with snapshots, PDF and package downloads; Decision links to it). Design reference: `docs/STUDIO_ROBOT_DESIGN.md`.
+- Behaviour: a build sizes every joint in code (static load over the task frames and a stretched pose, acceleration term, RMS continuous × 1.25, peak × 1.5), searches allow-listed shops once, keeps a motor only when its deciding values are quoted on the fetched page, picks the cheapest passing motor or writes a "defined" spec to procure to, adds rule-based electronics, lets the robot role propose a structure style that code checks (beam bending and deflection, print envelope, printed-part loads), generates concept-level CAD with OpenCascade (STEP assembly and parts, STL, a mesh URDF with a gripper joint), and derives twin limits from the chosen motors. A pin-only rebuild reuses the base build's alternatives without a new search.
+- Fixture tests (scripted LLMs, saved shop pages; real CAD, kinematics and twin code), as run 2026-11-20: pytest 273 passed, 4 skipped; `./mvnw test` 47 tests, 0 failures, including `StudioApiTest` (fake engine) and `StudioFlowTest` (real Python tasks: design → approve → build → files → twin move/run → snapshots → approve → PDF/package → pinned rebuild); contracts check with twin parity (15 vector groups) up to date; client typecheck and build pass.
+- Fixes found while testing: the CAD link-envelope check failed on every real-motor arm build because it did not allow for motors that stick out of thin design envelopes (now it allows the chosen motor's length and still catches a part placed 300 mm off); the twin panel stayed on "Asking the twin" in the dev build because React StrictMode left its mounted flag false (fixed).
+- Real run (2026-11-20, browser pane on a copy of the runtime, project "Tabletop bottle transfer A to B", approved v2; search, extract and analysis roles: Claude Sonnet 5.5 via the Claude Code CLI with web search; robot role: Claude Opus 5.5): build b1 finished with 4 joints, 39 parts, 61 files, 21 of 21 checks passing, structure style machined aluminium (proposed by the model, kept by code). The shop search returned 5 stepper candidates, all from pololu.com (product pages 1478, 1474, 2267); none passed, because none states a rated speed on its page (the rule requires the deciding values to be verified), so all 4 motors are defined specs. No price was captured and no Indian shop listing came back. The twin ran the task (7.06 s, peak torque use 31 % at j3); at speed scale 2 the speed and acceleration limits bound and were shown. Approving uploaded four snapshots and produced a 13-page manufacturer PDF, `package.zip` and `bom.csv`.
+- Limitations: concept-level envelope CAD (simplified profiles, no interference analysis, no FEA); sizing is kinematic, static and acceleration only (no dynamics simulation, not tested on hardware); prices are dated web estimates; gripper fingers are not symmetric about the tool point; the client uses the server for tool moves (no local IK chain from the URDF yet). Open question for the user: how to judge stepper speed when shops publish only holding torque.
+
+## 2026-11-21 — Robot studio: conservative assumed stepper speed (user decision)
+
+- Applications: Python `server/studio/robot/sizing.py` (`STEPPER_USABLE_RPM`, `stepper_frame`, `capability`, `evaluate`), `sourcing.py` (docstring), tests, `docs/STUDIO_ROBOT_DESIGN.md`.
+- Behaviour: a stepper whose shop page states holding torque, current and voltage but no rated speed is now judged at a conservative usable speed at 24 V (NEMA 8–23: 300 rpm, NEMA 34 and unknown frames: 200 rpm), recorded as an `assumed` value with a note and named in the speed check ("speed assumed (conservative)"). Torque and current must still be verified on the page; BLDC, servo and DC motors still need a verified speed. This is a planning assumption, not a manufacturer value.
+- Checked: pytest 277 passed, 4 skipped (fixture tests); `./mvnw test` 47, 0 failures. Re-running the selection offline on the real b1 candidates (Pololu 1478, 1474, 2267): the steppers are now evaluated instead of rejected and fail on torque and speed (for example j2 needs 98 N*m peak at 0.99 rad/s; the best candidate gives 55 N*m at 0.50 rad/s), so b1's motors stay defined specs, now for a measured reason. No new model call.
+
+## 2026-11-21 — Rejected model answers are fed back up to 3 times
+
+- Applications: Python `server/studio/llm/base.py` (`ask_json`, `JSON_REPAIRS = 3`), used by every agent (spec, scene, robot, revise, search, extract, analysis, style).
+- Behaviour: when a model's answer is not valid JSON or a code check rejects it (for example the scene check "Marker "bottle_start" is at z = 0.75 with nothing under it: add a table or shelf ..."), the request is sent again with every earlier error listed, up to 3 repairs (4 calls in all) instead of 1. Only then does the job fail, with "... after 4 attempts: <last error>". Code still decides whether the answer is usable. A call can lower the count with `repairs=`.
+- Checked: new `tests/test_ask_json.py` (repair until a passing answer, all earlier errors listed, give up after 4, per-call limit); `tests/test_fleet_pipeline.py` updated for the new call count; pytest 280 passed, 4 skipped; `./mvnw test` 47, 0 failures. Fixture tests only. The dev server picks this up without a restart because the Python tasks run from the source tree.
+
+## 2026-11-21 — IN PROGRESS: realistic 3D models for task objects (client)
+
+- Applications: client `client/src/components/objectModels.tsx` (new), `client/src/components/SceneView.tsx` (`ObjectMesh` uses it; Player, RobotView and the Robot studio twin draw objects through it).
+- Behaviour: task objects whose id (or name, when passed) contains a known word are drawn as procedural three.js models instead of a plain box, cylinder or sphere. The models are mug, cup, bottle (lathe body, shoulder, neck, ribbed cap, label band; translucent plastic or green glass), can, apple (dimples, stem, leaf), orange, ball, egg, tote, dumbbell, book, pallet, screwdriver and box/carton (bevelled, tape strip). Each model fills the same bounding box as the primitive it replaces, so grasp points and the carried-object offset are unchanged. Unknown objects keep the old primitive. No downloaded assets and no new dependencies; noise uses a seeded hash.
+- Checked: `npm run typecheck` and `npm run build` pass. The keyword matcher was checked in a throwaway script (8 cases). NOT yet checked: how the models look in the browser (the one attempt was too small to judge), the mug handle and tote cut-outs in particular.
+- Limitation: `SceneObject` has no `name`, so matching uses the object id (e.g. `bottle`); passing the spec object's name would need a scene schema field.
+
+## 2026-11-21 — Object models generated by a small model (objects agent on Claude Haiku)
+
+- Applications: Studio server (Python agent and pipeline, Java LLM settings), client (scene rendering), contracts.
+- New `objects` role (default profile `claude_haiku`, Claude Haiku 5.5 through the Claude Code CLI) and `agents/objects.py`. From the spec's task objects (name, size, mass, shape, grip) it builds a model of each object from up to 24 primitives (box, cylinder, sphere, cone, capsule, torus) with colours and materials.
+- Code checks every model: one per object, every part inside the object's real box (2 % tolerance), at least 90 % coverage per axis (so grasp points and the carried-object offset stay right), and valid numbers and colours.
+- It runs alongside the scene and robot agents in `design()`. Models are reused on revise when an object is unchanged, and fleets carry them over. A failure never breaks a design: the scene then uses the keyword models from `objectModels.tsx`, or the plain primitive. `SceneObject` gains optional `name` and `model`, left out of the JSON when empty, so the goldens' design and revise responses are unchanged.
+- Four golden files (LLM settings responses) were edited by hand for the new role and profile; this is noted in the golden README.
+- Checks:
+  - Fixture tests: pytest 291 passed, 4 skipped (11 new); `./mvnw test` 49 passed; contracts check, typecheck and build pass.
+  - Real model: one direct Haiku call for a bottle, a carton and a mug took about 15–19 s and passed validation. The bottle came back as body, shoulder cone, neck and cap; the carton as box and tape strip; the mug as body and torus handle.
+  - Real design run (Opus, Sonnet and Haiku): "Object models: 1 made". In the browser the 4-part bottle stands upright at point A at the right size and travels with the gripper during the carry.
+- The dev server was rebuilt and restarted with Robot studio and the objects agent (studio routes answer 200).
+- The other agent's procedural bottle was too small to judge at the default camera. The generated model now takes precedence wherever the agent succeeds.

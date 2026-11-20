@@ -17,3 +17,8 @@ anyio==4.15.1
 
 # Optional, only for real robots on a serial port (the generated driver imports it when needed):
 # pyserial==3.5
+
+# Robot studio (2026-11-20): parametric CAD with STEP export, manufacturer PDF, orthographic renders
+cadquery-ocp==8.0.1.1.0
+reportlab==4.4.4
+matplotlib==3.10.7

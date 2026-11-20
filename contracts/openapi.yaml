@@ -1,0 +1,2120 @@
+openapi: 3.1.0
+info:
+  title: RoboDE Studio API
+  version: 1.0.0
+  summary: Design a rough robot from a task, then find and check real robots that can do the job.
+  description: |
+    The HTTP API of RoboDE Studio. Everything the web app does goes through these routes, so another application can
+    drive every feature: brief, reference files, question rounds (with comments, notes and answer images), design,
+    versions and assets, revise (base version, moment, auto repair), approve, fleet, catalog search, datasheet
+    analysis, decision, export, jobs, and LLM settings and usage.
+
+    This file is the authoritative spec for every `/api/v1` route. Java tests check that each route has an entry here,
+    and that every JSON response of the flow tests validates against its schema. Domain types (`DesignVersion`,
+    `Candidate`, `Analysis`, ...) are the generated JSON Schemas in `contracts/schemas/`; their single source is the
+    pydantic models in `server/studio/schemas.py`. `contracts/openapi.bundled.json` is this file with every reference
+    resolved; the server serves it at `GET /api/v1/openapi.json`, and other languages can generate an SDK from it.
+
+    ## Units and frames
+    - SI units: metres, kilograms, seconds, newtons, newton-metres, watt-hours. Angles are radians in data (joint
+      values in frames, `BasePose.yaw`) and degrees only where a field name says so (for example `j1_max_deg`).
+    - World frame: z up, origin on the floor, x and y in metres. A family works in its base frame (origin at the
+      mounting point, x axis along `BasePose.yaw`).
+    - GLB assets and the three.js client are y up (a rotation of -90 degrees about X from the world frame).
+    - Timestamps are UTC ISO 8601 strings. `t` in a revise request is seconds into a version's simulation.
+
+    ## Jobs
+    Design, revise, fleet design, search, analysis and the LLM profile test are jobs. The start call returns a job
+    record (status `running`) and the result is read from `GET /jobs/{id}`. Instead of polling, pass `wait=<seconds>`
+    to the start call or to `GET /jobs/{id}`: if the job ends in time the answer is 200 with the final record,
+    otherwise 202 with the running record and a `Location` header. `expand=resource` adds the result as a full
+    resource (for example the new design version). `X-Studio-Callback: <url>` registers a signed POST to your app when
+    the job ends. `DELETE /jobs/{id}` cancels a running job (status `cancelled`, `error_code` `cancelled`). A project runs one design,
+    revise or fleet design job at a time (409 otherwise), and one studio build at a time. Starting a search, or an analysis of the same candidate,
+    while one is running returns the running job.
+
+    ## Idempotency
+    `POST /projects` and every job-starting POST accept `Idempotency-Key` (1 to 200 characters). Keys are kept in
+    memory for 24 hours, per key, method and path. The same key with the same body replays the stored response as it was (status,
+    body and headers: same project, same job id; a stored 202 replays as 202); responses of 500 and above are not
+    stored; the same key with a different body, or an empty or over-long key, is a 422. The key check reads at most 4 MB of
+    body (413 above that). A server restart forgets all keys.
+
+    ## Errors
+    Every error body is `{"detail": string, "error_code"?: string}`. Status codes: 401 (token missing or wrong),
+    404 (unknown project, version, candidate, job or route), 409 (state conflict: project busy, approved design is
+    frozen), 413 (upload above 64 MB), 422 (invalid input), 502 (the language model failed) and 500. A job that fails
+    keeps the HTTP status 200 and reports `status: "error"` with `error` and `error_code` (for example
+    `datasheet_download`) in its record.
+
+    ## Authentication
+    The server binds to 127.0.0.1 by default, and loopback callers need no credentials. With `STUDIO_TOKEN` set
+    (required for any other bind address), every `/api/v1` call needs `Authorization: Bearer <token>`. The scheme is
+    therefore declared optional (`security: [{}, {bearerAuth: []}]`): none on an open loopback server, bearer
+    otherwise.
+
+    ## Versioning policy
+    `/api/v1` is additive only: new routes, new optional request fields and new response fields may appear, but no
+    route, field or enum value is removed or changes meaning. A client must ignore response fields it does not
+    know. Breaking changes go to `/api/v2`.
+
+    ## Limits
+    A project brief is 1 to 8000 characters. Uploads are at most 64 MB. At most 8 reference plus answer images go to
+    the model per design round. The server runs at most 4 task processes at once.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://127.0.0.1:8800/api/v1
+    description: Local Studio server (default bind address and port)
+security:
+  - {}
+  - bearerAuth: []
+tags:
+  - name: Projects
+    description: Create, read and delete projects; the reference (text, photos, URDF).
+  - name: Questions & design
+    description: Question rounds with answers, comments, notes and images; the design job.
+  - name: Versions
+    description: Design versions, their assets, and approval.
+  - name: Revise
+    description: Change a version by a request at a moment of its simulation.
+  - name: Fleet
+    description: Multi-robot planning for the approved or latest version.
+  - name: Catalog
+    description: Search real robots, analyse their datasheets.
+  - name: Decision & export
+    description: Record the decision and export the design.
+  - name: Studio
+    description: Robot studio for an approved design. Builds (CAD, motors, electronics), the digital twin, snapshots and the manufacturer package.
+  - name: Jobs
+    description: Read, list and cancel background jobs.
+  - name: LLM settings
+    description: Global model profiles, role assignment, API keys and token usage.
+  - name: Meta
+    description: Health, robot families and this specification.
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [Meta]
+      summary: Health check
+      description: Returns `ok` and the profile id used by each LLM role.
+      responses:
+        '200':
+          description: The server is up.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+              example:
+                ok: true
+                llm: { spec: claude_opus, scene: claude_sonnet, robot: claude_opus, revise: claude_opus, search: claude_sonnet, extract: claude_sonnet, analysis: claude_sonnet, objects: claude_haiku }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /families:
+    get:
+      operationId: listFamilies
+      tags: [Meta]
+      summary: Robot families
+      description: The robot families the designer can use, with the JSON Schema of each family's parameters.
+      responses:
+        '200':
+          description: The families.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Family' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /openapi.json:
+    get:
+      operationId: getOpenApiSpec
+      tags: [Meta]
+      summary: This specification
+      description: The bundled OpenAPI document (`contracts/openapi.bundled.json`), with every `$ref` resolved.
+      responses:
+        '200':
+          description: The OpenAPI 3.1 document.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      summary: List projects
+      description: Newest update first.
+      responses:
+        '200':
+          description: Project summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProjectSummary' }
+              example:
+                - { id: p_ab12cd34ef, title: Move a 0.3 kg bottle from A to B, stage: brief, created: '2026-11-20T09:00:00Z', updated: '2026-11-20T09:00:00Z' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createProject
+      tags: [Projects]
+      summary: Create a project from a brief
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+            example: { brief: Move a 0.3 kg bottle from A to B }
+      responses:
+        '200':
+          description: The new project (stage `brief`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+              example:
+                id: p_ab12cd34ef
+                title: Move a 0.3 kg bottle from A to B
+                brief: Move a 0.3 kg bottle from A to B
+                reference: null
+                stage: brief
+                questions: []
+                answers: {}
+                versions: []
+                approved_version: null
+                candidates_count: 0
+                selected_candidate: null
+                analyses: []
+                decision: null
+                created: '2026-11-20T09:00:00Z'
+                updated: '2026-11-20T09:00:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+  /projects/{pid}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getProject
+      tags: [Projects]
+      summary: Read a project
+      description: The project view. `stage` is one of brief, questions, designed, approved, candidates, analysed, decided.
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteProject
+      tags: [Projects]
+      summary: Delete a project and everything in it
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+              example: { ok: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/reference:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      operationId: putReference
+      tags: [Projects]
+      summary: Set the reference text
+      description: Replaces the reference text. An empty string removes it. Photos and the URDF are kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReferenceTextRequest' }
+            example: { text: A bench-top task. }
+      responses:
+        '200':
+          description: The updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      operationId: clearReference
+      tags: [Projects]
+      summary: Remove the whole reference (text, photos, URDF)
+      responses:
+        '200':
+          description: The updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/brief:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      operationId: updateBrief
+      tags: [Projects]
+      summary: Edit the brief
+      description: |
+        Replaces the brief (10 to 20000 characters after trimming). Pending questions are cleared and `round` resets to
+        0, so the next design call starts the question rounds again with the new brief. Earlier answers, comments and
+        notes are kept; existing versions are untouched. `brief_updated` is set. 409 when a version is approved
+        or while a design or revise job runs for the project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateBriefRequest' }
+      responses:
+        '200':
+          description: The updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/brief/files:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadBriefImage
+      tags: [Projects]
+      summary: Attach a photo to the brief
+      description: |
+        Raw image bytes (PNG, JPEG or WebP): a photo of the task, the objects or the workcell (not the reference robot).
+        Brief, reference and answer images together are at most 8 (422 beyond). Not allowed after a version is approved (409).
+        The images go to the model with the next design call.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: All brief images of the project.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BriefImage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/brief/files/{name}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: name
+        in: path
+        required: true
+        description: The stored file name from `brief_images[].name`.
+        schema: { type: string }
+    get:
+      operationId: getBriefImage
+      tags: [Projects]
+      summary: Download a brief image
+      responses:
+        '200':
+          description: The image bytes with their detected media type.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/bmp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteBriefImage
+      tags: [Projects]
+      summary: Remove a brief image
+      description: Not allowed after a version is approved (409).
+      responses:
+        '200':
+          description: The remaining brief images.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BriefImage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{pid}/reference/files:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadReferenceFile
+      tags: [Projects]
+      summary: Upload a reference photo or URDF
+      description: |
+        Raw file bytes as the body. PNG, JPEG or WebP photos (at most 6 per project, and 8 images in all with brief and
+        answer images) or a `.urdf` / `.zip` robot description (replaces the previous one). The file is inspected before it is stored.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: The updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{pid}/design:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: startDesign
+      tags: [Questions & design]
+      summary: Run the next design step (question round or design)
+      description: |
+        Starts a design job. The AI either returns the next round of questions (`result.status: questions`) or, when
+        it has enough answers, the first design version (`result.status: designed`, `result.version`). Send the answers
+        given so far (new answers are merged into the project's answers), optional comments per question, one general
+        note per round, and images attached with `uploadAnswerImage`.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DesignRequest' }
+            examples:
+              firstRound: { summary: 'First call, no answers yet', value: { answers: {} } }
+              answered: { summary: 'Answers to the first round', value: { answers: { cycle: 6 } } }
+      responses:
+        '200':
+          description: The job record (running, or finished when `wait` was used and the job ended in time).
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                id: 4f1c9a2b7d3e
+                kind: design
+                robot_id: p_ab12cd34ef
+                status: running
+                progress: []
+                result: null
+                error: null
+                error_code: null
+                started: '2026-11-20T09:00:05Z'
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+  /projects/{pid}/answers/files:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadAnswerImage
+      tags: [Questions & design]
+      summary: Attach an image to a question
+      description: |
+        Raw image bytes (PNG, JPEG or WebP). `question` is a question id of the current round or `_general` for the
+        round's note. Images are sent to the model with the next design call.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+        - name: question
+          in: query
+          required: true
+          description: A question id, or `_general`.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: All answer images of the project.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AnswerImage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/answers/files/{name}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: name
+        in: path
+        required: true
+        description: The stored file name from `answer_images[].name`.
+        schema: { type: string }
+    get:
+      operationId: getAnswerImage
+      tags: [Questions & design]
+      summary: Download an answer image
+      responses:
+        '200':
+          description: The image bytes with their detected media type.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/bmp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteAnswerImage
+      tags: [Questions & design]
+      summary: Remove an answer image
+      responses:
+        '200':
+          description: The remaining answer images.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AnswerImage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{pid}/versions/{n}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/VersionNumber'
+    get:
+      operationId: getVersion
+      tags: [Versions]
+      summary: Read a design version
+      description: The stored version (spec, requirements, scene, robot, URDF, simulation with frames and checks) plus the parsed URDF.
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DesignVersionView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/versions/{n}/assets/{asset}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/VersionNumber'
+      - name: asset
+        in: path
+        required: true
+        schema: { type: string, enum: [design.urdf, design.glb, frames.json] }
+    get:
+      operationId: getVersionAsset
+      tags: [Versions]
+      summary: Download a version asset
+      description: '`design.urdf` (the robot, XML), `design.glb` (zero-pose mesh, glTF binary, y up) or `frames.json` (the simulated frames).'
+      responses:
+        '200':
+          description: The asset.
+          content:
+            application/xml: { schema: { type: string } }
+            model/gltf-binary: { schema: { type: string, format: binary } }
+            application/json:
+              schema:
+                type: array
+                items: { $ref: './schemas/Frame.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: approveVersion
+      tags: [Versions]
+      summary: Approve (freeze) a version
+      description: Freezes the design. Approving the approved version again is a no-op; approving another version is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveRequest' }
+            example: { version: 2 }
+      responses:
+        '200':
+          description: The updated project (stage `approved`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{pid}/revise:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: reviseDesign
+      tags: [Revise]
+      summary: Change a design by a request
+      description: |
+        Starts a revise job that creates a new version from `base_version` (default: the latest). `t` is the moment
+        of the base version's simulation the request refers to, in seconds (0 up to its duration). The result is
+        `{version: n}`. A project with an approved version is frozen (409).
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviseRequest' }
+            example: { request: make it reach 20 cm further, base_version: 1, t: 2.5 }
+      responses:
+        '200':
+          description: The job record.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                id: 8a0b6c1d2e3f
+                kind: revise
+                robot_id: p_ab12cd34ef
+                status: running
+                progress: []
+                result: null
+                error: null
+                error_code: null
+                started: '2026-11-20T09:05:00Z'
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+
+  /projects/{pid}/fleet:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      operationId: putFleet
+      tags: [Fleet]
+      summary: Set fleet options
+      description: Turn the fleet on or off, set its limits (`null` clears them) and choose the member used for robot search. Send at least one field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FleetUpdate' }
+            example: { enabled: true, limits: { max_robots: 2 } }
+      responses:
+        '200':
+          description: The updated project (with `fleet`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/fleet/assign:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: assignFleet
+      tags: [Fleet]
+      summary: Preview and store a robot assignment
+      description: |
+        Runs immediately (no AI, no job). With no `assignment` the code proposes one; with an `assignment` it is
+        validated and stored as the user's confirmed assignment. The base version defaults to the approved version,
+        else the latest.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FleetAssignRequest' }
+      responses:
+        '200':
+          description: The assignment, a preview of the layout, and whether it is feasible.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FleetAssignResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/fleet/design:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: startFleetDesign
+      tags: [Fleet]
+      summary: Plan the fleet as a new version
+      description: 'Starts a fleet_design job on the base version (default: the latest) using the stored assignment. 409 when no assignment was stored or the design is approved.'
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FleetDesignRequest' }
+      responses:
+        '200':
+          description: 'The job record. The result is `{version: n}`.'
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+
+  /projects/{pid}/search:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: startSearch
+      tags: [Catalog]
+      summary: Search for real robots that fit the approved design
+      description: 'Starts a search job (the design must be approved, otherwise the job ends with an error). While a search of the project is running the same job record is returned. The result is `{candidates: [...]}`.'
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      responses:
+        '200':
+          description: The job record.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                id: 2c5d7e9f1a3b
+                kind: search
+                robot_id: p_ab12cd34ef
+                status: running
+                progress: []
+                result: null
+                error: null
+                error_code: null
+                started: '2026-11-20T09:10:00Z'
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+  /projects/{pid}/candidates:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listCandidates
+      tags: [Catalog]
+      summary: List the candidates found by the last search
+      responses:
+        '200':
+          description: The candidates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: './schemas/Candidate.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/candidates/{cid}/analyse:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/CandidateId'
+    post:
+      operationId: startAnalysis
+      tags: [Catalog]
+      summary: Analyse a candidate against its datasheet
+      description: |
+        Starts an analyse job. The datasheet comes from, in order: `datasheet_url` (https only), a datasheet uploaded
+        with `uploadDatasheet`, the candidate's own datasheet link, its product page. Quotes are verified against the
+        document text. The same candidate being analysed returns the running job. The result is the analysis view
+        (`GET /projects/{pid}/analysis/{cid}`). A failed download ends the job with `error_code: datasheet_download`.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyseRequest' }
+            example: { datasheet_url: 'https://acme.example/ra6.pdf' }
+      responses:
+        '200':
+          description: The job record.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              example:
+                id: 9e8d7c6b5a40
+                kind: analyse
+                robot_id: p_ab12cd34ef
+                status: running
+                progress: []
+                result: null
+                error: null
+                error_code: null
+                started: '2026-11-20T09:12:00Z'
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+  /projects/{pid}/candidates/{cid}/datasheet:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/CandidateId'
+    post:
+      operationId: uploadDatasheet
+      tags: [Catalog]
+      summary: Upload a datasheet for a candidate
+      description: Raw bytes of a PDF, HTML or text file. It is used by the next analysis of this candidate that has no `datasheet_url`.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DatasheetUploaded' }
+              example: { ok: true, characters: 424 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/analysis/{cid}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/CandidateId'
+    get:
+      operationId: getAnalysis
+      tags: [Catalog]
+      summary: Read the analysis of a candidate
+      responses:
+        '200':
+          description: The analysis with the parsed URDF of the candidate's robot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /projects/{pid}/decision:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: setDecision
+      tags: [Decision & export]
+      summary: Record the decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionRequest' }
+            example: { candidate_id: acme_ra_6, action: approve }
+      responses:
+        '200':
+          description: The updated project (stage `decided`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/export:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: exportProject
+      tags: [Decision & export]
+      summary: Export the design as a zip
+      description: The approved version (else the latest) with spec, requirements, scene, simulation summary, URDF, GLB, every analysis and the decision, and a README of the limits.
+      responses:
+        '200':
+          description: The archive.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="..."`.'
+              schema: { type: string }
+          content:
+            application/zip: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{pid}/studio/builds:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: startStudioBuild
+      tags: [Studio]
+      summary: Build the robot (CAD, motors, electronics)
+      description: |
+        Starts a `studio_build` job for the approved design version. `design_version` defaults to the approved one and
+        must be it (409 otherwise, and 409 while no version is approved). `base_build` starts from an earlier build;
+        with only `pinned` changed (`{joint: alternative_id}`) the shop search is not repeated. `request` is a change
+        in words. Only one studio build runs per project at a time (409). The result is `{build: n}`; with
+        `expand=resource` the job carries the build view. Sizing and CAD checks are kinematic and static calculations,
+        not dynamics and not hardware tests; prices are dated web estimates.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StudioBuildRequest' }
+            example: { request: use a stronger shoulder motor, base_build: 1, pinned: { j1: robu_nema23 } }
+      responses:
+        '200':
+          description: The job record (running, or finished when `wait` was used and the job ended in time).
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      operationId: listStudioBuilds
+      tags: [Studio]
+      summary: List the builds of a project
+      responses:
+        '200':
+          description: One row per build, ascending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StudioBuildSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    get:
+      operationId: getStudioBuild
+      tags: [Studio]
+      summary: Read a build
+      description: The stored build (sizing, motors, electronics, style, parts, URDF, twin limits, checks, files) plus the parsed studio URDF.
+      responses:
+        '200':
+          description: The build.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudioBuildView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/files/{path}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+      - name: path
+        in: path
+        required: true
+        description: A relative path inside the build folder, for example `assembly.step` or `parts/p1.stl`. Paths that leave the folder are a 422.
+        schema: { type: string }
+        allowReserved: true
+    get:
+      operationId: getStudioBuildFile
+      tags: [Studio]
+      summary: Download a file of a build
+      description: STEP is `model/step`, STL `model/stl`, URDF `application/xml`; also PNG, PDF, ZIP, CSV and JSON.
+      responses:
+        '200':
+          description: The file.
+          content:
+            model/step: { schema: { type: string, format: binary } }
+            model/stl: { schema: { type: string, format: binary } }
+            application/xml: { schema: { type: string } }
+            image/png: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+            application/zip: { schema: { type: string, format: binary } }
+            text/csv: { schema: { type: string } }
+            application/json: { schema: { type: object, additionalProperties: true } }
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/twin/move:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    post:
+      operationId: studioTwinMove
+      tags: [Studio]
+      summary: Move the digital twin to a target
+      description: |
+        Runs the twin synchronously (no model): from `q0` to joint values or a cartesian point under the build's joint,
+        speed, acceleration and torque limits. The result lists the frames and every limit that bound. This is a
+        kinematic and limit model, not a dynamics simulation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: './schemas/TwinMoveRequest.json' }
+      responses:
+        '200':
+          description: The motion.
+          content:
+            application/json:
+              schema: { $ref: './schemas/TwinMoveResult.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/twin/run:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    post:
+      operationId: studioTwinRun
+      tags: [Studio]
+      summary: Replay the design's task on the twin
+      description: Replays the design's waypoints under the build's limits (synchronous, no model).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TwinRunRequest' }
+      responses:
+        '200':
+          description: The motion.
+          content:
+            application/json:
+              schema: { $ref: './schemas/TwinMoveResult.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/snapshots:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+      - name: view
+        in: query
+        required: true
+        schema: { type: string, enum: [iso, front, side, top] }
+    post:
+      operationId: uploadStudioSnapshot
+      tags: [Studio]
+      summary: Store a render of the twin
+      description: The raw PNG body (at most 15 MB) is stored for the manufacturer PDF. A build that is approved is frozen (409). A body that is not a PNG is a 422.
+      requestBody:
+        required: true
+        content:
+          image/png: { schema: { type: string, format: binary } }
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        '200':
+          description: The views stored for this build.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudioViews' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    post:
+      operationId: approveStudioBuild
+      tags: [Studio]
+      summary: Approve a build and make the manufacturer package
+      description: >-
+        Starts a `studio_pdf` job (no model) that writes `manufacturer.pdf`, `package.zip` and `bom.csv`, then marks the build approved. The result is `{build: n}`. An approved build is a 409.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      responses:
+        '200':
+          description: The job record.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    get:
+      operationId: getStudioPdf
+      tags: [Studio]
+      summary: Download the manufacturer PDF
+      description: Available once the build is approved; 404 before.
+      responses:
+        '200':
+          description: The PDF.
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/studio/builds/{n}/package:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/BuildNumber'
+    get:
+      operationId: getStudioPackage
+      tags: [Studio]
+      summary: Download the manufacturer package
+      description: A ZIP with the PDF, assembly STEP, parts, URDF and BOM CSV. Available once the build is approved; 404 before.
+      responses:
+        '200':
+          description: The archive.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="package.zip"`.'
+              schema: { type: string }
+          content:
+            application/zip: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /jobs:
+    get:
+      operationId: listRunningJobs
+      tags: [Jobs]
+      summary: Running jobs of all projects
+      description: Always lists the running jobs of every project, oldest first; there are no filter parameters.
+      responses:
+        '200':
+          description: Running jobs, oldest first, with `subject` and `finished`.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: getJob
+      tags: [Jobs]
+      summary: Read a job
+      description: |
+        Jobs are kept in memory (the last finished ones), so a job id is unknown after a server restart. With
+        `wait`, the call returns as soon as the job ends (200) or after the wait with the running record (202).
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+      responses:
+        '200':
+          description: The job record (running, done, error or cancelled).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+              examples:
+                questions:
+                  summary: A finished design job that asked questions
+                  value:
+                    id: 4f1c9a2b7d3e
+                    kind: design
+                    robot_id: p_ab12cd34ef
+                    status: done
+                    progress: [Reading your brief]
+                    result:
+                      status: questions
+                      questions:
+                        - { id: cycle, text: Cycle time?, kind: number, options: [], unit: s, default: 6, why: '' }
+                    error: null
+                    error_code: null
+                    started: '2026-11-20T09:00:05Z'
+                designed:
+                  summary: A finished design job that produced version 1
+                  value:
+                    id: 5a6b7c8d9e0f
+                    kind: design
+                    robot_id: p_ab12cd34ef
+                    status: done
+                    progress: [Updating the specification (round 2), Working out the requirements, 'Task simulated: 16 of 19 checks pass']
+                    result: { status: designed, version: 1 }
+                    error: null
+                    error_code: null
+                    started: '2026-11-20T09:01:00Z'
+                revised:
+                  summary: A finished revise job
+                  value:
+                    id: 8a0b6c1d2e3f
+                    kind: revise
+                    robot_id: p_ab12cd34ef
+                    status: done
+                    progress: [Working out what the change touches, 'Task simulated: 16 of 19 checks pass']
+                    result: { version: 2 }
+                    error: null
+                    error_code: null
+                    started: '2026-11-20T09:05:00Z'
+                failed:
+                  summary: A failed analyse job
+                  value:
+                    id: 1b2c3d4e5f60
+                    kind: analyse
+                    robot_id: p_ab12cd34ef
+                    status: error
+                    progress: [Downloading the datasheet]
+                    result: null
+                    error: 'Datasheet download failed: Only https:// URLs are allowed. Upload the datasheet (PDF or text) instead.'
+                    error_code: datasheet_download
+                    started: '2026-11-20T09:12:00Z'
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      operationId: cancelJob
+      tags: [Jobs]
+      summary: Cancel a running job
+      description: |
+        Kills the job's task process tree. The record becomes `status: cancelled` with `error` "Cancelled by the caller" and `error_code` `cancelled`. The call waits up to 10 seconds for the processes to stop. If a task finishes at the very moment of the cancel it may already have committed, and the record still says cancelled.
+        Model usage already streamed is kept; nothing is committed to the project from a cancelled job; the project
+        lock is released. A job that already ended is a 409.
+      responses:
+        '200':
+          description: The cancelled job record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{pid}/jobs:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listProjectJobs
+      tags: [Jobs]
+      summary: Jobs of a project
+      description: Running jobs first (oldest first), then finished ones (newest first), at most 20, with `subject` and `finished`.
+      responses:
+        '200':
+          description: The jobs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /llm:
+    get:
+      operationId: getLlmSettings
+      tags: [LLM settings]
+      summary: Read the LLM settings
+      description: Profiles, the profile of each role, the provider kinds, API key status and the models each kind offers. LLM connections are global, not per project. API keys are never returned.
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /llm/profiles:
+    post:
+      operationId: addLlmProfile
+      tags: [LLM settings]
+      summary: Add a profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LlmProfileInput' }
+            example: { name: Fixture profile, kind: claude_cli, model: claude-sonnet-5-5, effort: low, timeout_s: 240, cli_path: '' }
+      responses:
+        '200':
+          description: The new profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /llm/profiles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    put:
+      operationId: updateLlmProfile
+      tags: [LLM settings]
+      summary: Replace a profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LlmProfileInput' }
+      responses:
+        '200':
+          description: The profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      operationId: deleteLlmProfile
+      tags: [LLM settings]
+      summary: Delete a profile
+      description: A profile that a role uses cannot be deleted (422).
+      responses:
+        '200':
+          description: The settings after the deletion.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LlmSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /llm/profiles/{id}/test:
+    parameters:
+      - $ref: '#/components/parameters/ProfileId'
+    post:
+      operationId: testLlmProfile
+      tags: [LLM settings]
+      summary: Test a profile with a small request
+      description: Starts an `llm_test` job. Its result is `{ok, answer, seconds}`.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      responses:
+        '200':
+          description: The job record.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+  /llm/roles:
+    put:
+      operationId: setLlmRoles
+      tags: [LLM settings]
+      summary: Assign profiles to roles
+      description: Planner and converter style roles (`spec`, `scene`, `robot`, `revise`, `search`, `extract`, `analysis`) can use different profiles. Roles not in the body keep their profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetRolesRequest' }
+            example: { roles: { analysis: claude_sonnet } }
+      responses:
+        '200':
+          description: The profile id of every role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Roles' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /llm/keys/{provider}:
+    parameters:
+      - $ref: '#/components/parameters/Provider'
+    put:
+      operationId: saveLlmKey
+      tags: [LLM settings]
+      summary: Save an API key
+      description: The key is stored on the server and never returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveKeyRequest' }
+      responses:
+        '200':
+          description: Key status of every provider.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeyStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      operationId: deleteLlmKey
+      tags: [LLM settings]
+      summary: Delete a saved API key
+      responses:
+        '200':
+          description: Key status of every provider.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeyStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /llm/usage:
+    get:
+      operationId: getLlmUsage
+      tags: [LLM settings]
+      summary: Token and cost usage
+      parameters:
+        - $ref: '#/components/parameters/UsagePeriod'
+      responses:
+        '200':
+          description: The usage summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /usage:
+    get:
+      operationId: getUsage
+      tags: [LLM settings]
+      summary: Token and cost usage (alias of /llm/usage)
+      parameters:
+        - $ref: '#/components/parameters/UsagePeriod'
+      responses:
+        '200':
+          description: The usage summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /llm/usage/reset:
+    post:
+      operationId: resetLlmUsage
+      tags: [LLM settings]
+      summary: Start a new usage ledger
+      description: The old ledger is kept on the server beside the new one.
+      responses:
+        '200':
+          description: The (empty) summary for period `all`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Required only when the server runs with `STUDIO_TOKEN` (always for a non-loopback bind). Loopback callers of an
+        unprotected server send nothing. A wrong or missing token is a 401 with `WWW-Authenticate: Bearer`.
+
+  parameters:
+    ProjectId:
+      name: pid
+      in: path
+      required: true
+      description: Project id, as returned by `createProject` (`p_` and 10 hex characters).
+      schema: { type: string }
+    VersionNumber:
+      name: n
+      in: path
+      required: true
+      description: Version number, from 1.
+      schema: { type: integer, minimum: 1 }
+    BuildNumber:
+      name: n
+      in: path
+      required: true
+      description: Studio build number, from 1.
+      schema: { type: integer, minimum: 1 }
+    CandidateId:
+      name: cid
+      in: path
+      required: true
+      description: Candidate id from the search result.
+      schema: { type: string }
+    JobId:
+      name: id
+      in: path
+      required: true
+      description: Job id.
+      schema: { type: string }
+    ProfileId:
+      name: id
+      in: path
+      required: true
+      description: LLM profile id.
+      schema: { type: string }
+    Provider:
+      name: provider
+      in: path
+      required: true
+      description: A provider kind that needs a key, for example `gemini`.
+      schema: { type: string }
+    Filename:
+      name: filename
+      in: query
+      required: true
+      description: Name of the uploaded file. Its extension tells the type (for example `photo.png`, `robot.urdf`, `ra6.pdf`).
+      schema: { type: string }
+    UsagePeriod:
+      name: period
+      in: query
+      description: Period to summarise.
+      schema: { type: string, enum: [today, 7d, 30d, all], default: 7d }
+    Wait:
+      name: wait
+      in: query
+      description: |
+        Whole seconds to wait for the job to end (0 to 600; outside that range is a 422). 0 returns at once. If the job ends within the wait the answer
+        is 200 with the final record, otherwise 202 with the running record.
+      schema: { type: integer, minimum: 0, maximum: 600, default: 0 }
+    Expand:
+      name: expand
+      in: query
+      description: '`resource` (the only value; others are a 422) adds the job''s result as a full resource in `resource` once the job is finished (see `Job.resource`).'
+      schema: { type: string, enum: [resource] }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        1 to 200 characters. The same key with the same body replays the first response; with a different body it is a
+        422 (as is an empty or longer key). A replay returns the stored status, body and headers; 500 and above are not stored. Kept in
+        memory for 24 hours per key, method and path.
+      schema: { type: string, minLength: 1, maxLength: 200 }
+    Callback:
+      name: X-Studio-Callback
+      in: header
+      description: |
+        http(s) URL that receives the final job record (expanded) as a POST when the job ends (done, error or
+        cancelled), with `X-Studio-Job`, `X-Studio-Event: job.finished` and, when `STUDIO_CALLBACK_SECRET` is set,
+        `X-Studio-Signature: sha256=<hex HMAC of the body>`. Up to four attempts (at once, then after 1, 5 and 25 seconds; `callback.attempts` counts them all); a failed
+        delivery never changes the job. A search or analysis that joins a running job keeps the first callback URL. The host must be in `STUDIO_CALLBACK_HOSTS` (default `localhost,127.0.0.1,::1`),
+        otherwise the start is a 422.
+      schema: { type: string, format: uri }
+
+  headers:
+    JobLocation:
+      description: Relative URL of the job, `/api/v1/jobs/{id}`.
+      schema: { type: string }
+
+  responses:
+    JobRunning:
+      description: The job did not end within `wait`. The running record; poll `Location` or wait again.
+      headers:
+        Location: { $ref: '#/components/headers/JobLocation' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Job' }
+    Unauthorized:
+      description: The server needs a bearer token and none, or a wrong one, was sent.
+      headers:
+        WWW-Authenticate: { schema: { type: string, const: Bearer } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: A valid bearer token is required }
+    NotFound:
+      description: Unknown project, version, candidate, job, profile or file.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: Project not found }
+    Conflict:
+      description: State conflict, for example the project is busy with another design step, the approved design is frozen, or the job already ended.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: This project is still working on another design step }
+    TooLarge:
+      description: The upload is above 64 MB (a multipart size error gives the same body), or the body checked for an Idempotency-Key is above 4 MB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: The input is not acceptable (missing or malformed field, unsafe URL, Idempotency-Key reuse, bad callback host).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { detail: brief must be 1 to 8000 characters }
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      description: Every error body.
+      properties:
+        detail: { type: string, description: 'Readable message.' }
+        error_code: { type: string, description: 'Machine-readable cause when there is one, for example `datasheet_download`.' }
+      required: [detail]
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+    Health:
+      type: object
+      properties:
+        ok: { type: boolean }
+        llm: { $ref: '#/components/schemas/Roles' }
+      required: [ok, llm]
+    Family:
+      type: object
+      properties:
+        name: { type: string }
+        title: { type: string }
+        description: { type: string }
+        mobile: { type: boolean }
+        params_schema: { type: object, additionalProperties: true, description: 'JSON Schema of the family parameters.' }
+      required: [name, title, description, mobile, params_schema]
+    ProjectSummary:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: [string, 'null'] }
+        stage: { $ref: '#/components/schemas/Stage' }
+        created: { type: [string, 'null'], format: date-time }
+        updated: { type: [string, 'null'], format: date-time }
+      required: [id, title, stage, created, updated]
+    Stage:
+      type: [string, 'null']
+      description: Where the project is. `brief` (created), `questions` (a round awaits answers), `designed`, `approved`, `candidates` (search done), `analysed`, `decided`.
+      enum: [brief, questions, designed, approved, candidates, analysed, decided, null]
+    ReferenceFile:
+      type: object
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [image, urdf] }
+      required: [name, kind]
+    Reference:
+      type: [object, 'null']
+      description: The reference text and files; null when there is none.
+      properties:
+        text: { type: string }
+        files: { type: array, items: { $ref: '#/components/schemas/ReferenceFile' } }
+      required: [text, files]
+    BriefImage:
+      type: object
+      description: A photo attached to the brief (task, objects or workcell).
+      properties:
+        name: { type: string }
+        mime: { type: string }
+      required: [name, mime]
+    UpdateBriefRequest:
+      type: object
+      properties:
+        brief: { type: string, minLength: 10, maxLength: 20000, description: 'The new brief (10 to 20000 characters after trimming).' }
+      required: [brief]
+    AnswerImage:
+      type: object
+      description: An image attached to an answer (a question id, or `_general` for the round's note).
+      properties:
+        name: { type: string }
+        question: { type: string }
+        round: { type: integer }
+        mime: { type: string }
+      required: [name, question]
+    FleetState:
+      type: object
+      description: Present on a project only when a fleet was suggested or the user changed fleet settings.
+      properties:
+        suggested: { type: boolean }
+        enabled: { type: boolean }
+        reasons: { type: array, items: { type: string } }
+        source: { type: string, description: 'One of spec, code, both, user.' }
+        limits: { oneOf: [{ $ref: './schemas/FleetLimits.json' }, { type: 'null' }] }
+        assignment: { oneOf: [{ $ref: './schemas/FleetAssignment.json' }, { type: 'null' }] }
+        member: { type: [string, 'null'], description: 'The member used for robot search and analysis.' }
+    DecisionRecord:
+      type: [object, 'null']
+      properties:
+        candidate_id: { type: string }
+        action: { type: string, enum: [approve, robot_studio] }
+      required: [candidate_id, action]
+    Project:
+      type: object
+      description: The project view.
+      properties:
+        id: { type: string }
+        title: { type: [string, 'null'] }
+        brief: { type: [string, 'null'] }
+        reference: { $ref: '#/components/schemas/Reference' }
+        stage: { $ref: '#/components/schemas/Stage' }
+        questions: { type: array, items: { $ref: './schemas/Question.json' }, description: 'The open question round.' }
+        answers: { type: object, additionalProperties: true, description: 'Answers so far, by question id.' }
+        versions: { type: array, items: { type: integer }, description: 'Version numbers, ascending.' }
+        approved_version: { type: [integer, 'null'] }
+        fleet: { $ref: '#/components/schemas/FleetState' }
+        studio: { $ref: '#/components/schemas/StudioState' }
+        answer_comments: { type: object, additionalProperties: { type: string }, description: 'Only when comments exist.' }
+        answer_notes:
+          type: array
+          description: Only when notes exist.
+          items:
+            type: object
+            properties:
+              round: { type: integer }
+              text: { type: string }
+            required: [round, text]
+        answer_images: { type: array, items: { $ref: '#/components/schemas/AnswerImage' }, description: 'Only when images exist.' }
+        brief_updated: { type: string, format: date-time, description: 'Only once the brief has been edited.' }
+        brief_images: { type: array, items: { $ref: '#/components/schemas/BriefImage' }, description: 'Only when images exist.' }
+        candidates_count: { type: integer }
+        selected_candidate: { type: [string, 'null'] }
+        analyses: { type: array, items: { type: string }, description: 'Candidate ids that have an analysis.' }
+        decision: { $ref: '#/components/schemas/DecisionRecord' }
+        created: { type: [string, 'null'], format: date-time }
+        updated: { type: [string, 'null'], format: date-time }
+      required: [id, title, brief, reference, stage, questions, answers, versions, approved_version, candidates_count, selected_candidate, analyses, decision, created, updated]
+    CreateProjectRequest:
+      type: object
+      properties:
+        brief: { type: string, minLength: 1, maxLength: 8000, description: 'The task in words.' }
+      required: [brief]
+    ReferenceTextRequest:
+      type: object
+      properties:
+        text: { type: [string, 'null'], maxLength: 60000 }
+    DesignRequest:
+      type: object
+      properties:
+        answers: { type: [object, 'null'], additionalProperties: true, description: 'Answers by question id (string, number, boolean or list).' }
+        comments:
+          type: [object, 'null']
+          description: A comment per question id (lower case letters, digits and underscore, at most 41 characters). An empty string removes it.
+          additionalProperties: { type: string, maxLength: 1000 }
+        note: { type: [string, 'null'], maxLength: 4000, description: 'One general note for the round.' }
+        auto_repair: { type: [boolean, 'null'], description: 'Run the automatic collision repair on the new version (default true).' }
+    ReviseRequest:
+      type: object
+      properties:
+        request: { type: string, minLength: 1, maxLength: 2000, description: 'The change, in words.' }
+        base_version: { type: [integer, 'null'], description: 'Version to change; default the latest.' }
+        t: { type: [number, 'null'], minimum: 0, description: 'Moment of the base version''s simulation in seconds (0 to its duration).' }
+        auto_repair: { type: [boolean, 'null'] }
+      required: [request]
+    ApproveRequest:
+      type: object
+      properties:
+        version: { type: integer }
+      required: [version]
+    FleetUpdate:
+      type: object
+      properties:
+        enabled: { type: [boolean, 'null'] }
+        limits:
+          oneOf:
+            - $ref: './schemas/FleetLimits.json'
+            - { type: 'null' }
+          description: max_robots 2 to 3, max_reach_m up to 10, max_payload_kg up to 2000, budget_usd 0 or more.
+        member: { type: [string, 'null'], maxLength: 40, description: 'A fleet member id, or null for the default.' }
+    FleetAssignRequest:
+      type: object
+      properties:
+        base_version: { type: [integer, 'null'] }
+        assignment: { oneOf: [{ $ref: './schemas/FleetAssignment.json' }, { type: 'null' }] }
+    FleetDesignRequest:
+      type: object
+      properties:
+        base_version: { type: [integer, 'null'] }
+    FleetPreview:
+      type: object
+      properties:
+        bases:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              position: { $ref: '#/components/schemas/Vec3' }
+              yaw: { type: number }
+        handovers: { type: object, additionalProperties: { $ref: '#/components/schemas/Vec3' } }
+        parks:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              start: { $ref: '#/components/schemas/Vec3' }
+              end: { $ref: '#/components/schemas/Vec3' }
+        workspace_samples: { type: object, additionalProperties: { type: array, items: { $ref: '#/components/schemas/Vec3' } } }
+    FleetAssignResult:
+      type: object
+      properties:
+        assignment: { $ref: './schemas/FleetAssignment.json' }
+        preview: { $ref: '#/components/schemas/FleetPreview' }
+        feasible: { type: boolean }
+        notes: { type: array, items: { type: string } }
+      required: [assignment, preview, feasible, notes]
+    Vec3:
+      type: array
+      minItems: 3
+      maxItems: 3
+      items: { type: number }
+    AnalyseRequest:
+      type: object
+      properties:
+        datasheet_url: { type: [string, 'null'], maxLength: 800, description: 'https URL of a datasheet (PDF, HTML or text).' }
+    DatasheetUploaded:
+      type: object
+      properties:
+        ok: { type: boolean }
+        characters: { type: integer, description: 'Characters of text read from the file.' }
+      required: [ok, characters]
+    DecisionRequest:
+      type: object
+      properties:
+        candidate_id: { type: string }
+        action: { type: string, enum: [approve, robot_studio] }
+      required: [candidate_id, action]
+    ParsedUrdf:
+      type: object
+      description: The parsed URDF the server attaches to versions and analyses (not part of the stored model).
+      properties:
+        name: { type: string }
+        base_link: { type: string }
+        links: { type: array, items: { type: string } }
+        joints:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              type: { type: string }
+              parent: { type: string }
+              child: { type: string }
+              axis: { type: array, items: { type: number } }
+              origin: { $ref: '#/components/schemas/UrdfOrigin' }
+              min: { type: [number, 'null'] }
+              max: { type: [number, 'null'] }
+              velocity: { type: [number, 'null'] }
+              effort: { type: [number, 'null'] }
+        geometry:
+          type: array
+          items:
+            type: object
+            properties:
+              link: { type: string }
+              kind: { type: string, enum: [visual, collision] }
+              shape: { type: string, enum: [box, sphere, cylinder, mesh] }
+              parameters: { type: object, additionalProperties: true }
+              origin: { $ref: '#/components/schemas/UrdfOrigin' }
+        mesh_uris: { type: array, items: { type: string } }
+    UrdfOrigin:
+      type: object
+      properties:
+        xyz: { type: array, items: { type: number } }
+        rpy: { type: array, items: { type: number } }
+    DesignVersionView:
+      description: A version as served by the API, the stored model plus its parsed URDF.
+      allOf:
+        - $ref: './schemas/DesignVersion.json'
+        - type: object
+          properties:
+            parsed: { $ref: '#/components/schemas/ParsedUrdf' }
+            fleet_parsed:
+              type: object
+              description: Parsed URDF per fleet member id; present only when the version has a fleet.
+              additionalProperties: { $ref: '#/components/schemas/ParsedUrdf' }
+          required: [parsed]
+    AnalysisView:
+      description: An analysis as served by the API, the stored model plus its parsed URDF.
+      allOf:
+        - $ref: './schemas/Analysis.json'
+        - type: object
+          properties:
+            parsed: { $ref: '#/components/schemas/ParsedUrdf' }
+          required: [parsed]
+    QuestionsResult:
+      type: object
+      description: Result of a design job that needs answers.
+      properties:
+        status: { type: string, const: questions }
+        questions: { type: array, items: { $ref: './schemas/Question.json' } }
+      required: [status, questions]
+    QuestionsResource:
+      type: object
+      description: The `resource` of a finished design job that asked questions (the questions and the number of the round).
+      properties:
+        questions: { type: array, items: { $ref: './schemas/Question.json' } }
+        round: { type: integer }
+      required: [questions, round]
+    DesignedResult:
+      type: object
+      description: Result of a design job that produced the first version.
+      properties:
+        status: { type: string, const: designed }
+        version: { type: integer }
+      required: [status, version]
+    VersionResult:
+      type: object
+      description: Result of a revise or fleet_design job.
+      properties:
+        version: { type: integer }
+      required: [version]
+    SearchResult:
+      type: object
+      properties:
+        candidates: { type: array, items: { $ref: './schemas/Candidate.json' } }
+      required: [candidates]
+    LlmTestResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        answer: { type: string }
+        seconds: { type: number }
+    JobCallback:
+      type: object
+      description: Present only when `X-Studio-Callback` was given.
+      properties:
+        url: { type: string }
+        delivered: { type: boolean }
+        attempts: { type: integer }
+      required: [url, delivered, attempts]
+    StudioState:
+      type: object
+      description: Only when the project has at least one studio build.
+      properties:
+        builds: { type: array, items: { type: integer }, description: 'Build numbers, ascending.' }
+        approved_build: { type: [integer, 'null'] }
+      required: [builds, approved_build]
+    StudioBuildRequest:
+      type: object
+      properties:
+        design_version: { type: [integer, 'null'], minimum: 1, description: 'Must be the approved version; default: the approved version.' }
+        base_build: { type: [integer, 'null'], minimum: 1, description: 'Start from this build (its shop alternatives are reused).' }
+        request: { type: [string, 'null'], maxLength: 2000, description: 'A change in words.' }
+        pinned:
+          type: [object, 'null']
+          description: 'Joint name to the alternative id to use for it.'
+          additionalProperties: { type: string, minLength: 1, maxLength: 120 }
+    StudioBuildSummary:
+      type: object
+      properties:
+        build: { type: integer }
+        design_version: { type: integer }
+        member: { type: [string, 'null'] }
+        parent_build: { type: [integer, 'null'] }
+        created: { type: string }
+        summary: { type: string }
+        approved: { type: boolean }
+      required: [build, design_version, member, parent_build, created, summary, approved]
+    StudioBuildView:
+      description: A build as served by the API, the stored model plus its parsed studio URDF.
+      allOf:
+        - $ref: './schemas/StudioBuild.json'
+        - type: object
+          properties:
+            parsed: { $ref: '#/components/schemas/ParsedUrdf' }
+          required: [parsed]
+    StudioBuildResult:
+      type: object
+      description: Result of a studio_build or studio_pdf job.
+      properties:
+        build: { type: integer }
+      required: [build]
+    StudioViews:
+      type: object
+      properties:
+        views: { type: array, items: { type: string, enum: [iso, front, side, top] } }
+      required: [views]
+    TwinRunRequest:
+      type: object
+      properties:
+        speed_scale: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 2, description: 'Default 1.' }
+    Job:
+      type: object
+      description: A background job's record.
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [design, revise, fleet_design, search, analyse, llm_test, studio_build, studio_pdf] }
+        robot_id: { type: [string, 'null'], description: 'The project id; null for `llm_test`.' }
+        status: { type: string, enum: [running, done, error, cancelled] }
+        progress: { type: array, items: { type: string }, description: 'Progress lines so far.' }
+        result:
+          description: The job's result when `status` is `done`, otherwise null. The shape depends on `kind`.
+          anyOf:
+            - { type: 'null' }
+            - { $ref: '#/components/schemas/QuestionsResult' }
+            - { $ref: '#/components/schemas/DesignedResult' }
+            - { $ref: '#/components/schemas/VersionResult' }
+            - { $ref: '#/components/schemas/SearchResult' }
+            - { $ref: '#/components/schemas/AnalysisView' }
+            - { $ref: '#/components/schemas/LlmTestResult' }
+            - { $ref: '#/components/schemas/StudioBuildResult' }
+        error: { type: [string, 'null'], description: 'The failure message when `status` is `error` or `cancelled`.' }
+        error_code: { type: [string, 'null'], description: 'Machine-readable cause, for example `datasheet_download`; `cancelled` for a cancelled job.' }
+        started: { type: string, format: date-time }
+        subject: { type: [string, 'null'], description: 'Only in job lists. The candidate id of an analysis, `v<n>` of a revise or fleet design, otherwise null.' }
+        finished: { type: [string, 'null'], format: date-time, description: 'Only in job lists.' }
+        resource:
+          description: |
+            With `expand=resource` on a finished job: the result as a full resource. A design that produced a version,
+            a revise or a fleet_design give the version view (`GET /versions/{n}`); a design with questions gives
+            `{questions, round}`; a search gives the candidates; an analysis gives the analysis view; a studio_build or studio_pdf gives the build view (`GET /studio/builds/{n}`).
+          anyOf:
+            - { $ref: '#/components/schemas/DesignVersionView' }
+            - { $ref: '#/components/schemas/QuestionsResource' }
+            - { type: array, items: { $ref: './schemas/Candidate.json' } }
+            - { $ref: '#/components/schemas/AnalysisView' }
+            - { $ref: '#/components/schemas/StudioBuildView' }
+        callback: { $ref: '#/components/schemas/JobCallback' }
+      required: [id, kind, robot_id, status, progress, result, error, error_code, started]
+    Roles:
+      type: object
+      description: Profile id by role.
+      properties:
+        spec: { type: string }
+        scene: { type: string }
+        robot: { type: string }
+        revise: { type: string }
+        search: { type: string }
+        extract: { type: string }
+        analysis: { type: string }
+      additionalProperties: { type: string }
+    LlmProfile:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { type: string, description: 'Provider kind, one of `kinds` in the settings.' }
+        model: { type: string, maxLength: 120 }
+        effort: { type: string, enum: ['', low, medium, high, xhigh, max] }
+        timeout_s: { type: integer, minimum: 10, maximum: 900 }
+        cli_path: { type: string, maxLength: 1000 }
+      required: [id, name, kind, model]
+    LlmProfileInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kind: { type: string, pattern: '^[a-z_]+$', default: claude_cli }
+        model: { type: string, maxLength: 120, default: claude-sonnet-5-5 }
+        effort: { type: string, enum: ['', low, medium, high, xhigh, max], default: '' }
+        timeout_s: { type: integer, minimum: 10, maximum: 900, default: 240 }
+        cli_path: { type: string, maxLength: 1000, default: '' }
+      required: [name]
+    KeyStatus:
+      type: object
+      description: Key status by provider kind. The key itself is never returned.
+      additionalProperties:
+        type: object
+        properties:
+          saved: { type: boolean }
+          environment: { type: [string, 'null'], description: 'Name of the environment variable that supplies a key, if any.' }
+          ready: { type: boolean }
+        required: [saved, ready]
+    LlmSettings:
+      type: object
+      properties:
+        profiles: { type: array, items: { $ref: '#/components/schemas/LlmProfile' } }
+        roles: { $ref: '#/components/schemas/Roles' }
+        kinds: { type: array, items: { type: string } }
+        roles_available: { type: array, items: { type: string } }
+        keys: { $ref: '#/components/schemas/KeyStatus' }
+        models: { type: object, additionalProperties: { type: array, items: { type: string } }, description: 'Model names offered by each kind.' }
+      required: [profiles, roles, kinds, roles_available, keys]
+    SetRolesRequest:
+      type: object
+      properties:
+        roles: { type: object, additionalProperties: { type: string }, description: 'Role to profile id.' }
+      required: [roles]
+    SaveKeyRequest:
+      type: object
+      properties:
+        key: { type: string, minLength: 1, maxLength: 400 }
+      required: [key]
+    UsageBucket:
+      type: object
+      properties:
+        calls: { type: integer }
+        input: { type: integer }
+        cache_write: { type: integer }
+        cache_read: { type: integer }
+        output: { type: integer }
+        cost_usd: { type: number }
+        seconds: { type: number }
+        images: { type: integer }
+        web_calls: { type: integer }
+      required: [calls, input, cache_write, cache_read, output, cost_usd, seconds, images, web_calls]
+    UsageSummary:
+      type: object
+      description: Model usage aggregated from the ledger.
+      properties:
+        period: { type: string, enum: [today, 7d, 30d, all] }
+        totals:
+          allOf:
+            - { $ref: '#/components/schemas/UsageBucket' }
+            - type: object
+              properties:
+                cache_hit_rate: { type: [number, 'null'] }
+        by_role: { type: object, additionalProperties: { $ref: '#/components/schemas/UsageBucket' } }
+        by_model: { type: object, additionalProperties: { $ref: '#/components/schemas/UsageBucket' } }
+        by_robot_id: { type: object, additionalProperties: { $ref: '#/components/schemas/UsageBucket' }, description: 'By project id.' }
+        by_task: { type: object, additionalProperties: { $ref: '#/components/schemas/UsageBucket' } }
+        by_day: { type: object, additionalProperties: { $ref: '#/components/schemas/UsageBucket' } }
+        recent: { type: array, items: { type: object, additionalProperties: true }, description: 'The latest calls.' }
+      required: [period, totals, by_role, by_model, by_robot_id, by_task, by_day, recent]

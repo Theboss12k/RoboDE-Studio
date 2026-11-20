@@ -18,7 +18,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class LlmSettings {
     private static final Logger LOG = LoggerFactory.getLogger(LlmSettings.class);
-    public static final List<String> ROLES = List.of("spec", "scene", "robot", "revise", "search", "extract", "analysis");
+    public static final List<String> ROLES = List.of("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects");
     private static final List<String> EFFORTS = List.of("", "low", "medium", "high", "xhigh", "max");
 
     private final Path path;
@@ -37,7 +37,7 @@ public class LlmSettings {
     private static ObjectNode defaultRoles() {
         ObjectNode r = Json.obj();
         r.put("spec", "claude_opus").put("scene", "claude_sonnet").put("robot", "claude_opus").put("revise", "claude_opus")
-                .put("search", "claude_sonnet").put("extract", "claude_sonnet").put("analysis", "claude_sonnet");
+                .put("search", "claude_sonnet").put("extract", "claude_sonnet").put("analysis", "claude_sonnet").put("objects", "claude_haiku");
         return r;
     }
 
@@ -46,6 +46,11 @@ public class LlmSettings {
                 .put("effort", "").put("timeout_s", 240).put("cli_path", "");
     }
 
+    private static final List<String[]> DEFAULT_PROFILES = List.of(
+            new String[] {"claude_opus", "Claude Opus 5.5 (Claude Code CLI)", "claude-opus-5-5"},
+            new String[] {"claude_sonnet", "Claude Sonnet 5.5 (Claude Code CLI)", "claude-sonnet-5-5"},
+            new String[] {"claude_haiku", "Claude Haiku 5.5 (Claude Code CLI)", "claude-haiku-5-5"});
+
     /** profiles + roles (profiles.json, or the defaults when it does not exist); later-added roles get their default. */
     public ObjectNode data() {
         synchronized (lock) {
@@ -53,8 +58,7 @@ public class LlmSettings {
             if (data == null) {
                 data = Json.obj();
                 ArrayNode profiles = Json.arr();
-                profiles.add(defaultProfile("claude_opus", "Claude Opus 5.5 (Claude Code CLI)", "claude-opus-5-5"));
-                profiles.add(defaultProfile("claude_sonnet", "Claude Sonnet 5.5 (Claude Code CLI)", "claude-sonnet-5-5"));
+                DEFAULT_PROFILES.forEach(p -> profiles.add(defaultProfile(p[0], p[1], p[2])));
                 data.set("profiles", profiles);
                 data.set("roles", defaultRoles());
             } else {
@@ -64,6 +68,13 @@ public class LlmSettings {
             if (data.get("roles") instanceof ObjectNode saved) saved.properties().forEach(e -> roles.set(e.getKey(), e.getValue()));
             data.set("roles", roles);
             if (!(data.get("profiles") instanceof ArrayNode)) data.set("profiles", Json.arr());
+            // a default profile that a role points to (a role added later) is added when the saved file lacks it
+            ArrayNode saved = (ArrayNode) data.get("profiles");
+            for (String[] p : DEFAULT_PROFILES) {
+                boolean have = saved.valueStream().anyMatch(n -> p[0].equals(Json.text(n, "id")));
+                boolean used = roles.valueStream().anyMatch(v -> p[0].equals(v.asString()));
+                if (!have && used) saved.add(defaultProfile(p[0], p[1], p[2]));
+            }
             return data;
         }
     }
@@ -195,7 +206,7 @@ public class LlmSettings {
         return p;
     }
 
-    /** {"roles": {all 7 roles resolved}, "profile": null} */
+    /** {"roles": {all roles resolved}, "profile": null} */
     public ObjectNode resolveRoles() {
         ObjectNode data = data();
         ObjectNode roles = Json.obj();

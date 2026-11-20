@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "Frame": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "joints": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Joints",
+          "type": "object"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "holding": {
+          "default": "",
+          "title": "Holding",
+          "type": "string"
+        },
+        "tcp": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tcp"
+        },
+        "phase": {
+          "default": "",
+          "title": "Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "joints"
+      ],
+      "title": "Frame",
+      "type": "object"
+    },
+    "TwinLimitHit": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "joint": {
+          "title": "Joint",
+          "type": "string"
+        },
+        "limit": {
+          "enum": [
+            "position",
+            "speed",
+            "acceleration",
+            "torque",
+            "ik"
+          ],
+          "title": "Limit",
+          "type": "string"
+        },
+        "detail": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "joint",
+        "limit"
+      ],
+      "title": "TwinLimitHit",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "frames": {
+      "items": {
+        "$ref": "#/$defs/Frame"
+      },
+      "title": "Frames",
+      "type": "array"
+    },
+    "reached": {
+      "title": "Reached",
+      "type": "boolean"
+    },
+    "duration_s": {
+      "title": "Duration S",
+      "type": "number"
+    },
+    "limits": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TwinLimitHit"
+      },
+      "title": "Limits",
+      "type": "array"
+    },
+    "torque_use": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "default": {},
+      "title": "Torque Use",
+      "type": "object"
+    },
+    "ik_error_m": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ik Error M"
+    }
+  },
+  "required": [
+    "frames",
+    "reached",
+    "duration_s"
+  ],
+  "title": "TwinMoveResult",
+  "type": "object"
+}

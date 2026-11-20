@@ -15,16 +15,26 @@ PROTOCOL = 1
 
 
 def fixture_download():
-    """Tests only (needs STUDIO_ALLOW_SCRIPTED=1): STUDIO_FAKE_DOWNLOAD=<file> serves that file for https://acme.example/
-    URLs, so flows can run offline. Every other URL still goes through the real safe_download."""
+    """Tests only (needs STUDIO_ALLOW_SCRIPTED=1). STUDIO_FAKE_DOWNLOAD=<file> serves that file for https://acme.example/
+    URLs, so flows can run offline. When <file> ends in .json it is a map {url: path of a saved page} (relative paths
+    are relative to the map file) and serves each listed URL (content type from the extension). Every other URL still
+    goes through the real safe_download."""
     path = os.environ.get('STUDIO_FAKE_DOWNLOAD')
     if not path or os.environ.get('STUDIO_ALLOW_SCRIPTED') != '1':
         return None
+    pages = None
+    if path.endswith('.json'):
+        base = Path(path).parent
+        pages = {url: (base / file) for url, file in json.loads(Path(path).read_text()).items()}
 
-    async def download(url):
-        if url.startswith('https://acme.example/'):
+    async def download(url, *args, **kwargs):
+        if pages is not None and url in pages:
+            file = pages[url]
+            kind = {'.html': 'text/html', '.htm': 'text/html', '.pdf': 'application/pdf'}.get(file.suffix, 'text/plain')
+            return Downloaded(bytes=file.read_bytes(), content_type=kind, final_url=url, filename=file.name)
+        if pages is None and url.startswith('https://acme.example/'):
             return Downloaded(bytes=Path(path).read_bytes(), content_type='text/markdown', final_url=url, filename='ra6.md')
-        return await handlers.safe_download(url)
+        return await handlers.safe_download(url, *args, **kwargs)
     return download
 
 

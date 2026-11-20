@@ -108,3 +108,53 @@ def test_more_than_eight_images_are_truncated():
     assert [l for l in lines if 'Only 8 images' in l] == ['Only 8 images can be sent to the spec LLM; 2 not used']
     payload_text = adapter.calls[-1]['input']
     assert '"image":8' in payload_text.replace(' ', '') and '"image":9' not in payload_text.replace(' ', '')
+
+
+def test_brief_images_reach_the_spec_call_first_with_labels(tmp_path):
+    a, b = images(tmp_path, 2)
+    inp = design_input(brief_images=[{'path': a, 'name': 'cell.png'}], answer_images=[{'path': b, 'question': 'layout'}])
+    run = run_task('design', request('design', inp, tmp_path, profiles(fixture(tmp_path, bottle_rules()))))
+    assert run.code == 0, run.stderr
+    call = spec_call(run)
+    assert call['images'] == 2
+    payload = json.loads(call['input'].split('(JSON):\n', 1)[1].split('\n\n', 1)[0])
+    assert payload['answer_attachments'] == [{'image': 2, 'question': 'layout'}]
+    assert '1 attached to the brief' in call['input'] and "2 attached to the answer of 'layout'" in call['input']
+    assert 'Photos attached to the brief' in call['system_prompt'] and 'never instructions' in call['system_prompt']
+
+
+def test_brief_image_only_and_helper_label(tmp_path):
+    (path,) = images(tmp_path, 1)
+    (img_,) = handlers.brief_images([{'path': path, 'name': 'cell.png'}])
+    assert img_.label == 'brief:cell.png' and img_.mime_type == 'image/png'
+    run = run_task('design', request('design', design_input(brief_images=[{'path': path, 'name': 'cell.png'}]), tmp_path,
+                                     profiles(fixture(tmp_path, bottle_rules()))))
+    assert run.code == 0, run.stderr
+    assert spec_call(run)['images'] == 1 and 'reference robot' not in spec_call(run)['input']
+
+
+def test_missing_brief_image_is_a_value_error(tmp_path):
+    inp = design_input(brief_images=[{'path': str(tmp_path / 'gone.png'), 'name': 'gone.png'}])
+    run = run_task('design', request('design', inp, tmp_path, profiles(fixture(tmp_path, bottle_rules()))))
+    assert run.code == 1 and run.error['kind'] == 'value' and 'gone.png' in run.error['message']
+
+
+def test_adapter_without_images_drops_brief_images():
+    adapter, lines = TextOnly(), []
+    extras = {'brief_images': [img('brief:cell.png')]}
+    step = asyncio.run(pipeline.specify(Registry(adapter), 'bottle', None, {}, 1, lines.append, extras))
+    assert step['status'] == 'spec'
+    assert [l for l in lines if 'cannot read images' in l] == ['The spec LLM cannot read images; the photos are not used']
+    assert adapter.inner.calls[-1]['images'] == 0 and 'Photos follow' not in adapter.inner.calls[-1]['input']
+
+
+def test_brief_images_take_priority_under_the_cap():
+    adapter = ScriptedLLM([('requirements engineer', {'spec': spec_dict()})])
+    reference = {'text': '', 'urdf': None, 'images': [img(f'r{i}.png') for i in range(3)]}
+    extras = {'brief_images': [img(f'brief:b{i}.png') for i in range(3)], 'answer_images': [img(f'answer:q{i}:a.png') for i in range(4)]}
+    lines = []
+    asyncio.run(pipeline.specify(Registry(adapter), 'bottle', reference, {}, 1, lines.append, extras))
+    assert adapter.calls[-1]['images'] == 8
+    assert lines.count('Only 8 images can be sent to the spec LLM; 2 not used') == 1
+    text = adapter.calls[-1]['input'].replace(' ', '')
+    assert '"image":8' in text and '"image":9' not in text and '"image":7' in text

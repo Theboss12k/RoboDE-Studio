@@ -7,6 +7,7 @@ in steady state is not checked.
 from __future__ import annotations
 
 import math
+import time
 
 import numpy as np
 
@@ -75,7 +76,7 @@ class _Track:
             k = int(np.searchsorted(self.t, tau, side='right')) - 1
             t0, t1 = self.t[k], self.t[k + 1]
             u = (tau - t0) / (t1 - t0) if t1 > t0 else 0.0
-            q, ph = self.q[k] + u * (self.q[k + 1] - self.q[k]), self.phase[k]
+            q, ph = self.q[k] + u * (self.q[k + 1] - self.q[k]), self.phase[k + 1]   # a frame's phase names the move into it
         pts = [np.array([self.x + self.c * a[0] - self.s * a[1], self.y + self.s * a[0] + self.c * a[1], a[2] + self.z])
                for a in self.fam.chain_points(self.p, q)]       # same transform as sim/task.py
         return pts, ph
@@ -144,12 +145,17 @@ def _buffer_ok(members, offs, cycle_s, links):
     return all(offs[m.id] <= cycle_s + 1e-9 for m in members if m.id not in receivers)
 
 
-def resolve_by_delay(members: list[FleetMember], offsets: dict[str, float], cycle_s: float, step: float = 0.2
-                     ) -> tuple[dict[str, float], list[str]]:
+PROGRESS_EVERY_S = 10.0       # resolve_by_delay reports at most this long apart while it works
+
+
+def resolve_by_delay(members: list[FleetMember], offsets: dict[str, float], cycle_s: float, step: float = 0.2,
+                     progress=None) -> tuple[dict[str, float], list[str]]:
     """Delay the later robot of the first colliding pair (and the robots it hands on to) in `step` increments until
     the robots stay clear, or until a further delay would break the cycle: a receiver would lift an item later than
-    one cycle after its giver started putting it down (one-item station buffer). Returns (offsets, log lines)."""
+    one cycle after its giver started putting it down (one-item station buffer). Returns (offsets, log lines).
+    `progress(text)`, when given, gets a line at least every PROGRESS_EVERY_S seconds of work."""
     off = dict(offsets)
+    last = time.monotonic()
     links = _links(members)
     order = [m.id for m in members]
     downstream = {m.id: set() for m in members}
@@ -174,6 +180,9 @@ def resolve_by_delay(members: list[FleetMember], offsets: dict[str, float], cycl
         off = trial
         delayed[later] = delayed.get(later, 0.0) + step
         hits, _, _, first = _clearance(members, off, 0.08)
+        if progress is not None and time.monotonic() - last >= PROGRESS_EVERY_S:
+            last = time.monotonic()
+            progress(f'Delaying {later} to clear the robots: {delayed[later]:.1f} s so far, {hits} contact episode(s) left')
         if hits == 0:
             break
     for i, d in delayed.items():

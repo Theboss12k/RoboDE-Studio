@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,9 +45,10 @@ class ApiController {
     private final JobService jobs;
     private final MetaService meta;
     private final TaskRunner runner;
+    private final JobApi jobApi;
 
     ApiController(ProjectStore store, ProjectService projects, LlmSettings llm, UsageLedger usage, JobService jobs,
-                  MetaService meta, TaskRunner runner) {
+                  MetaService meta, TaskRunner runner, JobApi jobApi) {
         this.store = store;
         this.projects = projects;
         this.llm = llm;
@@ -54,11 +56,18 @@ class ApiController {
         this.jobs = jobs;
         this.meta = meta;
         this.runner = runner;
+        this.jobApi = jobApi;
     }
 
     // -- jobs, health, families, LLM settings -------------------------------------------------------------------
     @GetMapping("/jobs/{id}")
-    JsonNode job(@PathVariable String id) { return jobs.get(id); }
+    ResponseEntity<JsonNode> job(@PathVariable String id, @RequestParam(defaultValue = "0") int wait,
+                                 @RequestParam(required = false) String expand) {
+        return jobApi.get(id, jobApi.options(wait, expand));
+    }
+
+    @DeleteMapping("/jobs/{id}")
+    JsonNode cancelJob(@PathVariable String id) { return jobs.cancel(id); }
 
     @GetMapping("/projects/{pid}/jobs")
     JsonNode projectJobs(@PathVariable String pid) {
@@ -136,13 +145,14 @@ class ApiController {
     }
 
     @PostMapping("/llm/profiles/{id}/test")
-    JsonNode testProfile(@PathVariable String id) {
+    ResponseEntity<JsonNode> testProfile(@PathVariable String id, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
         ObjectNode envelope = llm.forProfile(id); // 404 when the profile does not exist
-        return jobs.start("llm_test", null, job -> {
+        return jobApi.started(jobs.start("llm_test", null, job -> {
             try (TaskResult r = runner.run(job.id(), "llm_test", Json.obj(), envelope, null, "llm_test", job.listener())) {
                 return r.data();
             }
-        });
+        }), options);
     }
 
     // -- projects -----------------------------------------------------------------------------------------------
@@ -177,6 +187,39 @@ class ApiController {
         return store.view(pid);
     }
 
+    @PutMapping("/projects/{pid}/brief")
+    JsonNode putBrief(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        JsonNode brief = body == null ? null : body.get("brief");
+        if (brief == null || !brief.isString()) throw StudioException.value("brief must be a string of 10 to 20000 characters");
+        return projects.updateBrief(pid, brief.asString());
+    }
+
+    // -- brief images -------------------------------------------------------------------------------------------
+    @PostMapping("/projects/{pid}/brief/files")
+    JsonNode uploadBriefImage(@PathVariable String pid, @RequestParam String filename, HttpServletRequest request) {
+        store.require(pid);
+        return projects.uploadBriefImage(pid, filename, body(request));
+    }
+
+    @DeleteMapping("/projects/{pid}/brief/files/{name}")
+    JsonNode deleteBriefImage(@PathVariable String pid, @PathVariable String name) {
+        store.require(pid);
+        store.removeBriefImage(pid, dev.robode.studio.common.Ids.safeName(name));
+        return store.briefImages(pid);
+    }
+
+    @GetMapping("/projects/{pid}/brief/files/{name}")
+    ResponseEntity<byte[]> briefImage(@PathVariable String pid, @PathVariable String name) {
+        store.require(pid);
+        JsonNode entry = store.briefImage(pid, dev.robode.studio.common.Ids.safeName(name));
+        try {
+            return ResponseEntity.ok().contentType(MediaType.parseMediaType(Json.text(entry, "mime")))
+                    .body(Files.readAllBytes(store.briefImagePath(pid, Json.text(entry, "name"))));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     @PostMapping("/projects/{pid}/reference/files")
     JsonNode uploadReference(@PathVariable String pid, @RequestParam String filename, HttpServletRequest request) {
         store.require(pid);
@@ -192,7 +235,8 @@ class ApiController {
 
     // -- design -------------------------------------------------------------------------------------------------
     @PostMapping("/projects/{pid}/design")
-    JsonNode design(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+    ResponseEntity<JsonNode> design(@PathVariable String pid, @RequestBody(required = false) JsonNode body, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
         JsonNode answers = body == null ? null : body.get("answers");
         if (answers != null && !answers.isNull() && !answers.isObject()) throw StudioException.value("answers must be an object");
         JsonNode comments = body == null ? null : body.get("comments");
@@ -207,7 +251,7 @@ class ApiController {
         JsonNode note = body == null ? null : body.get("note");
         if (note != null && !note.isNull() && (!note.isString() || note.asString().length() > 4000))
             throw StudioException.value("note must be a string of at most 4000 characters");
-        return projects.design(pid, answers, comments, note == null || note.isNull() ? null : note.asString(), autoRepair(body));
+        return jobApi.started(projects.design(pid, answers, comments, note == null || note.isNull() ? null : note.asString(), autoRepair(body)), options);
     }
 
     private static final java.util.regex.Pattern COMMENT_KEY = java.util.regex.Pattern.compile("^[a-z][a-z0-9_]{0,40}$");
@@ -270,11 +314,87 @@ class ApiController {
     }
 
     @PostMapping("/projects/{pid}/revise")
-    JsonNode revise(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+    ResponseEntity<JsonNode> revise(@PathVariable String pid, @RequestBody(required = false) JsonNode body, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
         if (body == null || !body.isObject()) throw StudioException.value("request and base_version are required");
         JsonNode base = body.get("base_version");
         if (base != null && !base.isNull() && !base.canConvertToInt()) throw StudioException.value("base_version must be an integer");
-        return projects.revise(pid, Json.text(body, "request"), base == null || base.isNull() ? null : base.asInt(), body.get("t"), autoRepair(body));
+        return jobApi.started(projects.revise(pid, Json.text(body, "request"), base == null || base.isNull() ? null : base.asInt(), body.get("t"), autoRepair(body)), options);
+    }
+
+    // -- fleet --------------------------------------------------------------------------------------------------
+    @PutMapping("/projects/{pid}/fleet")
+    JsonNode putFleet(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        if (body == null || !body.isObject()) throw StudioException.value("enabled, limits or member are required");
+        Boolean enabled = null;
+        if (body.hasNonNull("enabled")) {
+            if (!body.get("enabled").isBoolean()) throw StudioException.value("enabled must be a boolean");
+            enabled = body.get("enabled").asBoolean();
+        }
+        boolean hasLimits = body.has("limits");
+        JsonNode limits = hasLimits && !body.get("limits").isNull() ? fleetLimits(body.get("limits")) : null;
+        boolean hasMember = body.has("member");
+        String member = null;
+        if (hasMember && !body.get("member").isNull()) {
+            JsonNode m = body.get("member");
+            if (!m.isString() || m.asString().isBlank() || m.asString().length() > 40) throw StudioException.value("member must be a robot id or null");
+            member = m.asString();
+        }
+        return projects.setFleet(pid, enabled, hasLimits, limits, hasMember, member);
+    }
+
+    private static ObjectNode fleetLimits(JsonNode in) {
+        if (!in.isObject()) throw StudioException.value("limits must be an object");
+        ObjectNode out = Json.obj();
+        for (var e : in.properties()) {
+            String k = e.getKey();
+            JsonNode v = e.getValue();
+            if (v.isNull()) { if (FLEET_LIMIT_KEYS.contains(k)) out.putNull(k); continue; }
+            switch (k) {
+                case "max_robots" -> {
+                    if (!v.isIntegralNumber() || v.asInt() < 2 || v.asInt() > 3) throw StudioException.value("limits.max_robots must be an integer from 2 to 3");
+                }
+                case "max_reach_m" -> {
+                    if (!v.isNumber() || v.asDouble() <= 0 || v.asDouble() > 10) throw StudioException.value("limits.max_reach_m must be above 0 and at most 10");
+                }
+                case "max_payload_kg" -> {
+                    if (!v.isNumber() || v.asDouble() <= 0 || v.asDouble() > 2000) throw StudioException.value("limits.max_payload_kg must be above 0 and at most 2000");
+                }
+                case "budget_usd" -> {
+                    if (!v.isNumber() || v.asDouble() < 0) throw StudioException.value("limits.budget_usd must be 0 or more");
+                }
+                case "families", "brands" -> {
+                    if (!v.isArray()) throw StudioException.value("limits." + k + " must be an array of strings");
+                    for (JsonNode x : v) if (!x.isString()) throw StudioException.value("limits." + k + " must be an array of strings");
+                }
+                case "note" -> {
+                    if (!v.isString() || v.asString().length() > 1000) throw StudioException.value("limits.note must be a string of at most 1000 characters");
+                }
+                default -> { continue; }
+            }
+            out.set(k, v);
+        }
+        return out;
+    }
+
+    private static final java.util.Set<String> FLEET_LIMIT_KEYS =
+            java.util.Set.of("max_robots", "max_reach_m", "max_payload_kg", "budget_usd", "families", "brands", "note");
+
+    @PostMapping("/projects/{pid}/fleet/assign")
+    JsonNode fleetAssign(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        JsonNode base = body == null ? null : body.get("base_version");
+        if (base != null && !base.isNull() && !base.canConvertToInt()) throw StudioException.value("base_version must be an integer");
+        JsonNode assignment = body == null ? null : body.get("assignment");
+        if (assignment != null && !assignment.isNull() && !assignment.isObject()) throw StudioException.value("assignment must be an object");
+        return projects.fleetAssign(pid, base == null || base.isNull() ? null : base.asInt(), assignment);
+    }
+
+    @PostMapping("/projects/{pid}/fleet/design")
+    ResponseEntity<JsonNode> fleetDesign(@PathVariable String pid, @RequestBody(required = false) JsonNode body, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
+        JsonNode base = body == null ? null : body.get("base_version");
+        if (base != null && !base.isNull() && !base.canConvertToInt()) throw StudioException.value("base_version must be an integer");
+        return jobApi.started(projects.fleetDesign(pid, base == null || base.isNull() ? null : base.asInt()), options);
     }
 
     @PostMapping("/projects/{pid}/approve")
@@ -286,7 +406,10 @@ class ApiController {
 
     // -- catalog ------------------------------------------------------------------------------------------------
     @PostMapping("/projects/{pid}/search")
-    JsonNode search(@PathVariable String pid) { return projects.search(pid); }
+    ResponseEntity<JsonNode> search(@PathVariable String pid, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
+        return jobApi.started(projects.search(pid), options);
+    }
 
     @GetMapping("/projects/{pid}/candidates")
     JsonNode candidates(@PathVariable String pid) {
@@ -295,10 +418,11 @@ class ApiController {
     }
 
     @PostMapping("/projects/{pid}/candidates/{cid}/analyse")
-    JsonNode analyse(@PathVariable String pid, @PathVariable String cid, @RequestBody(required = false) JsonNode body) {
+    ResponseEntity<JsonNode> analyse(@PathVariable String pid, @PathVariable String cid, @RequestBody(required = false) JsonNode body, @RequestParam(defaultValue = "0") int wait, @RequestParam(required = false) String expand, @RequestHeader(value = "X-Studio-Callback", required = false) String callback) {
+        JobApi.Options options = jobApi.options(wait, expand, callback);
         String url = body == null || body.isNull() ? null : Json.text(body, "datasheet_url");
         if (url != null && url.length() > 800) throw StudioException.value("datasheet_url must be at most 800 characters");
-        return projects.analyse(pid, cid, url);
+        return jobApi.started(projects.analyse(pid, cid, url), options);
     }
 
     @PostMapping("/projects/{pid}/candidates/{cid}/datasheet")

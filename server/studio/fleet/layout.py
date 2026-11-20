@@ -58,13 +58,13 @@ def _centre(points):
     return np.asarray(enclosing_circle([np.array(p) for p in pts])[0], float)
 
 
-def _push_from(b, p, dist):
-    """b moved straight away from p until |b - p| >= dist (xy)."""
+def _push_from(b, p, dist, away):
+    """b moved straight away from p until |b - p| >= dist (xy); along `away` when b sits on p."""
     d = b - p
     n = float(np.linalg.norm(d))
     if n >= dist:
         return b
-    u = d / n if n > 1e-9 else np.array([0.0, -1.0])
+    u = d / n if n > 1e-9 else away
     return p + u * dist
 
 
@@ -89,21 +89,41 @@ def plan_layout(spec: TechnicalSpec, assignment: FleetAssignment, limits: FleetL
     touch = {i: [h.id for h in a.handovers if i in (h.from_member, h.to_member)] for i in ids}
     hand = {h.id: h for h in a.handovers}
 
-    # (1) handovers start between the giver's last point and the receiver's first point
+    # (1) handovers start between the giver's last point and the receiver's first point (relays: evenly along the chain)
+    def back(hid, hops=0):
+        """The last task point before handover hid along its object's chain, and the relay hops to it."""
+        h = hand[hid]
+        g = seqs[h.from_member]
+        gi = next(j for j, it in enumerate(g) if it.handover == hid)
+        pts = [marks[it.target] for it in g[:gi] if not it.handover and it.target in marks and it.target != 'robot_base']
+        if pts:
+            return pts[-1], hops
+        prev = next((it.handover for it in reversed(g[:gi]) if it.handover and hand[it.handover].to_member == h.from_member), None)
+        if prev is not None and hops < len(hand):
+            return back(prev, hops + 1)
+        return (own(h.from_member) or task_pts)[-1], hops
+
+    def fwd(hid, hops=0):
+        """The first task point after handover hid along its object's chain, and the relay hops to it."""
+        h = hand[hid]
+        r = seqs[h.to_member]
+        ri = next(j for j, it in enumerate(r) if it.handover == hid)
+        pts = [marks[it.target] for it in r[ri + 1:] if not it.handover and it.target in marks and it.target != 'robot_base']
+        if pts:
+            return pts[0], hops
+        nxt = next((it.handover for it in r[ri + 1:] if it.handover and hand[it.handover].from_member == h.to_member), None)
+        if nxt is not None and hops < len(hand):
+            return fwd(nxt, hops + 1)
+        return (own(h.to_member) or task_pts)[0], hops
+
     H: dict[str, np.ndarray] = {}
     for h in a.handovers:
         if h.position is not None:
             H[h.id] = np.array(h.position, float)
             continue
-        g, r = seqs[h.from_member], seqs[h.to_member]
-        gi = next(j for j, it in enumerate(g) if it.handover == h.id)
-        ri = next(j for j, it in enumerate(r) if it.handover == h.id)
-        before = [marks[it.target] for it in g[:gi] if not it.handover and it.target in marks]
-        after = [marks[it.target] for it in r[ri + 1:] if not it.handover and it.target in marks]
-        p = before[-1] if before else (own(h.from_member) or after or task_pts)[-1]
-        q = after[0] if after else (own(h.to_member) or [p])[0]
-        mid = (p + q) / 2
-        H[h.id] = np.array([mid[0], mid[1], max(p[2], q[2])])
+        (p, nb), (q, nf) = back(h.id), fwd(h.id)
+        xy = p[:2] + (nb + 1) / (nb + nf + 2) * (q[:2] - p[:2])
+        H[h.id] = np.array([xy[0], xy[1], max(p[2], q[2])])
 
     def points(i):
         return [p[:2] for p in own(i)] + [H[h][:2] for h in touch[i]]
@@ -143,12 +163,18 @@ def plan_layout(spec: TechnicalSpec, assignment: FleetAssignment, limits: FleetL
         if moved < CONVERGED_M:
             converged = True
             break
-    spacing = min((float(np.linalg.norm(B[i] - B[j])) for x, i in enumerate(ids) for j in ids[x + 1:]), default=math.inf)
-    if spacing < MIN_BASE_SPACING_M - 1e-6:
-        log.append(f'Bases are only {spacing:.2f} m apart (fixed positions); {MIN_BASE_SPACING_M} m wanted')
+    for x, i in enumerate(ids):
+        for j in ids[x + 1:]:
+            d = float(np.linalg.norm(B[i] - B[j]))
+            if d < MIN_BASE_SPACING_M - 1e-3:
+                log.append(f'Bases of {i} and {j} are only {d:.2f} m apart; {MIN_BASE_SPACING_M} m wanted')
+        near = min((float(np.linalg.norm(B[i] - p[:2])) for p in task_pts), default=math.inf)
+        if near < POINT_CLEARANCE_M - 1e-3:
+            log.append(f'The base of {i} is {near:.2f} m from a task point; {POINT_CLEARANCE_M} m wanted')
     if not converged:
         log.append(f'Layout did not settle within {max_iter} iterations; the last positions are used')
 
+    parks = {i: _parks(i, ids, a, B, R, own(i) + [H[h] for h in touch[i]], mem[i]) for i in ids}
     bases = {}
     for i in ids:
         pz = float(fixed_base[i][2]) if i in fixed_base else bz
@@ -157,13 +183,11 @@ def plan_layout(spec: TechnicalSpec, assignment: FleetAssignment, limits: FleetL
         tgt = None
         if first is not None:
             tgt = H[first.handover] if first.handover else marks.get(first.target)
-        if tgt is None:
-            pts = own(i) + [H[h] for h in touch[i]]
-            tgt = pts[0] if pts else None
+        if tgt is None:                        # no pick: place_base faces the first task point, the start park
+            tgt = np.array(parks[i][0], float)
         d = (tgt[:2] - B[i]) if tgt is not None else np.zeros(2)
         yaw = math.atan2(d[1], d[0]) if np.linalg.norm(d) > 1e-9 else 0.0
         bases[i] = BasePose(position=(float(B[i][0]), float(B[i][1]), pz), yaw=yaw)
-    parks = {i: _parks(i, ids, a, B, R, own(i) + [H[h] for h in touch[i]], mem[i]) for i in ids}
     return Layout(bases=bases, handovers={k: (float(v[0]), float(v[1]), float(v[2])) for k, v in H.items()},
                   parks=parks, log=log, iterations=it, converged=converged)
 
@@ -191,8 +215,11 @@ def _separate(B, fixed, ids, task_pts, H, touch, rounds=12):
                 continue
             obstacles = [(p[:2], POINT_CLEARANCE_M) for p in task_pts]
             obstacles += [(v[:2], POINT_CLEARANCE_M if k in touch[i] else FOREIGN_STATION_CLEARANCE_M) for k, v in H.items()]
+            others = [B[j] for j in ids if j != i]
+            away = B[i] - np.mean(others, axis=0) if others else np.zeros(2)
+            away = away / np.linalg.norm(away) if np.linalg.norm(away) > 1e-9 else np.array([0.0, -1.0])
             for p, clr in obstacles:
-                nb = _push_from(B[i], p, clr)
+                nb = _push_from(B[i], p, clr, away)
                 if np.linalg.norm(nb - B[i]) > 1e-9:
                     B[i] = nb
                     changed = True
@@ -201,21 +228,26 @@ def _separate(B, fixed, ids, task_pts, H, touch, rounds=12):
 
 
 def _parks(i, ids, a, B, R, pts, m):
-    """(start, end) park marker positions: PARK_SHARE x reach budget from the base, away from the partner robots, at
-    the member's highest working surface; the move waypoint above a marker (sim/task.py) puts the tool at carry height
-    (marker z + object height + approach height). User-given start/end positions are kept."""
+    """(start, end) park marker positions: PARK_SHARE x reach budget from the base (never further than the member's
+    farthest working point, so parking does not make the robot bigger), away from the partner robots (a relay between
+    two partners parks POINT_CLEARANCE_M beside the line instead, so its frame or arm is not widened), at the member's
+    highest working surface; the move waypoint above a marker (sim/task.py) puts the tool at carry height (marker z +
+    object height + approach height). User-given start/end positions are kept."""
     partners = sorted({h.to_member if h.from_member == i else h.from_member
                        for h in a.handovers if i in (h.from_member, h.to_member)}) or [j for j in ids if j != i]
     pb = [B[j] for j in partners]
     d = B[i] - np.mean(pb, axis=0)
-    if np.linalg.norm(d) < 1e-6 and len(pb) > 1:
-        e = pb[-1] - pb[0]
+    e = pb[-1] - pb[0] if len(pb) > 1 else np.zeros(2)
+    between = len(pb) > 1 and np.linalg.norm(d) < 0.25 * np.linalg.norm(e)   # a relay between its partners
+    if between:                                # park beside the line, just clear of the base (no wider robot)
         d = np.array([-e[1], e[0]])
     if np.linalg.norm(d) < 1e-6:
         d = np.array([0.0, -1.0])
     u = d / np.linalg.norm(d)
     z = max((float(p[2]) for p in pts), default=0.0)
-    xy = B[i] + PARK_SHARE * R[i] * u
+    work = max((float(np.linalg.norm(np.asarray(p[:2], float) - B[i])) for p in pts), default=PARK_SHARE * R[i])
+    dist = POINT_CLEARANCE_M if between else min(PARK_SHARE * R[i], max(work, POINT_CLEARANCE_M))
+    xy = B[i] + dist * u
     auto = (float(xy[0]), float(xy[1]), z)
     start = tuple(float(c) for c in m.start) if m.start is not None else auto
     end = tuple(float(c) for c in m.end) if m.end is not None else auto

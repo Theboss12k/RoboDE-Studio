@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "TwinTarget": {
+      "properties": {
+        "joints": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Joints"
+        },
+        "cartesian": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cartesian"
+        },
+        "gripper": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gripper"
+        }
+      },
+      "title": "TwinTarget",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "q0": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Q0",
+      "type": "object"
+    },
+    "target": {
+      "$ref": "#/$defs/TwinTarget"
+    },
+    "speed_scale": {
+      "default": 1.0,
+      "exclusiveMinimum": 0,
+      "maximum": 2.0,
+      "title": "Speed Scale",
+      "type": "number"
+    }
+  },
+  "required": [
+    "q0",
+    "target"
+  ],
+  "title": "TwinMoveRequest",
+  "type": "object"
+}

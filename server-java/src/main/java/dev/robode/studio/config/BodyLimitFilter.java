@@ -10,6 +10,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Requests that announce more than 64 MB are refused before anything is read (chunked uploads are capped when read). */
 @Component
+@org.springframework.core.annotation.Order(20)
 public class BodyLimitFilter extends OncePerRequestFilter {
     public static final long MAX_BODY = 64L * 1024 * 1024;
 

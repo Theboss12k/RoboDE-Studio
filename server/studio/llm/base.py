@@ -85,14 +85,20 @@ def schema_instruction(schema):
             + json.dumps(portable_schema(schema), separators=(',', ':')))
 
 
-async def ask_json(adapter, input, system_prompt, *, schema=None, images=None, validate=None, native=True):
+JSON_REPAIRS = 3   # how many times a rejected answer is sent back with the error before the call fails
+
+
+async def ask_json(adapter, input, system_prompt, *, schema=None, images=None, validate=None, native=True,
+                   repairs=None):
     """Ask for a JSON object and return it parsed (and validated, when `validate` is given).
 
     With `native` and an adapter that offers `structured(schema)`, the provider enforces the schema (the Claude CLI's
     --json-schema: one extra turn, but long answers come out more compact). Otherwise the schema goes into the system
     prompt, where it is cached with the rest of it; the operator, with many short answers, chooses this. The schema
     is never sent twice.
-    `validate(data)` may raise ValueError; the message is sent back once so the model can repair its answer.
+    `validate(data)` may raise ValueError. Each failure (unparseable JSON or a rejected answer) is fed back to the model
+    with every earlier error, up to `repairs` times (default JSON_REPAIRS), so it can correct the answer; code still
+    decides whether the final answer is usable.
     """
     schema = portable_schema(schema) if schema is not None else None
     enforced = native and schema is not None and hasattr(adapter, 'structured')
@@ -100,8 +106,9 @@ async def ask_json(adapter, input, system_prompt, *, schema=None, images=None, v
     system = system_prompt
     if schema is not None and not enforced:
         system += schema_instruction(schema)
-    prompt, last = input, None
-    for attempt in range(2):
+    prompt, last, errors = input, None, []
+    attempts = 1 + (JSON_REPAIRS if repairs is None else max(0, repairs))
+    for attempt in range(attempts):
         if images:
             if not supports_images(model):
                 raise LLMError('This LLM profile cannot read images; choose one with image support')
@@ -115,6 +122,9 @@ async def ask_json(adapter, input, system_prompt, *, schema=None, images=None, v
             return validate(data) if validate else data
         except (ValueError, TypeError, KeyError) as error:
             last = error
-            prompt = (f'{input}\n\nYour previous answer could not be used: {str(error)[:600]}\n'
-                      'Answer again with one corrected JSON object only.')
-    raise LLMError(f'The model did not return usable JSON: {last}')
+            errors.append(str(error)[:600])
+            listed = '\n'.join(f'- attempt {i + 1}: {e}' for i, e in enumerate(errors))
+            prompt = (f'{input}\n\nYour previous answers could not be used. The checks in code said:\n{listed}\n'
+                      'Fix every problem listed (keep what was already right) and answer again with one corrected '
+                      'JSON object only.')
+    raise LLMError(f'The model did not return usable JSON after {attempts} attempts: {last}')

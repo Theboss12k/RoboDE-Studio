@@ -110,4 +110,25 @@ class ProjectStoreTest {
         assertThat(store.view(pid).get("reference").isNull()).isTrue();
         assertThatThrownBy(() -> store.create("  ")).hasMessage("Describe the job first");
     }
+
+    @Test
+    void answerImagesIndexBudgetAndView() throws Exception {
+        ProjectStore store = new ProjectStore(runtime);
+        String pid = store.create("x").get("id").asString();
+        assertThat(store.view(pid).has("answer_images")).isFalse();
+        assertThat(store.view(pid).has("answer_comments")).isFalse();
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0, 0, 0, 0};
+        for (int i = 0; i < 8; i++) {
+            java.nio.file.Path src = java.nio.file.Files.createTempFile("img", ".png");
+            java.nio.file.Files.write(src, png);
+            store.addAnswerImage(pid, "a" + i + ".png", "_general", src);
+        }
+        java.nio.file.Path extra = java.nio.file.Files.createTempFile("img", ".png");
+        assertThatThrownBy(() -> store.addAnswerImage(pid, "a9.png", "_general", extra))
+                .hasMessage("At most 8 images in total go to the spec agent (reference photos count too)");
+        assertThat(store.view(pid).get("answer_images").size()).isEqualTo(8);
+        assertThat(store.answerImagesForTask(pid).get(0).get("question").asString()).isEqualTo("_general");
+        store.removeAnswerImage(pid, "a0.png");
+        assertThat(store.answerImages(pid).size()).isEqualTo(7);
+    }
 }

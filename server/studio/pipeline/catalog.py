@@ -15,6 +15,7 @@ from ..schemas import Analysis
 from ..sim import report
 from ..sim.task import simulate
 from ..util import now, slug
+from .fleet import member_view
 
 
 class DatasheetError(ValueError):
@@ -33,9 +34,11 @@ class Document:
     downloaded: bool = False
 
 
-async def find(llms, version, progress, download=safe_download, limit=6):
-    """Search the web for robots that fit `version` (normally the approved one). Returns
+async def find(llms, version, progress, download=safe_download, limit=6, member=None):
+    """Search the web for robots that fit `version` (normally the approved one); on a multi-robot version, for
+    robot `member` (None = the primary robot, which the top-level fields already describe). Returns
     {'candidates': [Candidate], 'dropped': {reason: count}}; nothing is stored here."""
+    version = member_view(version, member)
     progress('Searching the web for robots that fit')
     set_context(task='search')
     dropped = Counter()
@@ -88,10 +91,12 @@ def unsupported_note(candidate):
 
 
 async def analyse(llms, version, candidate, datasheet_url, progress, download=safe_download, stored=None,
-                  stored_source=''):
+                  stored_source='', member=None):
     """Compare `candidate` with `version` (the approved design). `stored` is a previously saved or uploaded document
     text. Returns {'analysis': Analysis, 'document': {'text', 'url', 'title'} | None}; `document` is set only when
-    this call downloaded one, so the caller can keep it. Nothing is stored here."""
+    this call downloaded one, so the caller can keep it. Nothing is stored here. `member` picks a robot of a
+    multi-robot version (None = the primary one)."""
+    version = member_view(version, member)
     if candidate.family not in families.REGISTRY:
         raise ValueError(unsupported_note(candidate))
     doc = await datasheet_text(candidate, datasheet_url, progress, download, stored, stored_source)

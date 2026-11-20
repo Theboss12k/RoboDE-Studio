@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer
 
 Vec3 = tuple[float, float, float]
 
@@ -130,12 +130,42 @@ class SceneBox(Model):
     collides: bool = True                             # False for floor markings
 
 
+class ObjectModelPart(Model):
+    """One primitive of an object model, in the object's own frame: origin at the centre of the object's box, z up."""
+    shape: Literal['box', 'cylinder', 'sphere', 'cone', 'capsule', 'torus']
+    center: Vec3                                      # metres
+    size: Vec3                                        # full extents; cylinder/cone/capsule axis along z; torus: x = outer diameter, z = tube diameter
+    rotation: Vec3 = (0.0, 0.0, 0.0)                  # radians, XYZ
+    color: str = Field(pattern=r'^#[0-9a-fA-F]{6}$')
+    roughness: float = Field(default=0.6, ge=0, le=1)
+    metalness: float = Field(default=0.0, ge=0, le=1)
+    opacity: float = Field(default=1.0, ge=0.1, le=1)
+    label: str = Field(default='', max_length=60)
+
+
+class ObjectModel(Model):
+    """A recognisable model of a task object made of simple primitives (objects agent)."""
+    object_id: str
+    parts: list[ObjectModelPart] = Field(min_length=1, max_length=24)
+    note: str = Field(default='', max_length=300)
+
+
 class SceneObject(Model):
     id: str                                           # TaskObject id
     shape: Literal['box', 'cylinder', 'sphere'] = 'box'
     center: Vec3
     size: Vec3
     color: str = Field(default='#2f80ed', pattern=r'^#[0-9a-fA-F]{6}$')
+    name: str = Field(default='', json_schema_extra={'x-optional': True})   # the TaskObject's name; dropped from JSON when empty
+    model: ObjectModel | None = Field(default=None, json_schema_extra={'x-optional': True})   # dropped from JSON when None
+
+    @model_serializer(mode='wrap')
+    def _drop_empty(self, handler):
+        out = handler(self)
+        for key in ('name', 'model'):
+            if not out.get(key):
+                out.pop(key, None)
+        return out
 
 
 class BasePose(Model):
@@ -416,3 +446,213 @@ class Analysis(Model):
     unverified: list[str] = []                        # values shown but excluded from pass/fail
     provenance: dict[str, str] = {}                   # param -> 'verified|derived|carried|default: how the candidate model got it'
     created: str = ''
+
+
+# --- Robot studio (an approved design -> a buildable robot: motors, CAD, digital twin, manufacturer PDF) -------------
+# Numbers that decide pass or fail come from code (robot/sizing.py, style.py, cad checks); a model's motor or style choice is a
+# proposal until code has checked it. Torques are N*m for revolute joints and N for prismatic joints; speeds are rad/s
+# or m/s; all on the JOINT side unless a field says motor side.
+
+ID_PATTERN = r'^[a-z][a-z0-9_]{0,62}$'
+
+
+class ShopPrice(Model):
+    """A price as a shop listed it on a date: an estimate for planning, never a quote."""
+    amount: float | None = None
+    currency: str = Field(default='INR', max_length=8)
+    seen: str = Field(max_length=40)                  # date the page was read (ISO date)
+    shop: str = Field(max_length=80)
+    source_url: str = Field(max_length=800)
+    quote: str = Field(default='', max_length=600)    # verbatim price text from the page
+
+    @field_validator('source_url')
+    @classmethod
+    def http_only(cls, value):
+        if not value.startswith(('https://', 'http://')):
+            raise ValueError('source_url must be an http(s) URL')
+        return value
+
+
+class SpecValue(Model):
+    """One value of a motor or part. verified = quoted on the shop/datasheet page and the quote contains the number
+    (checked in code); assumed = from a standard table or rule (e.g. NEMA frame size); defined = a value we specify
+    for procurement because nothing suitable was found."""
+    key: str = Field(pattern=ID_PATTERN)              # e.g. rated_torque_nm, rated_speed_rpm, current_a, frame
+    value: float | None = None
+    text: str = Field(default='', max_length=120)     # non-numeric values (frame "NEMA 23", shaft "8 mm D-cut")
+    unit: str = Field(default='', max_length=40)
+    status: Literal['verified', 'assumed', 'defined']
+    quote: str = Field(default='', max_length=600)
+    source_url: str = Field(default='', max_length=800)
+    note: str = Field(default='', max_length=300)
+
+
+class JointSizing(Model):
+    """What a joint needs, computed in code from the design (gravity_torques over the task frames and a stretched pose,
+    link inertia times acceleration, RMS over the frames, safety factors)."""
+    joint: str
+    kind: Literal['revolute', 'prismatic', 'wheel']
+    static_torque: float                              # worst static load (N*m or N)
+    accel_torque: float                               # (I + m r^2) * alpha
+    continuous: float                                 # RMS over the task * SF 1.25
+    peak: float                                       # worst instant * SF 1.5
+    speed: float                                      # peak joint speed (rad/s or m/s)
+    torque_unit: str = 'N*m'
+    speed_unit: str = 'rad/s'
+    calcs: list[Calc] = []
+
+
+class Drive(Model):
+    """The transmission between motor and joint. ratio = motor turns per joint turn; for a leadscrew or belt-driven
+    linear axis, ratio = motor rad per metre of travel (2*pi/lead or 2*pi/(pulley pitch circumference))."""
+    type: Literal['direct', 'planetary', 'harmonic', 'belt', 'leadscrew', 'rack', 'wheel_gearbox']
+    ratio: float = Field(gt=0)
+    efficiency: float = Field(gt=0, le=1)
+    lead_m: float | None = None                       # leadscrew lead or belt pitch-circle travel per motor turn
+    name: str = Field(default='', max_length=200)     # gearbox product or standard description
+
+
+class MotorAlternative(Model):
+    id: str = Field(pattern=ID_PATTERN)               # stable within a build; used to pin it in a rebuild
+    name: str = Field(max_length=200)
+    shop: str = Field(default='', max_length=80)
+    url: str = Field(default='', max_length=800)
+    price: ShopPrice | None = None
+    motor_type: Literal['stepper', 'bldc', 'servo', 'dc_gear', 'other'] = 'other'
+    values: list[SpecValue] = []
+    drive: Drive | None = None                        # the gearing code would pair it with
+    passes: bool = False                              # code: verified critical values and margins pass
+    reason: str = Field(default='', max_length=400)   # why it passes or fails (code)
+
+
+class MotorChoice(Model):
+    joint: str
+    source: Literal['shop', 'defined']                # defined = no suitable product found: procure to this spec
+    alternative_id: str | None = None                 # the chosen MotorAlternative (None for defined)
+    name: str = Field(max_length=200)
+    shop: str = Field(default='', max_length=80)
+    url: str = Field(default='', max_length=800)
+    price: ShopPrice | None = None
+    motor_type: Literal['stepper', 'bldc', 'servo', 'dc_gear', 'other'] = 'other'
+    values: list[SpecValue] = []                      # rated/peak torque, rated speed, voltage, current, mass, frame...
+    drive: Drive
+    required: dict[str, float] = {}                   # joint side: continuous, peak, speed
+    provided: dict[str, float] = {}                   # joint side, through the drive
+    margins: dict[str, float] = {}                    # provided / required (and inertia_ratio, as a value)
+    checks: list[Check] = []
+    alternatives: list[MotorAlternative] = []
+    pinned: bool = False                              # the user chose it ("Use this one")
+
+
+class ElectronicsItem(Model):
+    id: str = Field(pattern=ID_PATTERN)
+    role: Literal['driver', 'controller', 'power_supply', 'battery', 'other']
+    name: str = Field(max_length=200)
+    source: Literal['shop', 'defined']
+    qty: int = Field(default=1, ge=1)
+    for_joints: list[str] = []
+    shop: str = Field(default='', max_length=80)
+    url: str = Field(default='', max_length=800)
+    price: ShopPrice | None = None
+    values: list[SpecValue] = []
+    checks: list[Check] = []                          # e.g. driver current >= 1.2 x motor current
+
+
+class StructureStyle(Model):
+    style: Literal['extrusion_printed', 'machined_aluminium']
+    proposed: Literal['extrusion_printed', 'machined_aluminium']   # the style agent's proposal
+    reasons: list[str] = []                           # the agent's reasons (a proposal)
+    forced: bool = False                              # code overrode the proposal because a check failed
+    checks: list[Check] = []                          # bending, deflection, print envelope, printed-part loads
+
+
+class BuildFile(Model):
+    path: str = Field(max_length=300)                 # relative to the build folder, e.g. parts/link_2.step
+    kind: Literal['step', 'stl', 'urdf', 'pdf', 'zip', 'csv', 'png', 'json']
+    sha256: str = Field(default='', max_length=64)
+    bytes: int = 0
+
+
+class BuildPart(Model):
+    id: str = Field(pattern=ID_PATTERN)
+    name: str = Field(max_length=200)
+    qty: int = Field(default=1, ge=1)
+    material: str = Field(default='', max_length=120)
+    process: Literal['printed', 'machined', 'cut', 'purchased', 'standard']
+    source: Literal['custom', 'standard', 'purchased']
+    mass_kg: float = 0.0
+    link: str | None = None                           # URDF link the part belongs to (built in that link's frame)
+    joint: str | None = None                          # for motors, gearboxes, bearings
+    files: list[BuildFile] = []
+    spec: str = Field(default='', max_length=400)     # e.g. "6805-2RS, 25 x 37 x 7 mm" for standard parts
+    url: str = Field(default='', max_length=800)
+
+
+class TwinJointLimit(Model):
+    joint: str
+    kind: Literal['revolute', 'prismatic', 'wheel']
+    lower: float
+    upper: float
+    max_speed: float                                  # min(URDF limit, motor rated speed / ratio), joint side
+    max_accel: float
+    max_torque: float                                 # motor peak through the drive, joint side
+
+
+class TwinLimits(Model):
+    joints: list[TwinJointLimit]
+    gripper: TwinJointLimit | None = None             # the studio URDF's prismatic `gripper` joint (opening, m)
+    dt_s: float = 0.02                                # twin step
+    accel_ramp_s: float = 0.2
+
+
+class StudioBuild(Model):
+    build: int                                        # b1, b2, ... within the project
+    design_version: int                               # the approved DesignVersion it was built from
+    member: str | None = None                         # fleet member built (None = single robot)
+    parent_build: int | None = None
+    created: str
+    request: str = Field(default='', max_length=2000)  # the user's change request ('' for b1)
+    summary: str = Field(default='', max_length=2000)
+    family: str
+    search_date: str = ''                             # when the shops were searched (prices are as seen then)
+    sizing: list[JointSizing]
+    motors: list[MotorChoice]
+    electronics: list[ElectronicsItem] = []
+    style: StructureStyle
+    parts: list[BuildPart]
+    urdf: str                                         # studio URDF: mesh geometry + `gripper` joint
+    twin_limits: TwinLimits
+    checks: list[Check] = []                          # CAD validity, frames vs joint chain, motor axes, sizing margins
+    files: list[BuildFile] = []                       # assembly.step, urdf/robot.urdf, urdf/meshes/*.stl, ...
+    approved: bool = False
+    approved_at: str | None = None
+
+
+# --- Digital twin API (stateless, deterministic, no LLM) ---
+
+class TwinTarget(Model):
+    joints: dict[str, float] | None = None            # joint targets (rad or m)
+    cartesian: Vec3 | None = None                     # tool centre point target in the WORLD frame (tool down)
+    gripper: float | None = None                      # gripper opening (m)
+
+
+class TwinMoveRequest(Model):
+    q0: dict[str, float]                              # current joint positions (gripper included when present)
+    target: TwinTarget
+    speed_scale: float = Field(default=1.0, gt=0, le=2.0)   # >1 asks for more than the limits allow: they bind
+
+
+class TwinLimitHit(Model):
+    t: float
+    joint: str
+    limit: Literal['position', 'speed', 'acceleration', 'torque', 'ik']
+    detail: str = Field(default='', max_length=300)
+
+
+class TwinMoveResult(Model):
+    frames: list[Frame]                               # at twin_limits.dt_s (downsampled to <= 1500)
+    reached: bool
+    duration_s: float
+    limits: list[TwinLimitHit] = []                   # which limits bound, first instants
+    torque_use: dict[str, float] = {}                 # peak required / available torque per joint (1.0 = at limit)
+    ik_error_m: float | None = None                   # for a cartesian target
