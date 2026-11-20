@@ -39,7 +39,7 @@ export default function Design({ project, reload, approved }: { project: Project
     if (!v) return;
     const result = await revise.run<{ version: number }>(() => api.post(`/projects/${project.id}/revise`, {
       request: request.trim(), base_version: v.version, t: player.current?.getMoment().t ?? 0, auto_repair: autoRepair,
-    } satisfies ReviseRequest & { auto_repair: boolean }), `v${v.version}`);
+    } satisfies ReviseRequest), `v${v.version}`);
     if (!result) return;
     setRequest(""); setCurrent(result.version); await reload();
   }

@@ -29,4 +29,4 @@ export type ProjectSummary = { id: string; title?: string; stage?: string };
 export type Job<T = unknown> = { id: string | null; status: "running" | "done" | "error"; progress: string[]; result: T | null; error: string | null };
 
 /** Body of POST /projects/{id}/revise: the version being viewed and the moment on screen (seconds into its simulation). */
-export type ReviseRequest = { request: string; base_version: number; t: number };
+export type ReviseRequest = { request: string; base_version: number; t: number; auto_repair?: boolean };
