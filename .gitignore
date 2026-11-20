@@ -1,0 +1,17 @@
+# Dependencies and build output
+node_modules/
+client/dist/
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Saved robots, generated drivers, LLM profiles, usage log and API keys (runtime/llm/keys.json)
+runtime/
+
+# Local settings
+.env
+.DS_Store
+.claude/

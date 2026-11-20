@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { api, runJob } from "../api";
+import Usage from "../Usage";
+import { StageHead } from "../components/common";
+
+type Profile = { id: string; name: string; kind: string; model: string; effort: string; timeout_s: number; cli_path: string };
+type KeyStatus = { saved: boolean; environment: string | null; ready: boolean };
+type Settings = {
+  profiles: Profile[]; roles: Record<string, string>; kinds: string[]; models: Record<string, string[]>;
+  keys: Record<string, KeyStatus>;
+};
+
+const ROLES: Record<string, string> = {
+  spec: "Turns your brief into a technical specification and asks questions",
+  scene: "Lays out the scene: table, obstacles, markers and objects",
+  robot: "Chooses the robot type and its starting parameters",
+  revise: "Turns your change requests into design changes",
+  search: "Searches the web for real robots and their prices",
+  extract: "Reads manufacturer datasheets and quotes the values it finds",
+  analysis: "Explains what each difference means for your task",
+};
+
+const PROVIDERS: Record<string, { label: string; note: string }> = {
+  claude_cli: { label: "Claude (Claude Code CLI)", note: "Uses the Claude Code sign-in on this computer. No key needed." },
+  gemini: { label: "Google Gemini (API key)", note: "Uses the Gemini API with your key from Google AI Studio. Billed by Google to that key." },
+};
+
+const DEFAULT_MODEL: Record<string, string> = { claude_cli: "claude-haiku-5-5", gemini: "gemini-3.8-flash" };
+
+export default function Settings() {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [kind, setKind] = useState("claude_cli");
+  const [draft, setDraft] = useState({ name: "", model: DEFAULT_MODEL.claude_cli, effort: "", timeout_s: 240, cli_path: "" });
+  const [key, setKey] = useState("");
+  const [tests, setTests] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const load = () => api.get<Settings>("/llm").then(setSettings).catch((e) => setError(e.message));
+  useEffect(() => { void load(); }, []);
+  if (!settings) return <div className="page">{error ? <div className="notice error">{error}</div> : <div className="busy">Loading</div>}</div>;
+
+  const gemini = settings.keys?.gemini;
+  const profileById = Object.fromEntries(settings.profiles.map((p) => [p.id, p]));
+  const needsKey = (p?: Profile) => p?.kind === "gemini" && !gemini?.ready;
+
+  async function attempt(work: () => Promise<unknown>) {
+    setError("");
+    try { await work(); await load(); } catch (e) { setError((e as Error).message); }
+  }
+  const setRole = (role: string, id: string) => attempt(() => api.put("/llm/roles", { roles: { [role]: id } }));
+  const add = () => attempt(async () => {
+    await api.post("/llm/profiles", { ...draft, kind, cli_path: kind === "claude_cli" ? draft.cli_path : "", name: draft.name || draft.model });
+    setDraft({ ...draft, name: "" });
+  });
+  const saveKey = () => attempt(async () => { await api.put("/llm/keys/gemini", { key }); setKey(""); });
+  const forgetKey = () => attempt(() => api.del("/llm/keys/gemini"));
+  const remove = (id: string) => attempt(() => api.del(`/llm/profiles/${id}`));
+  function choose(next: string) {
+    setKind(next);
+    setDraft({ ...draft, model: DEFAULT_MODEL[next], effort: "" });
+  }
+  async function test(id: string) {
+    setTests({ ...tests, [id]: "Testing…" });
+    try {
+      const r = await runJob<{ text: string; text_seconds: number; images: string | null; image_seconds?: number }>(api.post(`/llm/profiles/${id}/test`));
+      setTests((t) => ({ ...t, [id]: `Text: “${r.text}” in ${r.text_seconds} s. Images: ${r.images ? `“${r.images}” in ${r.image_seconds} s` : "not supported"}.` }));
+    } catch (e) { setTests((t) => ({ ...t, [id]: (e as Error).message })); }
+  }
+
+  return (
+    <div className="page">
+      <StageHead title="Settings and AI models">Assign models to workflow stages, manage provider connections, and review usage.</StageHead>
+      {error && <div className="notice error">{error}</div>}
+      <Usage />
+      <div className="panel">
+        <h3>Who does what</h3>
+        <table><tbody>{Object.entries(ROLES).map(([role, text]) => (
+          <tr key={role}><td><b>{role[0].toUpperCase() + role.slice(1)}</b><div className="small muted">{text}</div>
+            {needsKey(profileById[settings.roles[role]]) && <div className="small warn-text">Needs a Gemini API key (below)</div>}</td>
+            <td><select aria-label={`Model for ${role}`} value={settings.roles[role]} onChange={(e) => void setRole(role, e.target.value)}>{settings.profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td></tr>))}</tbody></table>
+      </div>
+      <div className="panel">
+        <h3>Saved models</h3>
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="Saved models table">
+          <table><thead><tr><th>Name</th><th>Provider</th><th>Model</th><th>Effort</th><th /></tr></thead>
+          <tbody>{settings.profiles.map((p) => (
+            <tr key={p.id}><td>{p.name}{tests[p.id] && <div className="small muted">{tests[p.id]}</div>}</td>
+              <td><span className={`tag ${p.kind === "gemini" ? "google" : ""}`}>{p.kind === "gemini" ? "Gemini" : p.kind === "claude_cli" ? "Claude" : p.kind}</span></td>
+              <td className="mono small">{p.model}</td><td>{p.effort || "default"}</td>
+              <td><div className="row"><button disabled={needsKey(p)} title={needsKey(p) ? "Add a Gemini API key first" : undefined} onClick={() => void test(p.id)}>Test</button>
+                <button className="link" onClick={() => void remove(p.id)}>Remove</button></div></td></tr>))}</tbody></table>
+        </div>
+      </div>
+      <div className="panel">
+        <h3>Add a model</h3>
+        <div className="tabs" role="tablist" aria-label="Provider">
+          {Object.entries(PROVIDERS).filter(([k]) => settings.kinds.includes(k)).map(([k, p]) => (
+            <button key={k} role="tab" aria-selected={kind === k} onClick={() => choose(k)}>{p.label}</button>))}
+        </div>
+        <p className="small muted">{PROVIDERS[kind]?.note}</p>
+        {kind === "gemini" && (
+          <div className="key-box">
+            <div>
+              <b>Gemini API key</b>{" "}
+              {gemini?.saved ? <span className="tag ok">saved on this computer</span>
+                : gemini?.environment ? <span className="tag ok">from {gemini.environment}</span>
+                : <span className="tag warn">not set</span>}
+              <p className="small muted">Create one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener">aistudio.google.com/apikey</a>. It is stored in the server runtime folder, readable only by your user account, never shown again and never sent anywhere but Google.</p>
+            </div>
+            <div className="row">
+              <label className="field">{gemini?.saved ? "Replace key" : "Key"}
+                <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste your key" /></label>
+              <button disabled={!key.trim()} onClick={() => void saveKey()}>Save key</button>
+              {gemini?.saved && <button className="link" onClick={() => void forgetKey()}>Remove saved key</button>}
+            </div>
+          </div>
+        )}
+        <div className="row">
+          <label className="field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={kind === "gemini" ? "Gemini search" : "Fast model"} /></label>
+          <label className="field">Model
+            {kind === "gemini"
+              ? <><input list="gemini-models" value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} spellCheck={false} />
+                  <datalist id="gemini-models">{(settings.models.gemini ?? []).map((m) => <option key={m} value={m} />)}</datalist></>
+              : <select value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })}>{(settings.models.claude_cli ?? []).map((m) => <option key={m}>{m}</option>)}</select>}
+          </label>
+          <label className="field">{kind === "gemini" ? "Thinking" : "Effort"}
+            <select value={draft.effort} onChange={(e) => setDraft({ ...draft, effort: e.target.value })}>
+              <option value="">{kind === "gemini" ? "Model default" : "CLI default"}</option>
+              {(kind === "gemini" ? ["low", "medium", "high"] : ["low", "medium", "high", "xhigh", "max"]).map((m) => <option key={m}>{m}</option>)}
+            </select></label>
+          {kind === "claude_cli" && <label className="field">CLI path (optional)<input value={draft.cli_path} onChange={(e) => setDraft({ ...draft, cli_path: e.target.value })} placeholder="found automatically" /></label>}
+        </div>
+        <div><button onClick={() => void add()}>Add model</button></div>
+        {kind === "gemini" && <p className="small muted">Suggested: a fast model for search and extraction, a stronger one for the specification, robot and revise roles. Web search uses Grounding with Google Search: 5,000 searches a month free, then $14 per 1,000 (Google's prices, November 2026).</p>}
+      </div>
+    </div>
+  );
+}

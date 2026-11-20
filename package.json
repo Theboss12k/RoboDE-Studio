@@ -1,0 +1,20 @@
+{
+  "name": "robode-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Design a rough robot from a task, see it work, then find and check real robots that can do the job.",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "setup": "node scripts/studio.mjs setup",
+    "dev": "node scripts/studio.mjs dev",
+    "api": "node scripts/studio.mjs api",
+    "test": "node scripts/studio.mjs test",
+    "build": "npm run build --workspace client",
+    "typecheck": "npm run typecheck --workspace client"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
