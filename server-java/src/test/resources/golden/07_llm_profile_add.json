@@ -1,0 +1,22 @@
+{
+  "method": "POST",
+  "path": "/api/llm/profiles",
+  "request_body": {
+    "name": "Fixture profile",
+    "kind": "claude_cli",
+    "model": "claude-sonnet-5-5",
+    "effort": "low",
+    "timeout_s": 240,
+    "cli_path": ""
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<profile_id>",
+    "name": "Fixture profile",
+    "kind": "claude_cli",
+    "model": "claude-sonnet-5-5",
+    "effort": "low",
+    "timeout_s": 240,
+    "cli_path": ""
+  }
+}

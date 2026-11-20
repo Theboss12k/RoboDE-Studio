@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/design",
+  "request_body": {
+    "answers": {}
+  },
+  "status": 409,
+  "response_body": {
+    "detail": "This project is still working on another design step"
+  }
+}

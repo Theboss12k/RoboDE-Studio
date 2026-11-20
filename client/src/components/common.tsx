@@ -1,6 +1,6 @@
 // Small shared pieces: job runner hook, progress lines, chips, number formatting, and the dictation text box.
 import { useId, useState } from "react";
-import { Mic, Square } from "lucide-react";
+import { Dictate, Fail, NoVerdict, NotPublished, Pass, StopDictation } from "./icons";
 import { runJob, type Job } from "../api";
 import { useVoice } from "../useVoice";
 import type { Check } from "../types";
@@ -35,15 +35,17 @@ export function JobStatus({ busy, lines, error, label = "Working" }: { busy: boo
   );
 }
 
-export function PassChip({ passed }: { passed: boolean | null | undefined }) {
-  if (passed === true) return <span className="tag ok">PASS</span>;
-  if (passed === false) return <span className="tag bad">FAIL</span>;
-  return <span className="tag" title="Could not be checked">—</span>;
+export function PassChip({ passed, unpublished, detail }: { passed: boolean | null | undefined; unpublished?: boolean; detail?: string }) {
+  if (passed === true) return <span className="tag ok"><Pass size={14} aria-hidden="true" />PASS</span>;
+  if (passed === false) return <span className="tag bad"><Fail size={14} aria-hidden="true" />FAIL</span>;
+  if (unpublished) return <span className="tag warn" title={detail || "The manufacturer does not publish this value"}><NotPublished size={14} aria-hidden="true" />not published</span>;
+  return <span className="tag" title="Could not be checked"><NoVerdict size={14} aria-hidden="true" /><span className="sr-only">Could not be checked</span></span>;
 }
 
 export function screenChips(screen: Check[]) {
   return screen.map((c) => (
     <span key={c.requirement_id} className={`tag ${c.passed === true ? "ok" : c.passed === false ? "bad" : ""}`} title={c.detail}>
+      {c.passed === true ? <Pass size={14} aria-hidden="true" /> : c.passed === false ? <Fail size={14} aria-hidden="true" /> : <NoVerdict size={14} aria-hidden="true" />}
       {c.name}: {c.passed === true ? "pass" : c.passed === false ? "fail" : "unknown"}
     </span>
   ));
@@ -63,7 +65,7 @@ export function Dictation({ value, onChange, placeholder, rows = 4, label, disab
       <div className="row dict">
         <textarea id={id} aria-describedby={hint ? id + "-hint" : undefined} className={big ? "big-text" : ""} rows={rows} value={value} disabled={disabled} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
         <button type="button" className="mic" aria-pressed={voice.listening} aria-label={voice.listening ? "Stop dictation" : "Dictate with the microphone"} disabled={disabled} onClick={voice.toggle}>
-          {voice.listening ? <Square size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
+          {voice.listening ? <StopDictation size={18} aria-hidden="true" /> : <Dictate size={18} aria-hidden="true" />}
         </button>
       </div>
       {problem && <div className="notice warning small" role="status">{problem}</div>}

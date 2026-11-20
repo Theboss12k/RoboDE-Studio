@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/does-not-exist",
+  "request_body": null,
+  "status": 404,
+  "response_body": {
+    "detail": "Not found"
+  }
+}

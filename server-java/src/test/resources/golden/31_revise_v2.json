@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/revise",
+  "request_body": {
+    "request": "make it reach 20 cm further"
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "revise",
+    "robot_id": "<project_id>",
+    "status": "running",
+    "progress": [],
+    "result": null,
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

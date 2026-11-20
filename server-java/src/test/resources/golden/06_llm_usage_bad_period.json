@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/llm/usage?period=forever",
+  "request_body": null,
+  "status": 422,
+  "response_body": {
+    "detail": "period is today, 7d, 30d or all"
+  }
+}

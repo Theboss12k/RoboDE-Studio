@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "FleetHandover": {
+      "properties": {
+        "id": {
+          "pattern": "^h[1-9]$",
+          "title": "Id",
+          "type": "string"
+        },
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "from_member": {
+          "title": "From Member",
+          "type": "string"
+        },
+        "to_member": {
+          "title": "To Member",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "fixed": {
+          "default": false,
+          "title": "Fixed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "object",
+        "from_member",
+        "to_member"
+      ],
+      "title": "FleetHandover",
+      "type": "object"
+    },
+    "FleetMemberAssignment": {
+      "properties": {
+        "id": {
+          "pattern": "^r[1-9]$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "family": {
+          "default": "",
+          "title": "Family",
+          "type": "string"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        }
+      },
+      "required": [
+        "id",
+        "actions"
+      ],
+      "title": "FleetMemberAssignment",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "members": {
+      "items": {
+        "$ref": "#/$defs/FleetMemberAssignment"
+      },
+      "title": "Members",
+      "type": "array"
+    },
+    "handovers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FleetHandover"
+      },
+      "title": "Handovers",
+      "type": "array"
+    },
+    "source": {
+      "default": "auto",
+      "enum": [
+        "auto",
+        "user"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "confirmed": {
+      "default": false,
+      "title": "Confirmed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "members"
+  ],
+  "title": "FleetAssignment",
+  "type": "object"
+}

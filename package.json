@@ -4,7 +4,8 @@
   "private": true,
   "description": "Design a rough robot from a task, see it work, then find and check real robots that can do the job.",
   "workspaces": [
-    "client"
+    "client",
+    "packages/core"
   ],
   "scripts": {
     "setup": "node scripts/studio.mjs setup",
@@ -12,9 +13,14 @@
     "api": "node scripts/studio.mjs api",
     "test": "node scripts/studio.mjs test",
     "build": "npm run build --workspace client",
-    "typecheck": "npm run typecheck --workspace client"
+    "typecheck": "npm run typecheck --workspace packages/core && npm run typecheck --workspace client",
+    "contracts:types": "node scripts/contracts-types.mjs",
+    "contracts:check": "node scripts/contracts-types.mjs --check"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "16.0.0"
   }
 }

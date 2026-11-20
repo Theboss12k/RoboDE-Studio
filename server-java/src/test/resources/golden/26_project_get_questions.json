@@ -1,0 +1,36 @@
+{
+  "method": "GET",
+  "path": "/api/projects/<project_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "Move a 0.3 kg bottle from A to B",
+    "brief": "Move a 0.3 kg bottle from A to B",
+    "reference": {
+      "text": "A bench-top task.",
+      "files": []
+    },
+    "stage": "questions",
+    "questions": [
+      {
+        "id": "cycle",
+        "text": "Cycle time?",
+        "kind": "number",
+        "options": [],
+        "unit": "s",
+        "default": 6,
+        "why": ""
+      }
+    ],
+    "answers": {},
+    "versions": [],
+    "approved_version": null,
+    "candidates_count": 0,
+    "selected_candidate": null,
+    "analyses": [],
+    "decision": null,
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

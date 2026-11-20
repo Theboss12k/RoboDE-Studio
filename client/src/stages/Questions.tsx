@@ -1,23 +1,27 @@
 import { useState } from "react";
 import { api } from "../api";
-import { JobStatus, StageHead, useJob } from "../components/common";
+import { JobStatus, StageHead } from "../components/common";
+import { useProjectJob } from "../jobs";
 import { QuestionPanel } from "../Questions";
 import type { Project, Question } from "../types";
 
 type DesignResult = { status: "questions"; questions: Question[] } | { status: "designed"; version: number };
 
 export default function Questions({ project, reload, designed }: { project: Project; reload: () => Promise<void>; designed: (version: number) => void }) {
-  const job = useJob();
   const [asked, setAsked] = useState<Question[] | null>(null);
   const answered = project.answers ?? {};
   const open = asked ?? (project.questions ?? []).filter((q) => !(q.id in answered));
   const hasVersion = (project.versions?.length ?? 0) > 0;
-  async function design(answers: Record<string, unknown>) {
-    const result = await job.run<DesignResult>(() => api.post(`/projects/${project.id}/design`, { answers: { ...answered, ...answers } }));
-    if (!result) return;
+  async function finished(result: DesignResult) {
     await reload();
     if (result.status === "questions") setAsked(result.questions ?? []);
     else { setAsked(null); designed(result.version); }
+  }
+  // A design job that ended while this stage was away is handled here once, exactly as if it had finished in view.
+  const job = useProjectJob<DesignResult>(project.id, "design", undefined, finished);
+  async function design(answers: Record<string, unknown>) {
+    const result = await job.run<DesignResult>(() => api.post(`/projects/${project.id}/design`, { answers: { ...answered, ...answers } }));
+    if (result) await finished(result);
   }
   return (
     <div className="page narrow">
@@ -25,11 +29,11 @@ export default function Questions({ project, reload, designed }: { project: Proj
         The AI turns your brief into a technical specification. If something that changes the design is missing, it asks first (at most six questions a round).
       </StageHead>
       {open.length > 0
-        ? <QuestionPanel questions={open} answered={{}} busy={job.busy} onSubmit={(a) => void design(a)} />
+        ? <QuestionPanel questions={open} answered={{}} busy={job.busy || job.blocked} onSubmit={(a) => void design(a)} />
         : (
           <div className="panel">
             <p>{hasVersion ? "A design already exists for this project." : "Ready to design. The AI will write the specification, lay out the scene, choose a robot type, size it from the physics and simulate the task."}</p>
-            <div><button className="go big" disabled={job.busy || hasVersion} onClick={() => void design({})}>Design it</button></div>
+            <div><button className="go big" disabled={job.busy || job.blocked || hasVersion} onClick={() => void design({})}>Design it</button></div>
           </div>)}
       <JobStatus {...job} label="Designing" />
     </div>

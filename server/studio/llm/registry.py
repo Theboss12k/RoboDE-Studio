@@ -57,6 +57,10 @@ DEFAULTS = [
 ]
 
 
+def default_profiles():
+    return [dict(p, effort='', timeout_s=240, cli_path='') for p in DEFAULTS]
+
+
 class LLMRegistry:
     def __init__(self, runtime, overrides=None):
         self.path = runtime / 'llm' / 'profiles.json'
@@ -67,7 +71,7 @@ class LLMRegistry:
     def data(self):
         data = read_json(self.path)
         if data is None:
-            data = {'profiles': [dict(p, effort='', timeout_s=240, cli_path='') for p in DEFAULTS],
+            data = {'profiles': default_profiles(),
                     'roles': dict(DEFAULT_ROLES)}
         data['roles'] = {**DEFAULT_ROLES, **data['roles']}  # roles added later get their default
         return data

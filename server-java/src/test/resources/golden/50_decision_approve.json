@@ -1,0 +1,39 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/decision",
+  "request_body": {
+    "candidate_id": "acme_ra_6",
+    "action": "approve"
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "Bottle A to B",
+    "brief": "Move a 0.3 kg bottle from A to B",
+    "reference": {
+      "text": "A bench-top task.",
+      "files": []
+    },
+    "stage": "decided",
+    "questions": [],
+    "answers": {
+      "cycle": 6
+    },
+    "versions": [
+      1,
+      2
+    ],
+    "approved_version": 2,
+    "candidates_count": 3,
+    "selected_candidate": "acme_ra_6",
+    "analyses": [
+      "acme_ra_6"
+    ],
+    "decision": {
+      "candidate_id": "acme_ra_6",
+      "action": "approve"
+    },
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

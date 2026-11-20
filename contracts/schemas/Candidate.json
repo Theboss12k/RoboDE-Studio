@@ -1,0 +1,356 @@
+{
+  "$defs": {
+    "Calc": {
+      "description": "A traceable calculation: what was computed, how, from what.",
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Quantity"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "result": {
+          "title": "Result",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "inputs",
+        "result",
+        "unit"
+      ],
+      "title": "Calc",
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Passed"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "calc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Calc"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "requirement_id",
+        "name",
+        "required",
+        "actual",
+        "unit",
+        "passed"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "PriceEstimate": {
+      "properties": {
+        "low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High"
+        },
+        "currency": {
+          "default": "USD",
+          "maxLength": 8,
+          "title": "Currency",
+          "type": "string"
+        },
+        "date": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Date",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 800,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_url",
+        "quote"
+      ],
+      "title": "PriceEstimate",
+      "type": "object"
+    },
+    "Quantity": {
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "SourcedValue": {
+      "properties": {
+        "value": {
+          "maxLength": 200,
+          "title": "Value",
+          "type": "string"
+        },
+        "unit": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Unit",
+          "type": "string"
+        },
+        "quote": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        },
+        "source_url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Source Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "SourcedValue",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "manufacturer": {
+      "maxLength": 120,
+      "title": "Manufacturer",
+      "type": "string"
+    },
+    "model": {
+      "maxLength": 120,
+      "title": "Model",
+      "type": "string"
+    },
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "product_url": {
+      "maxLength": 800,
+      "title": "Product Url",
+      "type": "string"
+    },
+    "image_url": {
+      "default": "",
+      "maxLength": 800,
+      "title": "Image Url",
+      "type": "string"
+    },
+    "datasheet_url": {
+      "default": "",
+      "maxLength": 800,
+      "title": "Datasheet Url",
+      "type": "string"
+    },
+    "price": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PriceEstimate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "payload_kg": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourcedValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reach_m": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourcedValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "dof": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourcedValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "repeatability_mm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourcedValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "key_specs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SourcedValue"
+      },
+      "title": "Key Specs",
+      "type": "array"
+    },
+    "confidence": {
+      "default": "medium",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "screen": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Screen",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "manufacturer",
+    "model",
+    "family",
+    "product_url"
+  ],
+  "title": "Candidate",
+  "type": "object"
+}

@@ -48,7 +48,7 @@ class TaskAction(Model):
     verb: Literal['pick', 'place', 'move', 'drive', 'wait', 'inspect', 'push', 'press', 'home']
     object: str = ''                                 # TaskObject id, when the step handles an object
     target: str = ''                                 # Marker id
-    duration_s: float = Field(default=0.0, ge=0)     # dwell (wait/inspect/press)
+    duration_s: float = Field(default=0.0, ge=0)     # dwell in seconds, ONLY for wait/inspect/press; 0 for other verbs (their time comes from the cycle time)
     description: str = Field(default='', max_length=400)
 
 
@@ -226,10 +226,101 @@ class SimResult(Model):
     ok: bool = False                                  # every checkable requirement passed
 
 
+# --- Repair and fleet (collision auto-repair, multi-robot plans) ----------------------------------------------------
+
+class RepairAttempt(Model):
+    attempt: int = Field(ge=1, le=10)
+    request: str = Field(max_length=4000)            # the fix request code sent to the revise agent
+    t: float | None = None                           # first collision time (s) of the version it was sent with
+    summary: str = Field(default='', max_length=600) # the model's summary (a proposal)
+    collisions: int | None = None                    # collision episodes left after code re-simulated (None = unusable)
+    checks_passed: int = 0
+    checks_total: int = 0
+    outcome: Literal['kept', 'worse', 'no_change', 'changed_task', 'invalid']
+    note: str = Field(default='', max_length=600)
+
+
+class RepairLog(Model):
+    trigger: Literal['collision'] = 'collision'
+    collisions_before: int
+    attempts: list[RepairAttempt] = []
+    kept: int = 0                                    # attempt number kept; 0 = the original was best
+    stop_reason: str = Field(default='', max_length=200)
+
+
+class FleetHint(Model):                              # spec agent's proposal (lives in SpecAnswer, not TechnicalSpec)
+    robots_needed: int = Field(ge=1, le=4)
+    reason: str = Field(max_length=400)
+
+
+class FleetLimits(Model):                            # code-defined form: the user's limits for their preferred robots
+    max_robots: int = Field(default=2, ge=2, le=3)
+    families: list[str] = []                         # allowed families; [] = any fixed-base family
+    max_reach_m: float | None = Field(default=None, gt=0, le=10)
+    max_payload_kg: float | None = Field(default=None, gt=0, le=2000)
+    budget_usd: float | None = Field(default=None, ge=0)   # stored and shown, not checked in Design
+    brands: list[str] = []                                  # stored and shown, not checked in Design
+    note: str = Field(default='', max_length=1000)
+
+
+class FleetMemberAssignment(Model):
+    id: str = Field(pattern=r'^r[1-9]$')
+    name: str = Field(default='', max_length=80)
+    actions: list[int]                               # indices into the full task's actions
+    family: str = ''                                 # optional user preference
+    base: Vec3 | None = None                         # user-fixed base position (None = planner decides)
+    start: Vec3 | None = None                        # park pose at start (None = planner)
+    end: Vec3 | None = None                          # park pose at end (None = planner)
+
+
+class FleetHandover(Model):
+    id: str = Field(pattern=r'^h[1-9]$')
+    object: str
+    from_member: str
+    to_member: str
+    position: Vec3 | None = None
+    fixed: bool = False                              # user fixed the position
+
+
+class FleetAssignment(Model):
+    members: list[FleetMemberAssignment]
+    handovers: list[FleetHandover] = []
+    source: Literal['auto', 'user'] = 'auto'
+    confirmed: bool = False
+
+
+class FleetMember(Model):
+    id: str
+    name: str = ''
+    spec: TechnicalSpec                              # the member's sub-task (robot_base, handover and park markers included)
+    requirements: list[Requirement]
+    robot: RobotConcept
+    urdf: str
+    sim: SimResult                                   # member clock, t from 0
+    t_offset_s: float = 0.0                          # start on the shared fleet clock
+    limit_checks: list[Check] = []
+
+
+class FleetPlan(Model):
+    task: TechnicalSpec                              # the user's full task, unchanged
+    limits: FleetLimits
+    assignment: FleetAssignment
+    members: list[FleetMember]
+    primary: str                                     # member id mirrored in the version's top-level fields
+    checks: list[Check] = []                         # fleet-level checks (computed in code)
+    events: list[SimEvent] = []                      # robot-robot events on the shared clock
+    duration_s: float = 0.0
+    period_s: float = 0.0
+    ok: bool = False
+    trigger: list[str] = []                          # e.g. "spec agent: ...", "code: ...", "user"
+    planner_log: list[str] = []
+
+
 # --- Project versions ----------------------------------------------------------------------------------------------
 
 class DesignVersion(Model):
     version: int
+    parent_version: int | None = None                 # the version this one was revised from (None for v1)
     created: str
     change_request: str = ''                          # the user's words that produced this version ('' for v1)
     change_summary: str = ''
@@ -240,6 +331,8 @@ class DesignVersion(Model):
     urdf: str                                         # generated URDF XML
     sim: SimResult
     approved: bool = False
+    repair: RepairLog | None = Field(default=None, json_schema_extra={'x-optional': True})
+    fleet: FleetPlan | None = Field(default=None, json_schema_extra={'x-optional': True})
 
 
 # --- Catalog (search, extract, analysis) ---------------------------------------------------------------------------
@@ -321,4 +414,5 @@ class Analysis(Model):
     sim: SimResult
     differences: list[Difference]
     unverified: list[str] = []                        # values shown but excluded from pass/fail
+    provenance: dict[str, str] = {}                   # param -> 'verified|derived|carried|default: how the candidate model got it'
     created: str = ''

@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/design",
+  "request_body": {
+    "answers": {}
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "design",
+    "robot_id": "<project_id>",
+    "status": "running",
+    "progress": [],
+    "result": null,
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

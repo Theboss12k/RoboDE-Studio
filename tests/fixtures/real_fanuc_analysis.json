@@ -1,0 +1,561 @@
+{
+ "note": "Real run 2026-11-20: FANUC CRX-5iA product page (fanucamerica.com) read by real Claude Sonnet extract; manufacturer values as extracted and verified by code. Frames and parsed URDF removed.",
+ "analysis": {
+  "candidate_id": "fanuc_crx_5ia",
+  "manufacturer_spec": {
+   "candidate_id": "fanuc_crx_5ia",
+   "document_url": "https://www.fanucamerica.com/products/robot/crx-5ia",
+   "document_title": "CRX-5iA Cobot | FANUC America",
+   "family": "serial_arm",
+   "values": [
+    {
+     "key": "payload_kg",
+     "value": 5.0,
+     "unit": "kg",
+     "quote": "Max Payload 5 kg",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "reach_m",
+     "value": 0.994,
+     "unit": "m",
+     "quote": "Reach 994 mm",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "dof",
+     "value": 6.0,
+     "unit": "axes",
+     "quote": "Axes 6",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "mass_kg",
+     "value": 25.0,
+     "unit": "kg",
+     "quote": "Mechanical Weight 25 kg",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "repeatability_mm",
+     "value": 0.03,
+     "unit": "mm",
+     "quote": "Repeatability \u00b10.03 mm",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "max_speed_m_s",
+     "value": 2.0,
+     "unit": "m/s",
+     "quote": "High Speed Mode 2000 mm/s",
+     "page": "",
+     "verified": true
+    },
+    {
+     "key": "ip_rating",
+     "value": 67.0,
+     "unit": "IP",
+     "quote": "Body Standard / Optional IP67",
+     "page": "",
+     "verified": true
+    }
+   ],
+   "kinematics_note": "6-axis collaborative robot arm (J1 to J6). The page gives total motion range per joint (J1 380\u00b0, J2 360\u00b0, J3 380\u00b0, J4 380\u00b0, J5 360\u00b0, J6 450\u00b0), not min/max limits. Mounting is floor, angle or inverted. Controller is R-30iB Plus."
+  },
+  "robot": {
+   "family": "serial_arm",
+   "name": "FANUC CRX-5iA",
+   "rationale": "Built from verified datasheet values. dof=6 from the datasheet; per-joint lists reset to family defaults Link lengths (upper_arm_m, forearm_m, wrist_m) are not published: the generated arm's segments were scaled so the reach equals the verified 0.994 m (shoulder to wrist-flange, stretched out) Link masses are the generated ones scaled to the verified total mass (distribution assumed)",
+   "params": {
+    "dof": 6,
+    "base_height_m": 0.91,
+    "upper_arm_m": 0.4825855269148647,
+    "forearm_m": 0.4454635633060289,
+    "wrist_m": 0.06595090977910632,
+    "tool_length_m": 0.12,
+    "link_radius_m": 0.06754471845772092,
+    "joint_limits_deg": [],
+    "max_speed_deg_s": [],
+    "max_torque_nm": [],
+    "base_mass_kg": 8.041521465029065,
+    "upper_arm_mass_kg": 9.253584580632273,
+    "forearm_mass_kg": 5.694513588081397,
+    "wrist_mass_kg": 2.0103803662572663,
+    "tool_mass_kg": 0.5,
+    "gripper": "parallel",
+    "gripper_force_n": 6.0,
+    "gripper_stroke_m": 0.06,
+    "payload_kg": 5.0,
+    "repeatability_m": 2.9999999999999997e-05,
+    "max_tcp_speed_m_s": 1.0
+   },
+   "base": {
+    "position": [
+     0.5,
+     0.0,
+     0.0
+    ],
+    "yaw": -1.5707963267948966
+   }
+  },
+  "urdf": "<?xml version=\"1.0\"?>\n<robot name=\"fanuc_crx_5ia\">\n  <link name=\"base_link\">\n    <visual><origin xyz=\"0 0 0.01\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.12158\" length=\"0.02\"/></geometry><material name=\"m34578\"><color rgba=\"0.25 0.28 0.32 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.01\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.12158\" length=\"0.02\"/></geometry></collision>\n  </link>\n  <link name=\"turret\">\n    <inertial><origin xyz=\"0 0 0.455\" rpy=\"0 0 0\"/><mass value=\"8.04152\"/><inertia ixx=\"0.572542\" iyy=\"0.572542\" izz=\"0.0352202\" ixy=\"0\" ixz=\"0\" iyz=\"0\"/></inertial>\n    <visual><origin xyz=\"0 0 0.455\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0810537\" length=\"0.91\"/></geometry><material name=\"m34578\"><color rgba=\"0.25 0.28 0.32 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.455\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0810537\" length=\"0.91\"/></geometry></collision>\n  </link>\n  <joint name=\"j1\" type=\"revolute\">\n    <parent link=\"base_link\"/><child link=\"turret\"/>\n    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n    <axis xyz=\"0 0 1\"/>\n    <limit lower=\"-3.14159\" upper=\"3.14159\" effort=\"106\" velocity=\"3.14159\"/>\n  </joint>\n  <link name=\"upper_arm\">\n    <inertial><origin xyz=\"0 0 0.241293\" rpy=\"0 0 0\"/><mass value=\"9.25358\"/><inertia ixx=\"0.193661\" iyy=\"0.193661\" izz=\"0.028145\" ixy=\"0\" ixz=\"0\" iyz=\"0\"/></inertial>\n    <visual><origin xyz=\"0 0 0.241293\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0675447\" length=\"0.482586\"/></geometry><material name=\"m95231\"><color rgba=\"0.62 0.66 0.72 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.241293\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0675447\" length=\"0.482586\"/></geometry></collision>\n  </link>\n  <joint name=\"j2\" type=\"revolute\">\n    <parent link=\"turret\"/><child link=\"upper_arm\"/>\n    <origin xyz=\"0 0 0.91\" rpy=\"0 0 0\"/>\n    <axis xyz=\"0 1 0\"/>\n    <limit lower=\"-1.91986\" upper=\"1.91986\" effort=\"211\" velocity=\"3.14159\"/>\n  </joint>\n  <link name=\"forearm\">\n    <inertial><origin xyz=\"0 0 0.222732\" rpy=\"0 0 0\"/><mass value=\"5.69451\"/><inertia ixx=\"0.101182\" iyy=\"0.101182\" izz=\"0.0140292\" ixy=\"0\" ixz=\"0\" iyz=\"0\"/></inertial>\n    <visual><origin xyz=\"0 0 0.222732\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0607902\" length=\"0.445464\"/></geometry><material name=\"m95231\"><color rgba=\"0.62 0.66 0.72 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.222732\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0607902\" length=\"0.445464\"/></geometry></collision>\n  </link>\n  <joint name=\"j3\" type=\"revolute\">\n    <parent link=\"upper_arm\"/><child link=\"forearm\"/>\n    <origin xyz=\"0 0 0.482586\" rpy=\"0 0 0\"/>\n    <axis xyz=\"0 1 0\"/>\n    <limit lower=\"-2.61799\" upper=\"2.61799\" effort=\"84\" velocity=\"3.14159\"/>\n  </joint>\n  <link name=\"wrist\">\n    <inertial><origin xyz=\"0 0 0.0329755\" rpy=\"0 0 0\"/><mass value=\"2.01038\"/><inertia ixx=\"0.00222677\" iyy=\"0.00222677\" izz=\"0.00299617\" ixy=\"0\" ixz=\"0\" iyz=\"0\"/></inertial>\n    <visual><origin xyz=\"0 0 0.0329755\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0472813\" length=\"0.0659509\"/></geometry><material name=\"m34578\"><color rgba=\"0.25 0.28 0.32 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.0329755\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0472813\" length=\"0.0659509\"/></geometry></collision>\n  </link>\n  <joint name=\"j4\" type=\"revolute\">\n    <parent link=\"forearm\"/><child link=\"wrist\"/>\n    <origin xyz=\"0 0 0.445464\" rpy=\"0 0 0\"/>\n    <axis xyz=\"0 1 0\"/>\n    <limit lower=\"-3.49066\" upper=\"3.49066\" effort=\"16\" velocity=\"4.18879\"/>\n  </joint>\n  <link name=\"wrist_2\">\n    <visual><origin xyz=\"0 0 0.015\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0405268\" length=\"0.03\"/></geometry><material name=\"m34578\"><color rgba=\"0.25 0.28 0.32 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.015\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0405268\" length=\"0.03\"/></geometry></collision>\n  </link>\n  <joint name=\"j5\" type=\"revolute\">\n    <parent link=\"wrist\"/><child link=\"wrist_2\"/>\n    <origin xyz=\"0 0 0.0659509\" rpy=\"0 0 0\"/>\n    <axis xyz=\"1 0 0\"/>\n    <limit lower=\"-3.14159\" upper=\"3.14159\" effort=\"1\" velocity=\"4.18879\"/>\n  </joint>\n  <link name=\"wrist_3\">\n    <visual><origin xyz=\"0 0 0.015\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0337724\" length=\"0.03\"/></geometry><material name=\"m34578\"><color rgba=\"0.25 0.28 0.32 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.015\" rpy=\"0 0 0\"/><geometry><cylinder radius=\"0.0337724\" length=\"0.03\"/></geometry></collision>\n  </link>\n  <joint name=\"j6\" type=\"revolute\">\n    <parent link=\"wrist_2\"/><child link=\"wrist_3\"/>\n    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n    <axis xyz=\"0 0 1\"/>\n    <limit lower=\"-6.28319\" upper=\"6.28319\" effort=\"1\" velocity=\"5.23599\"/>\n  </joint>\n  <link name=\"tool\">\n    <inertial><origin xyz=\"0 0 0.06\" rpy=\"0 0 0\"/><mass value=\"0.5\"/><inertia ixx=\"0.0006375\" iyy=\"0.000704167\" izz=\"0.000141667\" ixy=\"0\" ixz=\"0\" iyz=\"0\"/></inertial>\n    <visual><origin xyz=\"0 0 0.06\" rpy=\"0 0 0\"/><geometry><box size=\"0.05 0.03 0.12\"/></geometry><material name=\"m50499\"><color rgba=\"0.95 0.55 0.15 1\"/></material></visual>\n    <collision><origin xyz=\"0 0 0.06\" rpy=\"0 0 0\"/><geometry><box size=\"0.05 0.03 0.12\"/></geometry></collision>\n  </link>\n  <joint name=\"tool_mount\" type=\"fixed\">\n    <parent link=\"wrist_3\"/><child link=\"tool\"/>\n    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n  </joint>\n  <link name=\"tcp\">\n  </link>\n  <joint name=\"tcp_joint\" type=\"fixed\">\n    <parent link=\"tool\"/><child link=\"tcp\"/>\n    <origin xyz=\"0 0 0.12\" rpy=\"0 0 0\"/>\n  </joint>\n</robot>\n",
+  "sim": {
+   "events": [],
+   "checks": [
+    {
+     "requirement_id": "reach_max",
+     "name": "Maximum reach",
+     "required": 0.951,
+     "actual": 1.4384352609693631,
+     "unit": "m",
+     "passed": true,
+     "detail": "9 of 9 waypoints reachable",
+     "calc": null
+    },
+    {
+     "requirement_id": "reach_min",
+     "name": "Closest task point",
+     "required": 0.808,
+     "actual": 0.0,
+     "unit": "m",
+     "passed": null,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "z_max",
+     "name": "Highest task point",
+     "required": 0.85,
+     "actual": 2.024,
+     "unit": "m",
+     "passed": null,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "z_min",
+     "name": "Lowest task point",
+     "required": 0.75,
+     "actual": 0.0,
+     "unit": "m",
+     "passed": null,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "payload",
+     "name": "Payload at the tool flange",
+     "required": 0.968,
+     "actual": 5.0,
+     "unit": "kg",
+     "passed": true,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "tcp_speed",
+     "name": "TCP speed",
+     "required": 0.4,
+     "actual": 1.0,
+     "unit": "m/s",
+     "passed": true,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "tcp_accel",
+     "name": "TCP acceleration",
+     "required": 0.533,
+     "actual": 4.0,
+     "unit": "m/s^2",
+     "passed": true,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "grip_force",
+     "name": "Grip force",
+     "required": 5.82,
+     "actual": 6.0,
+     "unit": "N",
+     "passed": true,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "cycle_time",
+     "name": "Cycle time",
+     "required": 6.0,
+     "actual": 6.0,
+     "unit": "s",
+     "passed": true,
+     "detail": "fastest feasible 4.1 s; played at the 6.0 s cycle",
+     "calc": {
+      "formula": "t = sum of simulated move, drive and dwell times",
+      "inputs": {
+       "moves": {
+        "value": 156.0,
+        "unit": "samples"
+       }
+      },
+      "result": 6.0,
+      "unit": "s",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "accuracy",
+     "name": "Repeatability",
+     "required": 0.0025,
+     "actual": 2.9999999999999997e-05,
+     "unit": "m",
+     "passed": true,
+     "detail": "",
+     "calc": null
+    },
+    {
+     "requirement_id": "joint_limits",
+     "name": "Joint limits",
+     "required": null,
+     "actual": null,
+     "unit": "",
+     "passed": true,
+     "detail": "all waypoint poses inside the joint ranges",
+     "calc": null
+    },
+    {
+     "requirement_id": "joint_torque_j1",
+     "name": "Static load j1",
+     "required": 0.0,
+     "actual": 106.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 0.0,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_torque_j2",
+     "name": "Static load j2",
+     "required": 18.08954888745544,
+     "actual": 211.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 18.08954888745544,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_torque_j3",
+     "name": "Static load j3",
+     "required": 23.81726575686134,
+     "actual": 84.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 23.81726575686134,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_torque_j4",
+     "name": "Static load j4",
+     "required": 1.6331352936660437e-10,
+     "actual": 16.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 1.6331352936660437e-10,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_torque_j5",
+     "name": "Static load j5",
+     "required": 0.0,
+     "actual": 1.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 0.0,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_torque_j6",
+     "name": "Static load j6",
+     "required": 0.0,
+     "actual": 1.0,
+     "unit": "N*m",
+     "passed": true,
+     "detail": "gravity load at the worst waypoint vs the joint rating",
+     "calc": {
+      "formula": "tau = -sum(J_i^T F_i), F_i = (0, 0, -m_i g), links and payload at the worst waypoint",
+      "inputs": {
+       "payload": {
+        "value": 0.3,
+        "unit": "kg"
+       },
+       "g": {
+        "value": 9.80665,
+        "unit": "m/s^2"
+       }
+      },
+      "result": 0.0,
+      "unit": "N*m",
+      "note": ""
+     }
+    },
+    {
+     "requirement_id": "joint_speed",
+     "name": "Peak joint speed (j1)",
+     "required": 2.097302277164093,
+     "actual": 3.141592653589793,
+     "unit": "rad/s or m/s",
+     "passed": true,
+     "detail": "peak speed in the simulated motion vs the rating",
+     "calc": null
+    },
+    {
+     "requirement_id": "collision_free",
+     "name": "No collisions with the scene",
+     "required": null,
+     "actual": null,
+     "unit": "",
+     "passed": true,
+     "detail": "no contact found",
+     "calc": null
+    }
+   ],
+   "duration_s": 6.0,
+   "ok": true
+  },
+  "differences": [
+   {
+    "topic": "Maximum reach",
+    "generated": "1.61 m (passes, needs 0.951)",
+    "candidate": "1.44 m (passes, needs 0.951)",
+    "impact": "Both arms reach well beyond the farthest point the task needs, so A and B are reachable with either one.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Closest task point",
+    "generated": "0 m (not checked, needs 0.808)",
+    "candidate": "0 m (not checked, needs 0.808)",
+    "impact": "This minimum distance was not checked for either arm, so we can't say from the simulation whether the near points are a problem.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Highest task point",
+    "generated": "2.24 m (not checked, needs 0.85)",
+    "candidate": "2.02 m (not checked, needs 0.85)",
+    "impact": "Both arms have more than enough height on paper, but this was not formally checked. The difference between them does not matter for this task.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Lowest task point",
+    "generated": "0 m (not checked, needs 0.75)",
+    "candidate": "0 m (not checked, needs 0.75)",
+    "impact": "Whether either arm can reach down to table height was not checked, so it remains unconfirmed. Both are listed the same.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Payload at the tool flange",
+    "generated": "0.968 kg (passes, needs 0.968)",
+    "candidate": "5 kg (passes, needs 0.968)",
+    "impact": "The generated arm is sized exactly to the load, so it has no spare margin. The product carries about five times what is needed.",
+    "severity": "ok"
+   },
+   {
+    "topic": "TCP speed",
+    "generated": "1 m/s (passes, needs 0.4)",
+    "candidate": "1 m/s (passes, needs 0.4)",
+    "impact": "Both arms move the tool comfortably faster than the task requires.",
+    "severity": "ok"
+   },
+   {
+    "topic": "TCP acceleration",
+    "generated": "4 m/s^2 (passes, needs 0.533)",
+    "candidate": "4 m/s^2 (passes, needs 0.533)",
+    "impact": "Both arms can speed up and slow down far faster than needed, so there is plenty of margin.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Grip force",
+    "generated": "6 N (passes, needs 5.82)",
+    "candidate": "6 N (passes, needs 5.82)",
+    "impact": "The grip is only just above what is needed to hold the bottle, so there is very little margin for both. The result is the same for each.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Cycle time",
+    "generated": "6 s (passes, needs 6)",
+    "candidate": "6 s (passes, needs 6)",
+    "impact": "Both just meet the 6 s cycle with no spare time, so any delay would drop below 10 bottles per minute. The result is the same for each.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Repeatability",
+    "generated": "0.0005 m (passes, needs 0.0025)",
+    "candidate": "3e-05 m (passes, needs 0.0025)",
+    "impact": "Both repeat positions far more tightly than the \u00b15 mm placement needs. The product is even tighter, which the task does not require.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Joint limits",
+    "generated": "not available",
+    "candidate": "not available",
+    "impact": "No joint-limit result is available for either arm, so nothing can be said here.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j1",
+    "generated": "51 N*m (passes, needs 0)",
+    "candidate": "106 N*m (passes, needs 0)",
+    "impact": "The base joint carries essentially no holding load in this task, so both are fine.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j2",
+    "generated": "101 N*m (passes, needs 8.71)",
+    "candidate": "211 N*m (passes, needs 18.1)",
+    "impact": "Both shoulder joints can hold the load with a wide margin. The product's own requirement is higher because the arm itself is heavier.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j3",
+    "generated": "36 N*m (passes, needs 16)",
+    "candidate": "84 N*m (passes, needs 23.8)",
+    "impact": "Both elbow joints hold the load with margin. The generated arm has the tighter margin of the two.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j4",
+    "generated": "5 N*m (passes, needs 0)",
+    "candidate": "16 N*m (passes, needs 1.63e-10)",
+    "impact": "The wrist joint sees almost no load, so both pass easily.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j5",
+    "generated": "not available",
+    "candidate": "1 N*m (passes, needs 0)",
+    "impact": "There is no result for the generated arm's joint 5. The product's joint 5 sees no load and passes.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Static load j6",
+    "generated": "not available",
+    "candidate": "1 N*m (passes, needs 0)",
+    "impact": "There is no result for the generated arm's joint 6. The product's joint 6 sees no load and passes.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Peak joint speed (j1)",
+    "generated": "3.14 rad/s or m/s (passes, needs 2.09)",
+    "candidate": "3.14 rad/s or m/s (passes, needs 2.1)",
+    "impact": "The base joint can turn faster than the move needs on both arms, so speed is not a concern.",
+    "severity": "ok"
+   },
+   {
+    "topic": "No collisions with the scene",
+    "generated": "not available",
+    "candidate": "not available",
+    "impact": "No collision check was available for either arm, so clearance around the table is not confirmed.",
+    "severity": "ok"
+   },
+   {
+    "topic": "Rated payload",
+    "generated": "0.968 kg",
+    "candidate": "5 kg",
+    "impact": "The product is rated for much more than the bottle and gripper weigh, while the generated arm is sized just to the load. Both cover the task.",
+    "severity": "minor"
+   },
+   {
+    "topic": "Repeatability",
+    "generated": "0.5 mm",
+    "candidate": "0.03 mm",
+    "impact": "Both are well inside the \u00b15 mm placement tolerance. The product's finer precision goes beyond what the task needs.",
+    "severity": "minor"
+   }
+  ],
+  "unverified": [
+   "dof=6 from the datasheet; per-joint lists reset to family defaults",
+   "Link lengths (upper_arm_m, forearm_m, wrist_m) are not published: the generated arm's segments were scaled so the reach equals the verified 0.994 m (shoulder to wrist-flange, stretched out)",
+   "Link masses are the generated ones scaled to the verified total mass (distribution assumed)"
+  ],
+  "created": "2026-11-20T09:38:54+00:00"
+ }
+}

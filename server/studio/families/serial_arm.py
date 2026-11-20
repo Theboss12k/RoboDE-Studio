@@ -14,6 +14,9 @@ from .base import Capabilities, IKResult, Joint
 from .params import SerialArmParams
 
 ACCEL_TIME_S = 0.25          # time to reach full joint speed (accelerations everywhere = v / ACCEL_TIME_S)
+MAX_TCP_SPEED_M_S = 4.0        # plausible family limits: rated values are capped here, so an absurd
+MAX_TCP_ACCEL_M_S2 = 30.0       # requirement fails visibly instead of being 'met'
+MAX_JOINT_SPEED_DEG_S = 360.0   # plausible limit for small arms; the speed-sizing loop never raises a joint beyond it
 DEF_LIMITS = [(-180, 180), (-110, 110), (-150, 150), (-200, 200), (-180, 180), (-360, 360)]
 DEF_SPEEDS = [180, 180, 180, 240, 240, 300]
 GREY, DARK, ORANGE = (0.62, 0.66, 0.72, 1), (0.25, 0.28, 0.32, 1), (0.95, 0.55, 0.15, 1)
@@ -152,25 +155,32 @@ class SerialArm:
     # --- sizing -------------------------------------------------------------------------------------------------
     def size_from_physics(self, requirements: list[Requirement], spec: TechnicalSpec, hint: dict, mount_z=None):
         """`mount_z`: height of the arm base above the floor when it sits on a vehicle (reach is then taken from the
-        requirements only)."""
+        requirements only).
+
+        Sizing rule: the wrist point (tool pointing down, so TCP + tool + wrist above the target) of every task point
+        must lie within 0.85 of the straight shoulder-to-wrist link reach, upper_arm + forearm = s12. Hint link lengths
+        are never kept (a hint arm 2.5x too long would stay that long); lengths always follow the rule, so a hint that
+        overshoots it by more than 30 % is shrunk to it. The rule counts the horizontal distance and the height of the
+        wrist point once each (not the 3-D distance plus the height again)."""
         t = lambda rid, d=None: ikm.req_target(requirements, rid, d)  # noqa: E731
         p = SerialArmParams.model_validate(hint or {})
         sf = spec.physics_inputs.safety_factor
         upd = {'gripper': (hint or {}).get('gripper', spec.physics_inputs.grip)}
         reach, zmin, zmax = t('reach_max'), t('z_min'), t('z_max')
         zw_lo, zw_hi, pts, bpos = ikm.task_extent(spec)           # the real waypoints (grasp points, carry heights)
-        off = mount_z if mount_z is not None else 0.0
+        off = mount_z if mount_z is not None else float(bpos[2])   # task heights relative to the base (raised mount)
         zmin = min(zmin, zw_lo - off) if zmin is not None else zw_lo - off
         zmax = max(zmax, zw_hi - off) if zmax is not None else zw_hi - off
+        horiz = None
         if mount_z is None and reach is not None:
-            reach = max(reach, float(np.linalg.norm(pts - bpos, axis=1).max()) + spec.physics_inputs.clearance_m)
+            horiz = float(np.linalg.norm((pts - bpos)[:, :2], axis=1).max()) + spec.physics_inputs.clearance_m
         if reach is not None:
             zlo = zmin if zmin is not None else 0.0
             zhi = zmax if zmax is not None else zlo
             h = float(np.clip((zlo + zhi) / 2, 0.1, 1.5))
             lw, lt = p.wrist_m, p.tool_length_m
             zabs = 0.0 if zlo <= 0 <= zhi else min(abs(zlo), abs(zhi))
-            rho = math.sqrt(max(reach ** 2 - zabs ** 2, 0.0))
+            rho = horiz if horiz is not None else math.sqrt(max(reach ** 2 - zabs ** 2, 0.0))
             dz = max(abs(zhi + lt + lw - h), abs(zlo + lt + lw - h))
             s12 = max(math.hypot(rho, dz) / 0.85, math.sqrt(max(reach ** 2 / 0.85 ** 2 - h ** 2, 0.0)) - lw - lt, 0.3)
             s12 = min(s12, 9.5)
@@ -191,6 +201,7 @@ class SerialArm:
             upd['repeatability_m'] = min(p.repeatability_m, acc * 0.8)
         v = max(p.max_tcp_speed_m_s if 'max_tcp_speed_m_s' in (hint or {}) else 1.0,
                 1.3 * t('tcp_speed', 0.0), 1.3 * ACCEL_TIME_S * t('tcp_accel', 0.0))
+        v = min(v, MAX_TCP_SPEED_M_S, MAX_TCP_ACCEL_M_S2 * ACCEL_TIME_S)   # accel = v / ACCEL_TIME_S
         upd['max_tcp_speed_m_s'] = v
         if not p.max_speed_deg_s:
             w = max(180.0, math.degrees(1.5 * v / max(s12, 0.1)))
@@ -199,6 +210,37 @@ class SerialArm:
         if not p.max_torque_nm:
             upd['max_torque_nm'] = self._default_torques(q, sf)
         return p.model_copy(update=upd)
+
+    SIZED_FIELDS = frozenset({'base_height_m', 'upper_arm_m', 'forearm_m', 'link_radius_m', 'max_speed_deg_s',
+                              'max_torque_nm', 'upper_arm_mass_kg', 'forearm_mass_kg', 'payload_kg', 'gripper_force_n',
+                              'repeatability_m', 'max_tcp_speed_m_s'})   # numbers code sizes from the requirements
+
+    def clamp_to_caps(self, params: dict) -> dict:
+        """Joint speeds <= MAX_JOINT_SPEED_DEG_S and TCP speed <= MAX_TCP_SPEED_M_S (accel <= MAX_TCP_ACCEL_M_S2),
+        whatever the value came from (agent hint, previous version, sizing)."""
+        p = self.parse(params)
+        v = min(p.max_tcp_speed_m_s, MAX_TCP_SPEED_M_S, MAX_TCP_ACCEL_M_S2 * ACCEL_TIME_S)
+        speeds = [min(s, MAX_JOINT_SPEED_DEG_S) for s in p.max_speed_deg_s]
+        return p.model_copy(update={'max_tcp_speed_m_s': v, 'max_speed_deg_s': speeds}).model_dump()
+
+    def raise_speeds(self, params: dict, factors: dict[str, float], keep=frozenset()):
+        """Raise the speed rating of the joints named in `factors` (joint -> factor > 1), capped at
+        MAX_JOINT_SPEED_DEG_S (accelerations follow: v / ACCEL_TIME_S). Returns (params, notes, capped joint names).
+        Joint speeds in `keep` (explicit user numbers) are left alone."""
+        p = self.parse(params)
+        if 'max_speed_deg_s' in keep:
+            return params, [], []
+        speeds = list(p.max_speed_deg_s or DEF_SPEEDS[:p.dof])
+        notes, capped = [], []
+        for name, f in factors.items():
+            i = int(name[1:]) - 1
+            new = min(speeds[i] * f, max(MAX_JOINT_SPEED_DEG_S, speeds[i]))
+            if new > speeds[i] * 1.001:
+                notes.append(f'{name} {speeds[i]:.0f} -> {new:.0f} deg/s')
+            if new < speeds[i] * f * 0.999:
+                capped.append(name)
+            speeds[i] = new
+        return p.model_copy(update={'max_speed_deg_s': speeds}).model_dump(), notes, capped
 
     # --- URDF ---------------------------------------------------------------------------------------------------
     def add_to_urdf(self, u: U.Urdf, p, root: str):

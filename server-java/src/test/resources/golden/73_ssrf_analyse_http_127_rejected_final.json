@@ -1,0 +1,19 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/<job_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "analyse",
+    "robot_id": "<project_id>",
+    "status": "error",
+    "progress": [
+      "Downloading the datasheet"
+    ],
+    "result": null,
+    "error": "Datasheet download failed: Only https:// URLs are allowed. Upload the datasheet (PDF or text) instead.",
+    "error_code": "datasheet_download",
+    "started": "<timestamp>"
+  }
+}

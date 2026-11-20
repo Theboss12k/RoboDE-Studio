@@ -1,0 +1,24 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/<job_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "revise",
+    "robot_id": "<project_id>",
+    "status": "done",
+    "progress": [
+      "Working out what the change touches",
+      "Re-deriving the requirements",
+      "Sizing the robot and running the task",
+      "Task simulated: 16 of 19 checks pass"
+    ],
+    "result": {
+      "version": 2
+    },
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

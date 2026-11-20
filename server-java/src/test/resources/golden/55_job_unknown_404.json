@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/000000000000",
+  "request_body": null,
+  "status": 404,
+  "response_body": {
+    "detail": "Job not found"
+  }
+}

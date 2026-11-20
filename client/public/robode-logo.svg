@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 66">
+  <title>RoboDE Studio industrial nameplate</title>
+  <path d="M16 2h176l6 6v17h9v16h-9v17l-6 6H16l-6-6V41H1V25h9V8Z" fill="#313637" stroke="#626968" stroke-width="1.5"/>
+  <path d="M17 7h174l2 2v48l-2 2H17l-2-2V9Z" fill="#25292a"/>
+  <path d="M140 7h51l2 2v48l-2 2h-59Z" fill="#f18137"/>
+  <path d="M17 7h117" stroke="#626968" stroke-width="1.4"/>
+  <path d="M17 59h106" stroke="#171b1c" stroke-width="1.4"/>
+  <g fill="#1b1e1f" stroke="#8c9491" stroke-width="1.1">
+    <circle cx="5.75" cy="33" r="2.45"/>
+    <circle cx="202.25" cy="33" r="2.45"/>
+  </g>
+
+  <g fill="#fff9ed" fill-rule="evenodd">
+    <path transform="translate(21 14)" d="M0 24V0h18l6 6v5l-5 5 5 8h-7l-5-7H6v7Zm6-18v5h10l2-2V8l-2-2Z"/>
+    <path transform="translate(48 14)" d="m0 6 6-6h12l6 6v12l-6 6H6l-6-6Zm6 2v8l2 2h8l2-2V8l-2-2H8Z"/>
+    <path transform="translate(75 14)" d="M0 0h17l6 5v5l-2 2 3 3v4l-5 5H0Zm6 5v5h9l2-2V7l-2-2Zm0 9v5h10l2-2v-1l-2-2Z"/>
+    <path transform="translate(102 14)" d="m0 6 6-6h12l6 6v12l-6 6H6l-6-6Zm6 2v8l2 2h8l2-2V8l-2-2H8Z"/>
+  </g>
+  <path d="M55 13h3l4 8h-3ZM58 31h3l4 8h-3Z" fill="#25292a"/>
+  <path d="m114 21.7 3.7 2.15v4.3l-3.7 2.15-3.7-2.15v-4.3Z" fill="#f18137"/>
+  <circle cx="114" cy="26" r="1.55" fill="#25292a"/>
+
+  <g fill="#25292a" fill-rule="evenodd">
+    <path transform="translate(142 16) scale(.91)" d="M0 0h15l10 9v16l-10 9H0Zm7 7v20h5l6-5V12l-6-5Z"/>
+    <path transform="translate(168 16) scale(.91)" d="M0 0h23v7H7v6h13l-3 7H7v7h16v7H0Z"/>
+    <path d="M169 52h2l-2.5 4h-2Zm7 0h2l-2.5 4h-2Zm7 0h2l-2.5 4h-2Z"/>
+  </g>
+
+  <g transform="translate(22 46)" fill="none" stroke="#dce0d8" stroke-width="1.85" stroke-linecap="square">
+    <path d="M8 0H2L0 2v1l2 1h4l2 2v1L6 9H0"/>
+    <path d="M19 0h9m-4.5 0v9"/>
+    <path d="M39 0v7l2 2h4l2-2V0"/>
+    <path d="M58 0h5l3 3v3l-3 3h-5Z"/>
+    <path d="M78 0h6m-3 0v9m-3 0h6"/>
+    <path d="m96 2 2-2h4l2 2v5l-2 2h-4l-2-2Z"/>
+  </g>
+</svg>

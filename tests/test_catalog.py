@@ -173,7 +173,7 @@ def test_candidate_concept_serial_arm():
     mspec = ManufacturerSpec(candidate_id='acme_ra_6', document_url='https://a.example/d.pdf', family='serial_arm', values=[
         mvalue('payload_kg', 6, 'kg'), mvalue('reach_m', 0.9, 'm'), mvalue('dof', 6, ''),
         mvalue('repeatability_mm', 0.03, 'mm'), mvalue('mass_kg', 99, 'kg', verified=False)])
-    concept, unverified = model.candidate_concept(mspec, generated, SPEC, cand)
+    concept, unverified, _ = model.candidate_concept(mspec, generated, SPEC, cand)
     p = SerialArmParams.model_validate(concept.params)
     assert concept.name == 'Acme RA-6' and p.payload_kg == 6 and p.repeatability_m == pytest.approx(3e-5)
     assert model.reach_of(p) == pytest.approx(0.9)
@@ -195,7 +195,8 @@ def test_differences_flags_low_payload_blocking():
     by = {d.topic: d for d in compare.differences(generated, cand_sim, cand)}
     assert by['Payload'].severity == 'blocking'
     assert by['Reach'].severity == 'minor'          # passes, but within 10 % of the requirement
-    assert by['Rated payload'].severity == 'minor' and by['Repeatability'].severity == 'ok'
+    assert 'Rated payload' not in by                # the Payload requirement row covers it
+    assert by['Repeatability'].severity == 'ok'
     assert by['Task duration'].severity == 'minor'
 
 
@@ -225,3 +226,145 @@ async def test_mixed_resolution_never_connects():
     with pytest.raises(fetch.UnsafeURL):
         await fetch.safe_download('https://acme.example/a', resolver=mixed, transport=mock(lambda r: seen.append(r) or ok_handler(r)))
     assert seen == []
+
+
+# --- prices, images and the product-page fallback --------------------------------------------------------------------
+
+def priced(**price):
+    base = {'manufacturer': 'Acme', 'model': 'P1', 'family': 'serial_arm', 'product_url': 'https://acme.example/p1'}
+    return {'candidates': [{**base, 'price': {'currency': 'USD', 'source_url': 'https://shop.example/p1', 'note': 'arm only', **price}}]}
+
+
+async def test_price_without_date_is_seen_today():
+    llm = ScriptedLLM([('find real robots', priced(low=9000, quote='Price: $9,000.00', date=''))])
+    found = await se.search(llm, SPEC, REQS, GENERATED, today='2026-11-20')
+    assert found[0].price.date == 'seen 2026-11-20' and found[0].price.low == 9000
+
+
+async def test_price_not_in_quote_or_without_quote_is_dropped():
+    from collections import Counter
+    dropped = Counter()
+    wrong = await se.search(ScriptedLLM([('find real robots', priced(low=9000, quote='Price: $8,500', date='2026-01-01'))]),
+                            SPEC, REQS, GENERATED, dropped=dropped)
+    assert wrong[0].price is None and dropped['figure not in the quote'] == 1
+    none = await se.search(ScriptedLLM([('find real robots', priced(low=9000, quote='', date='2026-01-01'))]),
+                           SPEC, REQS, GENERATED, dropped=dropped)
+    assert none[0].price is None and dropped['no verbatim quote'] == 1
+
+
+def test_price_figures_tolerate_separators():
+    assert se.price_problem({'low': 12500, 'source_url': 'u', 'quote': 'EUR 12 500,00 incl. VAT', 'date': 'd'}, 't')[0]
+    assert se.price_problem({'high': 1299.5, 'source_url': 'u', 'quote': 'from $1,299.50', 'date': 'd'}, 't')[0]
+
+
+def html_page(body):
+    return lambda url, **kw: _page(url, body)
+
+
+async def _page(url, body):
+    from studio.catalog.fetch import Downloaded
+    return Downloaded(body.encode(), 'text/html', url, 'page.html')
+
+
+def cand(url='https://acme.example/p/x', image=''):
+    return Candidate(id='acme_x', manufacturer='Acme', model='X', family='serial_arm', product_url=url, image_url=image)
+
+
+async def test_fill_images_og_image_and_relative_url():
+    page = '<html><head><meta content="/img/x.jpg" property="og:image"></head></html>'
+    c, d = cand(), cand(image='https://acme.example/have.jpg')
+    await se.fill_images([c, d], html_page(page))
+    assert c.image_url == 'https://acme.example/img/x.jpg' and d.image_url == 'https://acme.example/have.jpg'
+    t = cand()
+    await se.fill_images([t], html_page('<meta name="twitter:image" content="https://cdn.example/t.png">'))
+    assert t.image_url == 'https://cdn.example/t.png'
+
+
+async def test_fill_images_without_og_image_or_on_failure():
+    c = cand()
+    await se.fill_images([c], html_page('<html><head><title>x</title></head></html>'))
+    assert c.image_url == ''
+
+    async def boom(url, **kw):
+        raise ValueError('nope')
+    await se.fill_images([c], boom)
+    assert c.image_url == ''
+
+
+async def test_analyse_falls_back_to_product_page(tmp_path):
+    from studio.pipeline import catalog as pc
+    lines = []
+    c = cand()
+    seen = []
+
+    async def download(url):
+        seen.append(url)
+        return await _page(url, '<html><body><p>Rated payload 6 kg</p></body></html>')
+    doc = await pc.datasheet_text(c, '', lines.append, download)
+    assert seen == ['https://acme.example/p/x'] and 'Rated payload 6 kg' in doc.text and doc.source == seen[0]
+    assert doc.downloaded and any('product page' in line for line in lines)
+
+    stored = await pc.datasheet_text(c, '', lines.append, download, stored='saved text', stored_source='uploaded document a.pdf')
+    assert (stored.text, stored.source, stored.downloaded) == ('saved text', 'uploaded document a.pdf', False)
+
+    async def fail(url):
+        raise ValueError('The server answered 404')
+    with pytest.raises(pc.DatasheetError, match='Datasheet download failed: The server answered 404'):
+        await pc.datasheet_text(c, '', lines.append, fail)
+
+
+# --- provenance and unpublished values (real FANUC CRX-5iA run, saved fixture) ------------------------------------------
+
+def fanuc():
+    import json
+    return json.loads((Path(__file__).parent / 'fixtures' / 'real_fanuc_analysis.json').read_text())['analysis']
+
+
+def fanuc_concept():
+    from studio.families.params import SerialArmParams
+    a = fanuc()
+    mspec = ManufacturerSpec.model_validate(a['manufacturer_spec'])
+    generated = RobotConcept(family='serial_arm', name='Gen', params=SerialArmParams().model_dump())
+    return a, model.candidate_concept(mspec, generated, SPEC)
+
+
+def test_fanuc_speed_is_applied_and_defaults_are_marked():
+    a, (concept, unverified, prov) = fanuc_concept()
+    assert concept.params['max_tcp_speed_m_s'] == 2.0 and prov['max_tcp_speed_m_s'].startswith('verified')
+    assert all(prov[k].startswith('default') for k in ('max_torque_nm', 'max_speed_deg_s', 'max_tcp_accel_m_s2'))
+    assert prov['payload_kg'].startswith('verified') and prov['upper_arm_m'].startswith('derived')
+    assert prov['gripper_force_n'].startswith('carried')
+
+
+def test_unpublished_checks_get_no_verdict_but_keep_their_estimate():
+    a, (concept, unverified, prov) = fanuc_concept()
+    checks = {c.requirement_id: c for c in model.qualify_checks([Check.model_validate(c) for c in a['sim']['checks']], prov)}
+    for rid in ('joint_torque_j1', 'joint_torque_j6', 'joint_speed', 'tcp_accel', 'cycle_time'):
+        assert checks[rid].passed is None and checks[rid].detail.startswith('Not published'), rid
+    assert checks['joint_torque_j2'].actual == 211.0 and 'max_torque_nm assumed 211' in checks['joint_torque_j2'].detail
+    assert checks['tcp_speed'].passed is True and checks['payload'].passed is True
+    assert checks['grip_force'].passed is True and "generated design's gripper" in checks['grip_force'].detail
+    assert checks['collision_free'].passed is True and 'estimated from the verified reach' in checks['collision_free'].detail
+    assert checks['reach_max'].passed is True and checks['joint_limits'].passed is True
+    ok = [c for c in checks.values() if c.passed is not None]
+    assert all(c.passed for c in ok)
+
+
+def test_differences_render_verdicts_and_skip_info_and_duplicates():
+    a, (concept, unverified, prov) = fanuc_concept()
+    checks = model.qualify_checks([Check.model_validate(c) for c in a['sim']['checks']], prov)
+    sim = SimResult(frames=[], duration_s=6.0, checks=checks)
+    info = requirement('reach_min', 'Closest task point', 0.8, 'm', 'reach').model_copy(update={'comparator': 'info'})
+    reqs = [info, requirement('payload', 'Payload', 1.0, 'kg', 'payload')]
+    generated = DesignVersion.model_construct(
+        spec=SimpleNamespace(physics_inputs=SimpleNamespace(cycle_time_s=6.0)), requirements=reqs,
+        robot=RobotConcept(family='serial_arm', name='Gen', params={'payload_kg': 1.0, 'repeatability_m': 0.0005}),
+        sim=SimResult(frames=[], duration_s=6.0, ok=True, checks=checks))
+    rows = compare.differences(generated, sim, concept, prov)
+    by = {d.topic: d for d in rows}
+    assert [d.topic for d in rows].count('Repeatability') == 1      # the accuracy row; no duplicate rating row
+    assert by['No collisions with the scene'].candidate.startswith('passes')
+    assert by['No collisions with the scene'].generated.startswith('passes')
+    assert by['Static load j1'].candidate.startswith('not published: Not published') or 'not published' in by['Static load j1'].candidate
+    assert 'Closest task point' not in by
+    assert 'Rated payload' not in by

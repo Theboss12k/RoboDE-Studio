@@ -1,0 +1,527 @@
+{
+  "$defs": {
+    "Locomotion": {
+      "properties": {
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "path": {
+          "default": [],
+          "items": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Path",
+          "type": "array"
+        },
+        "terrain": {
+          "default": "flat indoor floor",
+          "maxLength": 200,
+          "title": "Terrain",
+          "type": "string"
+        },
+        "slope_deg": {
+          "default": 0.0,
+          "maximum": 45,
+          "minimum": 0,
+          "title": "Slope Deg",
+          "type": "number"
+        }
+      },
+      "title": "Locomotion",
+      "type": "object"
+    },
+    "Marker": {
+      "description": "A named point in the world frame: pick-up and drop-off points, waypoints, docking stations.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "position": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "position"
+      ],
+      "title": "Marker",
+      "type": "object"
+    },
+    "PhysicsInputs": {
+      "description": "The numeric part of the payload and motion description. The physics engine reads only this.",
+      "properties": {
+        "object_mass_kg": {
+          "exclusiveMinimum": 0,
+          "maximum": 5000,
+          "title": "Object Mass Kg",
+          "type": "number"
+        },
+        "object_size_m": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Object Size M",
+          "type": "array"
+        },
+        "tool_mass_kg": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Mass Kg"
+        },
+        "grip": {
+          "default": "parallel",
+          "enum": [
+            "parallel",
+            "vacuum",
+            "magnetic",
+            "hook",
+            "fork",
+            "none"
+          ],
+          "title": "Grip",
+          "type": "string"
+        },
+        "friction_coefficient": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "maximum": 2,
+          "title": "Friction Coefficient",
+          "type": "number"
+        },
+        "contact_count": {
+          "default": 2,
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Contact Count",
+          "type": "integer"
+        },
+        "cycle_time_s": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Cycle Time S",
+          "type": "number"
+        },
+        "positional_accuracy_m": {
+          "default": 0.005,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Positional Accuracy M",
+          "type": "number"
+        },
+        "safety_factor": {
+          "default": 1.5,
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Safety Factor",
+          "type": "number"
+        },
+        "clearance_m": {
+          "default": 0.05,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Clearance M",
+          "type": "number"
+        },
+        "approach_height_m": {
+          "default": 0.1,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Approach Height M",
+          "type": "number"
+        },
+        "peak_acceleration_m_s2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Acceleration M S2"
+        },
+        "travel_distance_m": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Travel Distance M",
+          "type": "number"
+        },
+        "travel_speed_m_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Travel Speed M S"
+        },
+        "slope_deg": {
+          "default": 0.0,
+          "maximum": 45,
+          "minimum": 0,
+          "title": "Slope Deg",
+          "type": "number"
+        },
+        "rolling_resistance": {
+          "default": 0.015,
+          "maximum": 0.5,
+          "minimum": 0,
+          "title": "Rolling Resistance",
+          "type": "number"
+        },
+        "vehicle_mass_kg": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vehicle Mass Kg"
+        },
+        "wheel_radius_m": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheel Radius M"
+        },
+        "shifts_per_day": {
+          "default": 1.0,
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Shifts Per Day",
+          "type": "number"
+        },
+        "cycles_per_hour": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cycles Per Hour"
+        }
+      },
+      "required": [
+        "object_mass_kg",
+        "object_size_m",
+        "cycle_time_s"
+      ],
+      "title": "PhysicsInputs",
+      "type": "object"
+    },
+    "TaskAction": {
+      "description": "One step of the task, in order. `target` is a Marker id.",
+      "properties": {
+        "verb": {
+          "enum": [
+            "pick",
+            "place",
+            "move",
+            "drive",
+            "wait",
+            "inspect",
+            "push",
+            "press",
+            "home"
+          ],
+          "title": "Verb",
+          "type": "string"
+        },
+        "object": {
+          "default": "",
+          "title": "Object",
+          "type": "string"
+        },
+        "target": {
+          "default": "",
+          "title": "Target",
+          "type": "string"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verb"
+      ],
+      "title": "TaskAction",
+      "type": "object"
+    },
+    "TaskObject": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "mass_kg": {
+          "exclusiveMinimum": 0,
+          "maximum": 5000,
+          "title": "Mass Kg",
+          "type": "number"
+        },
+        "size_m": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Size M",
+          "type": "array"
+        },
+        "shape": {
+          "default": "box",
+          "enum": [
+            "box",
+            "cylinder",
+            "sphere"
+          ],
+          "title": "Shape",
+          "type": "string"
+        },
+        "grip": {
+          "default": "parallel",
+          "enum": [
+            "parallel",
+            "vacuum",
+            "magnetic",
+            "hook",
+            "fork",
+            "none"
+          ],
+          "title": "Grip",
+          "type": "string"
+        },
+        "fragile": {
+          "default": false,
+          "title": "Fragile",
+          "type": "boolean"
+        },
+        "start_marker": {
+          "default": "",
+          "title": "Start Marker",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mass_kg",
+        "size_m"
+      ],
+      "title": "TaskObject",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "title": {
+      "maxLength": 160,
+      "title": "Title",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "title": "Summary",
+      "type": "string"
+    },
+    "frame": {
+      "default": "World frame: metres, z up, origin on the floor.",
+      "maxLength": 400,
+      "title": "Frame",
+      "type": "string"
+    },
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/TaskAction"
+      },
+      "minItems": 1,
+      "title": "Actions",
+      "type": "array"
+    },
+    "objects": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TaskObject"
+      },
+      "title": "Objects",
+      "type": "array"
+    },
+    "markers": {
+      "items": {
+        "$ref": "#/$defs/Marker"
+      },
+      "minItems": 1,
+      "title": "Markers",
+      "type": "array"
+    },
+    "locomotion": {
+      "$ref": "#/$defs/Locomotion",
+      "default": {
+        "required": false,
+        "path": [],
+        "terrain": "flat indoor floor",
+        "slope_deg": 0.0
+      }
+    },
+    "environment": {
+      "default": "indoor",
+      "maxLength": 400,
+      "title": "Environment",
+      "type": "string"
+    },
+    "duty_cycle": {
+      "default": "",
+      "maxLength": 400,
+      "title": "Duty Cycle",
+      "type": "string"
+    },
+    "accuracy_m": {
+      "default": 0.005,
+      "exclusiveMinimum": 0,
+      "title": "Accuracy M",
+      "type": "number"
+    },
+    "speed_target": {
+      "default": "",
+      "maxLength": 400,
+      "title": "Speed Target",
+      "type": "string"
+    },
+    "payload_description": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Payload Description",
+      "type": "string"
+    },
+    "physics_inputs": {
+      "$ref": "#/$defs/PhysicsInputs"
+    },
+    "assumptions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "reference": {
+      "default": "",
+      "maxLength": 4000,
+      "title": "Reference",
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "summary",
+    "actions",
+    "markers",
+    "physics_inputs"
+  ],
+  "title": "TechnicalSpec",
+  "type": "object"
+}

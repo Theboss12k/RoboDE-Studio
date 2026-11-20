@@ -4,21 +4,11 @@ import { useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
 import { Vector3 } from "three";
-import { linkFrames, robotExtent, RobotGeometry, Z_UP } from "../RobotView";
+import { linkFrames, objectCenters, robotExtent, Z_UP } from "@robode/studio-core";
+import { RobotGeometry } from "../RobotView";
 import type { BasePose, Frame, Marker, Parsed, SceneObject, SceneSpec, Vec3 } from "../types";
 
 type Base = { x: number; y: number; z: number; yaw: number };
-
-/** Where each task object is at frame `index`: its scene position, or hanging below the tool while held, or where it was released. */
-export function objectCenters(objects: SceneObject[], frames: Frame[], index: number) {
-  const centres: Record<string, Vec3> = Object.fromEntries(objects.map((o) => [o.id, o.center]));
-  const size = Object.fromEntries(objects.map((o) => [o.id, o.size]));
-  for (let i = 0; i <= index && i < frames.length; i++) {
-    const f = frames[i];
-    if (f.holding && f.tcp && size[f.holding]) centres[f.holding] = [f.tcp[0], f.tcp[1], f.tcp[2] - size[f.holding][2] / 2];
-  }
-  return centres;
-}
 
 function ObjectMesh({ o, centre }: { o: SceneObject; centre: Vec3 }) {
   return (

@@ -1,0 +1,76 @@
+{
+  "properties": {
+    "max_robots": {
+      "default": 2,
+      "maximum": 3,
+      "minimum": 2,
+      "title": "Max Robots",
+      "type": "integer"
+    },
+    "families": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Families",
+      "type": "array"
+    },
+    "max_reach_m": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 10,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Reach M"
+    },
+    "max_payload_kg": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 2000,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Payload Kg"
+    },
+    "budget_usd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Budget Usd"
+    },
+    "brands": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Brands",
+      "type": "array"
+    },
+    "note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Note",
+      "type": "string"
+    }
+  },
+  "title": "FleetLimits",
+  "type": "object"
+}

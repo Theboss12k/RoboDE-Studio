@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/approve",
+  "request_body": {
+    "version": 1
+  },
+  "status": 409,
+  "response_body": {
+    "detail": "Version 2 is already approved; this design is frozen"
+  }
+}

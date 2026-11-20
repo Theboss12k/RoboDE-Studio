@@ -1,16 +1,9 @@
 # Python packages for the RoboDE Studio (Python 3.12 or later). Install with:  npm run setup
 # Versions are the ones the test suite last passed with.
 
-# API server
-fastapi==0.159.1
-starlette==1.9.0
+# Task subprocesses (the Java server runs `python -m studio.tasks`)
 pydantic==2.14.1
-uvicorn==0.54.0
-websockets==17.3          # live test sessions stream over a WebSocket
-httptools==0.9.0
-uvloop==0.23.0; platform_system != "Windows"
-watchfiles==1.3.0
-httpx==0.28.1             # Gemini API, Gazebo bridge client
+httpx==0.28.1             # Gemini API client and web downloads
 
 # Documents and CAD
 pypdf==6.21.4             # text from PDF manuals

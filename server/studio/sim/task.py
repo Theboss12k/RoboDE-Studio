@@ -41,7 +41,8 @@ def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Way
     pi = spec.physics_inputs
     objs = {o.id: o for o in spec.objects}
     marks = {m.id: m for m in spec.markers}
-    out, carried_z = [], None
+    out, carried_z, held = [], None, ''
+    has_pick = any(a.verb == 'pick' for a in spec.actions)
     for a in spec.actions:
         m = marks.get(a.target)
         o = objs.get(a.object)
@@ -60,7 +61,7 @@ def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Way
                 out += [Waypoint(f'{tag}_approach', (x, y, za), 'approach', '', label),
                         Waypoint(f'{tag}_grasp', (x, y, zg), 'grasp', oid, label, GRIP_S),
                         Waypoint(f'{tag}_lift', (x, y, za), 'lift', oid, label)]
-                carried_z = za
+                carried_z, held = za, oid
             elif a.verb == 'place':
                 zc = max(carried_z, za) if carried_z is not None else za
                 out += [Waypoint(f'{tag}_carry', (x, y, zc), 'carry', oid, label),
@@ -68,13 +69,16 @@ def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Way
                         Waypoint(f'{tag}_place', (x, y, zg), 'place', oid, label),
                         Waypoint(f'{tag}_release', (x, y, zg), 'release', oid, label, GRIP_S),
                         Waypoint(f'{tag}_retreat', (x, y, za), 'retreat', '', label)]
-                carried_z = None
+                carried_z, held = None, ''
             else:
                 out += [Waypoint(f'{tag}_approach', (x, y, za), 'approach', '', label),
                         Waypoint(f'{tag}_place', (x, y, zg), 'place', '', label, a.duration_s),
                         Waypoint(f'{tag}_retreat', (x, y, za), 'retreat', '', label)]
         elif a.verb == 'move' and m is not None:
-            out.append(Waypoint(f'move_{m.id}', tuple(m.position), 'carry', a.object, label))
+            # Never to the surface: carry height above the marker (object height when one is or will be held).
+            size_z = o.size_m[2] if o else (pi.object_size_m[2] if has_pick else 0.0)
+            x, y, z = m.position
+            out.append(Waypoint(f'move_{m.id}', (x, y, z + size_z + pi.approach_height_m), 'carry', held, label))
         elif a.verb == 'drive':
             out.append(Waypoint(f'drive_{m.id if m else "end"}', tuple(m.position) if m else None, 'drive', '', label))
         elif a.verb == 'home':
@@ -102,8 +106,9 @@ def _wrap(a):
 class _Run:
     """Timeline builder: rows of (t, q, base pose, wheel angles, holding, phase, boxes to ignore)."""
 
-    def __init__(self, dt, q, pose, bp):
-        self.dt, self.q, self.pose, self.bp = dt, np.array(q, float), pose, bp
+    def __init__(self, dt, q, pose, bp, slow=1.0):
+        self.dt, self.q, self.pose, self.bp, self.slow = dt, np.array(q, float), pose, bp, slow
+        self.dwelled = 0.0                       # total standing-still time (not stretched)
         self.t, self.holding, self.phase, self.skip = 0.0, '', '', frozenset()
         self.wheels = [0.0, 0.0]
         self.rows = []
@@ -116,6 +121,7 @@ class _Run:
 
     def dwell(self, d, holding=None):
         """Stand still for d seconds; `holding` (when given) applies from the last frame of the dwell."""
+        self.dwelled += d
         n = max(1, math.ceil(d / self.dt))
         for i in range(n):
             self.t += d / n
@@ -147,8 +153,9 @@ class _Run:
         if D < 1e-9:
             return
         bp = self.bp
-        s = motion.sample(D, bp.max_speed_m_s, bp.max_accel_m_s2, self.dt)
-        T = motion.trapezoid(D, bp.max_speed_m_s, bp.max_accel_m_s2)['t_total']
+        v, a = bp.max_speed_m_s / self.slow, bp.max_accel_m_s2 / self.slow ** 2
+        s = motion.sample(D, v, a, self.dt)
+        T = motion.trapezoid(D, v, a)['t_total']
         times = _times(T, self.dt, len(s))
         x, y, yaw = self.pose
         t0, prev = self.t, 0.0
@@ -171,7 +178,9 @@ class _Run:
 
 
 def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneSpec, concept: RobotConcept,
-             params: dict | None = None, dt: float = 0.04) -> SimResult:
+             params: dict | None = None, dt: float = 0.04, _slow: float = 1.0, _fastest: float | None = None) -> SimResult:
+    """Simulate the task. When the fastest feasible run is shorter than the cycle time, the run is repeated with the
+    motion stretched uniformly (speeds / k, accelerations / k^2) so that it fills the cycle; `_slow` is that k."""
     fam = families.get(concept.family)
     p = fam.parse(concept.params if params is None else params)
     joints = fam.joints(p)
@@ -227,7 +236,8 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
     if act and first is not None:
         pose_first = stop_pose(stop_for(first.xyz, 0)) if mobile_path else pose0
         q0 = fam.ik(p, to_base(first.xyz, pose_first)).q
-    run = _Run(dt, q0, pose0, bp)
+    run = _Run(dt, q0, pose0, bp, _slow)
+    mv_vel, mv_acc = vel / _slow, acc / _slow ** 2
     start_q = q0.copy()
     cur_stop = 0
     reach, torque, limits_ok = [], np.zeros(len(act)), True
@@ -249,7 +259,7 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
         elif w.kind == 'wait':
             run.dwell(w.dwell_s)
         elif w.kind == 'home':
-            run.move(start_q, vel, acc) if act else None
+            run.move(start_q, mv_vel, mv_acc) if act else None
         else:
             if mobile_path:
                 drive_to(stop_for(w.xyz, cur_stop))
@@ -267,19 +277,31 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                 elif prev_kind in CONTACT and last_rest:
                     run.skip = frozenset([last_rest])
                 limits_ok &= bool(np.all(res.q >= lo - 1e-6) and np.all(res.q <= hi + 1e-6))
-                run.move(res.q, vel, acc)
+                run.move(res.q, mv_vel, mv_acc)
                 payload = objs[run.holding].mass_kg if run.holding in objs else (
                     spec.physics_inputs.object_mass_kg if run.holding else 0.0)
                 torque = np.maximum(torque, np.abs(fam.gravity_torques(p, res.q, payload)))
             if w.kind in ('grasp', 'release'):
                 run.dwell(w.dwell_s or GRIP_S, w.object if w.kind == 'grasp' else '')
+            elif w.kind == 'place' and w.dwell_s:      # press / push: hold at the surface
+                run.dwell(w.dwell_s)
         prev_kind = w.kind
     run.skip = frozenset()
+
+    # --- realistic playback: a run faster than the cycle time is stretched to fill it ---
+    cycle = spec.physics_inputs.cycle_time_s
+    fastest = run.rows[-1]['t'] if _fastest is None else _fastest
+    moving = run.rows[-1]['t'] - run.dwelled
+    if _slow == 1.0 and moving > 1e-6 and run.rows[-1]['t'] < cycle and cycle > run.dwelled:
+        return simulate(spec, requirements, scene, concept, params, dt, (cycle - run.dwelled) / moving, fastest)
 
     # --- collisions ---
     pw = np.array([0.0, 0.0, bz])
     radii = fam.chain_radii(p)
     active, hits = set(), 0
+    # a fixed robot mounted on a table or plinth stands on that box: its first segment (the base) may touch it
+    mount_box = {b.id for b in boxes if bz > 0.02 and not mobile_path
+                 and collision.point_box_distance([[pose0[0], pose0[1], bz]], b.center, b.size, b.yaw)[0] <= 0.02}
     for r in run.rows[::2]:
         x, y, yaw = r['pose']
         c, s = math.cos(yaw), math.sin(yaw)
@@ -290,6 +312,8 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
             if b.id in r['skip']:
                 continue
             for i in range(len(pts) - 1):
+                if i == 0 and b.id in mount_box:
+                    continue
                 if collision.capsule_box_distance(pts[i], pts[i + 1], radii[i], b.center, b.size, b.yaw) <= 0:
                     now.add((b.id, i))
         for key in now - active:
@@ -335,6 +359,9 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
         if rq.id == 'cycle_time':
             calc = Calc(formula='t = sum of simulated move, drive and dwell times',
                         inputs={'moves': Quantity(value=len(run.rows), unit='samples')}, result=duration, unit='s')
+        if rq.id == 'cycle_time':
+            detail = (f'fastest feasible {fastest:.1f} s; played at the {cycle:.1f} s cycle' if _slow != 1.0
+                      else f'fastest feasible {fastest:.1f} s')
         c = report.check(rq, a, calc, detail)
         if rq.id == 'reach_max' and act:
             bad = [r for r in reach if not r[1]]
@@ -375,7 +402,7 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                                         'rad/s or m/s', detail='peak speed in the simulated motion vs the rating',
                                         passed=bool(np.all(peak <= vel * 1.02))))
     checks.append(report.custom('collision_free', 'No collisions with the scene', None, None, '',
-                                passed=hits == 0, detail=f'{hits} collision episode(s)' if hits else 'no contact found'))
+                                passed=hits == 0, detail=report.collision_detail(hits)))
     if mobile_path:
         xy = np.array([r['pose'][:2] for r in run.rows])
         dev = max(_polyline_distance(pt, path) for pt in xy[::5])

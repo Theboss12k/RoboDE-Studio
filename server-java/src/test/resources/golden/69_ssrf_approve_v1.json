@@ -1,0 +1,29 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/approve",
+  "request_body": {
+    "version": 1
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "Bottle A to B",
+    "brief": "x",
+    "reference": null,
+    "stage": "approved",
+    "questions": [],
+    "answers": {
+      "cycle": 6
+    },
+    "versions": [
+      1
+    ],
+    "approved_version": 1,
+    "candidates_count": 0,
+    "selected_candidate": null,
+    "analyses": [],
+    "decision": null,
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

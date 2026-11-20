@@ -11,6 +11,9 @@ Rules:
 - Return every difference in the same order. Copy topic, generated, candidate and severity unchanged, character for character; write only "impact".
 - "impact" is one or two short sentences: what the difference means for the task (for example "reach is 8 cm short of the far marker, so the bottle at B cannot be placed"). Do not repeat the numbers more than needed, do not invent numbers, and do not say the product is good or bad overall.
 - Severity was set by code from simulated checks; do not argue with it. A severity of ok needs only a short note.
+- "not published" means the manufacturer did not state that value, so it could not be judged; it does not mean the robot failed. Say "the manufacturer does not publish this" rather than "fails".
+- Never say a check was unavailable or missing when the text shows "passes" or "fails": those are results. Only "not published" and "not checked" mean no verdict.
+- A value described as assumed or estimated (for example a torque rating or link lengths) is an estimate, not a manufacturer figure; call it an estimate.
 - The values come from simulation of kinematics and statics and from manufacturer datasheets; do not claim hardware tests.
 Answer with {"differences": [...]}."""
 

@@ -1,0 +1,540 @@
+{
+  "$defs": {
+    "BasePose": {
+      "properties": {
+        "position": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "title": "BasePose",
+      "type": "object"
+    },
+    "Calc": {
+      "description": "A traceable calculation: what was computed, how, from what.",
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Quantity"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "result": {
+          "title": "Result",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "inputs",
+        "result",
+        "unit"
+      ],
+      "title": "Calc",
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Passed"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "calc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Calc"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "requirement_id",
+        "name",
+        "required",
+        "actual",
+        "unit",
+        "passed"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "Difference": {
+      "properties": {
+        "topic": {
+          "title": "Topic",
+          "type": "string"
+        },
+        "generated": {
+          "title": "Generated",
+          "type": "string"
+        },
+        "candidate": {
+          "title": "Candidate",
+          "type": "string"
+        },
+        "impact": {
+          "default": "",
+          "title": "Impact",
+          "type": "string"
+        },
+        "severity": {
+          "default": "minor",
+          "enum": [
+            "ok",
+            "minor",
+            "major",
+            "blocking"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "generated",
+        "candidate"
+      ],
+      "title": "Difference",
+      "type": "object"
+    },
+    "Frame": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "joints": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Joints",
+          "type": "object"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "holding": {
+          "default": "",
+          "title": "Holding",
+          "type": "string"
+        },
+        "tcp": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tcp"
+        },
+        "phase": {
+          "default": "",
+          "title": "Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "joints"
+      ],
+      "title": "Frame",
+      "type": "object"
+    },
+    "ManufacturerSpec": {
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "document_url": {
+          "title": "Document Url",
+          "type": "string"
+        },
+        "document_title": {
+          "default": "",
+          "title": "Document Title",
+          "type": "string"
+        },
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/ManufacturerValue"
+          },
+          "title": "Values",
+          "type": "array"
+        },
+        "kinematics_note": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Kinematics Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "document_url",
+        "family",
+        "values"
+      ],
+      "title": "ManufacturerSpec",
+      "type": "object"
+    },
+    "ManufacturerValue": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        },
+        "page": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Page",
+          "type": "string"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "unit",
+        "quote"
+      ],
+      "title": "ManufacturerValue",
+      "type": "object"
+    },
+    "Quantity": {
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "RobotConcept": {
+      "properties": {
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        },
+        "base": {
+          "$ref": "#/$defs/BasePose",
+          "default": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "yaw": 0.0
+          }
+        }
+      },
+      "required": [
+        "family",
+        "name"
+      ],
+      "title": "RobotConcept",
+      "type": "object"
+    },
+    "SimEvent": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "info",
+            "warning",
+            "collision",
+            "unreachable",
+            "limit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "kind",
+        "text"
+      ],
+      "title": "SimEvent",
+      "type": "object"
+    },
+    "SimResult": {
+      "properties": {
+        "frames": {
+          "items": {
+            "$ref": "#/$defs/Frame"
+          },
+          "title": "Frames",
+          "type": "array"
+        },
+        "events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SimEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "ok": {
+          "default": false,
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "frames"
+      ],
+      "title": "SimResult",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "manufacturer_spec": {
+      "$ref": "#/$defs/ManufacturerSpec"
+    },
+    "robot": {
+      "$ref": "#/$defs/RobotConcept"
+    },
+    "urdf": {
+      "title": "Urdf",
+      "type": "string"
+    },
+    "sim": {
+      "$ref": "#/$defs/SimResult"
+    },
+    "differences": {
+      "items": {
+        "$ref": "#/$defs/Difference"
+      },
+      "title": "Differences",
+      "type": "array"
+    },
+    "unverified": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unverified",
+      "type": "array"
+    },
+    "provenance": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Provenance",
+      "type": "object"
+    },
+    "created": {
+      "default": "",
+      "title": "Created",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "manufacturer_spec",
+    "robot",
+    "urdf",
+    "sim",
+    "differences"
+  ],
+  "title": "Analysis",
+  "type": "object"
+}

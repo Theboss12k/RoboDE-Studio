@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/projects/..%2F..%2Fx",
+  "request_body": null,
+  "status": 404,
+  "response_body": {
+    "detail": "Not found"
+  }
+}

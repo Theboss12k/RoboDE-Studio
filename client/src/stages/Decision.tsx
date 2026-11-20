@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
 import { api } from "../api";
 import { StageHead } from "../components/common";
+import { Download } from "../components/icons";
 import type { Candidate, Project } from "../types";
 
 export default function Decision({ project, reload, cid }: { project: Project; reload: () => Promise<void>; cid: string | null }) {
@@ -35,7 +35,7 @@ export default function Decision({ project, reload, cid }: { project: Project; r
       <div className="panel sunk">
         <h3>Robot studio is coming later</h3>
         <p className="small muted">Robot studio will take the chosen robot through control set-up and testing. For now, download the design package: the generated URDF and 3D model, the specification, requirements, simulation summary and the analysis.</p>
-        <div><a className="button" href={`/api/projects/${project.id}/export`} download><Download size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> Download design package</a></div>
+        <div><a className="button" href={`/api/v1/projects/${project.id}/export`} download><Download size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> Download design package</a></div>
       </div>
     </div>
   );

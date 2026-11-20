@@ -1,0 +1,81 @@
+{
+  "properties": {
+    "t": {
+      "title": "T",
+      "type": "number"
+    },
+    "joints": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Joints",
+      "type": "object"
+    },
+    "base": {
+      "anyOf": [
+        {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base"
+    },
+    "holding": {
+      "default": "",
+      "title": "Holding",
+      "type": "string"
+    },
+    "tcp": {
+      "anyOf": [
+        {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tcp"
+    },
+    "phase": {
+      "default": "",
+      "title": "Phase",
+      "type": "string"
+    }
+  },
+  "required": [
+    "t",
+    "joints"
+  ],
+  "title": "Frame",
+  "type": "object"
+}

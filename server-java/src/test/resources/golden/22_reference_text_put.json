@@ -1,0 +1,28 @@
+{
+  "method": "PUT",
+  "path": "/api/projects/<project_id>/reference",
+  "request_body": {
+    "text": "A bench-top task."
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "Move a 0.3 kg bottle from A to B",
+    "brief": "Move a 0.3 kg bottle from A to B",
+    "reference": {
+      "text": "A bench-top task.",
+      "files": []
+    },
+    "stage": "brief",
+    "questions": [],
+    "answers": {},
+    "versions": [],
+    "approved_version": null,
+    "candidates_count": 0,
+    "selected_candidate": null,
+    "analyses": [],
+    "decision": null,
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

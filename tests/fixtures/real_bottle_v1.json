@@ -1,0 +1,341 @@
+{
+ "note": "Real Claude Opus/Sonnet output (spec, scene, robot concept) from the 2026-11-20 browser run; used as fixture input.",
+ "spec": {
+  "title": "Tabletop bottle transfer A to B (300 g, 10 per minute)",
+  "summary": "A fixed tabletop arm with a parallel gripper picks up a closed 300 g plastic bottle (\u00d80.07 m \u00d7 0.22 m) standing upright at point A. It carries it 0.6 m across a 0.75 m high table and sets it down upright at point B within \u00b15 mm. Target rate is 10 transfers per minute, so each cycle takes 6 s. The robot does not drive.",
+  "frame": "World frame: metres, z up, origin on the floor below the robot base. The table top is at z = 0.75. Markers sit at z on the table surface.",
+  "actions": [
+   {
+    "verb": "move",
+    "object": "bottle",
+    "target": "point_a",
+    "duration_s": 1.2,
+    "description": "Move from home to the approach pose 0.1 m above the bottle's grasp height at A, then descend."
+   },
+   {
+    "verb": "pick",
+    "object": "bottle",
+    "target": "point_a",
+    "duration_s": 1.0,
+    "description": "Close the parallel gripper on the bottle body at about mid-height, then lift it 0.1 m clear of the table."
+   },
+   {
+    "verb": "move",
+    "object": "bottle",
+    "target": "point_b",
+    "duration_s": 1.4,
+    "description": "Carry the bottle upright across 0.6 m to the approach pose above B."
+   },
+   {
+    "verb": "place",
+    "object": "bottle",
+    "target": "point_b",
+    "duration_s": 1.0,
+    "description": "Lower the bottle onto the table at B within \u00b15 mm, open the gripper and retract."
+   },
+   {
+    "verb": "home",
+    "object": "",
+    "target": "home",
+    "duration_s": 1.4,
+    "description": "Return to the ready pose for the next bottle."
+   }
+  ],
+  "objects": [
+   {
+    "id": "bottle",
+    "name": "Closed plastic bottle",
+    "mass_kg": 0.3,
+    "size_m": [
+     0.07,
+     0.07,
+     0.22
+    ],
+    "shape": "cylinder",
+    "grip": "parallel",
+    "fragile": false,
+    "start_marker": "point_a"
+   }
+  ],
+  "markers": [
+   {
+    "id": "robot_base",
+    "name": "Robot base mount",
+    "position": [
+     0.0,
+     0.0,
+     0.75
+    ],
+    "note": "Arm mounted on the table top, centred between A and B."
+   },
+   {
+    "id": "home",
+    "name": "Home / ready pose",
+    "position": [
+     0.4,
+     0.0,
+     1.05
+    ],
+    "note": "Tool point above the table, between A and B."
+   },
+   {
+    "id": "point_a",
+    "name": "Pick-up point A",
+    "position": [
+     0.45,
+     -0.3,
+     0.75
+    ],
+    "note": "Bottle stands upright here, base on the table."
+   },
+   {
+    "id": "point_b",
+    "name": "Drop-off point B",
+    "position": [
+     0.45,
+     0.3,
+     0.75
+    ],
+    "note": "Bottle is placed upright here, 0.6 m from A."
+   }
+  ],
+  "locomotion": {
+   "required": false,
+   "path": [],
+   "terrain": "flat indoor floor",
+   "slope_deg": 0.0
+  },
+  "environment": "Indoor, on a 0.75 m high table, clean and dry, room temperature.",
+  "duty_cycle": "Continuous: 10 cycles per minute (600 per hour), one shift per day.",
+  "accuracy_m": 0.005,
+  "speed_target": "10 bottles per minute, a 6 s cycle.",
+  "payload_description": "A closed plastic bottle weighing 0.3 kg, a cylinder 0.07 m across and 0.22 m tall. It must stay upright from A to B. The gripper holds it from the side with two contacts at about mid-height.",
+  "physics_inputs": {
+   "object_mass_kg": 0.3,
+   "object_size_m": [
+    0.07,
+    0.07,
+    0.22
+   ],
+   "tool_mass_kg": 0.5,
+   "grip": "parallel",
+   "friction_coefficient": 0.4,
+   "contact_count": 2,
+   "cycle_time_s": 6.0,
+   "positional_accuracy_m": 0.005,
+   "safety_factor": 1.5,
+   "clearance_m": 0.05,
+   "approach_height_m": 0.1,
+   "peak_acceleration_m_s2": 3.0,
+   "travel_distance_m": 0.0,
+   "travel_speed_m_s": null,
+   "slope_deg": 0.0,
+   "rolling_resistance": 0.015,
+   "vehicle_mass_kg": null,
+   "wheel_radius_m": null,
+   "shifts_per_day": 1.0,
+   "cycles_per_hour": 600.0
+  },
+  "assumptions": [
+   "The robot is a fixed arm on the table top, centred between A and B 0.45 m in front of its base. A and B are 0.6 m apart along y.",
+   "Grip is a parallel gripper with friction pads (\u03bc \u2248 0.4 on plastic), 2 contacts.",
+   "The bottle must stay upright for the whole move, and its position at A is known to about \u00b15 mm.",
+   "Cycle time is 6 s from the requested 10 per minute, and the timing of each step is an estimate.",
+   "Peak acceleration of the tool is limited to 3 m/s\u00b2 so the liquid doesn't slosh and the bottle doesn't slip.",
+   "Approach and lift height is 0.1 m above the grasp point, with 0.05 m clearance.",
+   "Gripper mass is about 0.5 kg.",
+   "The robot runs one shift per day."
+  ],
+  "reference": "No reference robot was given. Reach and payload come from the task: the arm needs about 0.55 m of reach and at least 1 kg of payload with margin."
+ },
+ "scene": {
+  "floor_size_m": [
+   3.0,
+   3.0
+  ],
+  "boxes": [
+   {
+    "id": "table_left",
+    "kind": "table",
+    "center": [
+     -0.025,
+     0.0,
+     0.725
+    ],
+    "size": [
+     0.45,
+     1.2,
+     0.05
+    ],
+    "yaw": 0.0,
+    "color": "#8d6e63",
+    "collides": true
+   },
+   {
+    "id": "table_a",
+    "kind": "table",
+    "center": [
+     0.5,
+     -0.4,
+     0.725
+    ],
+    "size": [
+     0.6,
+     0.4,
+     0.05
+    ],
+    "yaw": 0.0,
+    "color": "#8d6e63",
+    "collides": true
+   },
+   {
+    "id": "table_b",
+    "kind": "table",
+    "center": [
+     0.5,
+     0.4,
+     0.725
+    ],
+    "size": [
+     0.6,
+     0.4,
+     0.05
+    ],
+    "yaw": 0.0,
+    "color": "#8d6e63",
+    "collides": true
+   },
+   {
+    "id": "home_support",
+    "kind": "shelf",
+    "center": [
+     0.4,
+     0.0,
+     1.04
+    ],
+    "size": [
+     0.1,
+     0.1,
+     0.02
+    ],
+    "yaw": 0.0,
+    "color": "#b0bec5",
+    "collides": false
+   }
+  ],
+  "objects": [
+   {
+    "id": "bottle",
+    "shape": "cylinder",
+    "center": [
+     0.45,
+     -0.3,
+     0.86
+    ],
+    "size": [
+     0.07,
+     0.07,
+     0.22
+    ],
+    "color": "#2f80ed"
+   }
+  ],
+  "markers": [
+   {
+    "id": "robot_base",
+    "name": "Robot base mount",
+    "position": [
+     0.0,
+     0.0,
+     0.75
+    ],
+    "note": "Arm mounted on the table top, centred between A and B."
+   },
+   {
+    "id": "home",
+    "name": "Home / ready pose",
+    "position": [
+     0.4,
+     0.0,
+     1.05
+    ],
+    "note": "Tool point above the table, between A and B."
+   },
+   {
+    "id": "point_a",
+    "name": "Pick-up point A",
+    "position": [
+     0.45,
+     -0.3,
+     0.75
+    ],
+    "note": "Bottle stands upright here, base on the table."
+   },
+   {
+    "id": "point_b",
+    "name": "Drop-off point B",
+    "position": [
+     0.45,
+     0.3,
+     0.75
+    ],
+    "note": "Bottle is placed upright here, 0.6 m from A."
+   }
+  ],
+  "robot_base": {
+   "position": [
+    0.45,
+    0.0,
+    0.0
+   ],
+   "yaw": -1.5707963267948966
+  },
+  "notes": "U-shaped table (top 0.75 m) leaves the 0.3 m circle around the base clear of colliding boxes. The thin non-colliding support under the home marker has its top at 1.05 m."
+ },
+ "robot": {
+  "family": "serial_arm",
+  "name": "4-axis tabletop bottle mover",
+  "rationale": "The task asks for a fixed arm on a table, and a serial arm can reach both A and B with the tool pointing down. Four axes are enough because the round bottle needs no tool roll, so no extra wrist joints are needed. A gantry would also handle the 0.6 m straight move, but it needs a frame over the table. A serial arm has its limits: the cycle-time targets ask for high TCP speed and acceleration, which puts heavy loads on the shoulder and elbow drives at nearly 1 m reach. Joint speeds and torques are left for the sizing code to set.",
+  "params": {
+   "dof": 4,
+   "base_height_m": 0.855,
+   "upper_arm_m": 0.49139724493208353,
+   "forearm_m": 0.4535974568603847,
+   "wrist_m": 0.08,
+   "tool_length_m": 0.12,
+   "link_radius_m": 0.05669968210754809,
+   "joint_limits_deg": [],
+   "max_speed_deg_s": [
+    1401.0260825666587,
+    1401.0260825666587,
+    1401.0260825666587,
+    1821.3339073366565
+   ],
+   "max_torque_nm": [
+    42,
+    83,
+    32,
+    6
+   ],
+   "base_mass_kg": 4.0,
+   "upper_arm_mass_kg": 3.9066080972100643,
+   "forearm_mass_kg": 2.404066521360039,
+   "wrist_mass_kg": 1.0,
+   "tool_mass_kg": 0.5,
+   "gripper": "parallel",
+   "gripper_force_n": 33.0,
+   "gripper_stroke_m": 0.1,
+   "payload_kg": 1.2,
+   "repeatability_m": 0.0005,
+   "max_tcp_speed_m_s": 15.405
+  },
+  "base": {
+   "position": [
+    0.45,
+    0.0,
+    0.0
+   ],
+   "yaw": -1.5707963267948966
+  }
+ }
+}

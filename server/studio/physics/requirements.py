@@ -9,7 +9,8 @@ from . import grip, locomotion, motion
 from .statics import G
 
 TASK_VERBS = ('pick', 'place', 'move', 'press', 'inspect', 'push')
-DWELL_VERBS_ALL = True          # every action's duration_s counts as dwell
+DWELL_VERBS = ('wait', 'inspect', 'press')   # only these actions' duration_s is dwell; other verbs' moves take the rest
+MAX_DWELL_SHARE = 0.5           # dwell may use at most this share of the cycle; the rest is left for motion
 MOBILE_DRIVE_SHARE = 0.6        # share of the non-dwell cycle time given to driving when no speed is specified
 
 
@@ -41,11 +42,11 @@ def _task_points(spec):
             continue
         out.append((mid, a.verb, np.array(m.position, dtype=float)))
     if not out:
-        out = [(m.id, 'move', np.array(m.position, dtype=float)) for m in spec.markers]
+        out = [(m.id, 'move', np.array(m.position, dtype=float)) for m in spec.markers if m.id != 'robot_base']
     return out
 
 
-def _enclosing_circle(pts):
+def enclosing_circle(pts):
     """Smallest enclosing circle (centre, radius) of 2D points by brute force over pairs and triples."""
     pts = [np.asarray(p, dtype=float) for p in pts]
     if len(pts) == 1:
@@ -72,9 +73,13 @@ def _enclosing_circle(pts):
     return best
 
 
+_enclosing_circle = enclosing_circle      # former private name, kept for existing callers
+
+
 def place_base(spec: TechnicalSpec) -> BasePose:
     """Fixed robots: centre of the smallest circle enclosing the task points (xy), z = 0, facing the first pick.
-    Mobile: first path point, facing the second."""
+    Mobile: first path point, facing the second. A marker with id `robot_base` overrides the fixed-robot mounting
+    point (z included); the yaw still faces the first pick."""
     loco = spec.locomotion
     if loco.required:
         path = [np.array(p, dtype=float) for p in loco.path]
@@ -87,11 +92,15 @@ def place_base(spec: TechnicalSpec) -> BasePose:
         p = _task_points(spec)[0][2]
         return BasePose(position=(float(p[0]), float(p[1]), 0.0), yaw=0.0)
     pts = _task_points(spec)
-    centre, _ = _enclosing_circle([p[2][:2] for p in pts])
+    centre, _ = enclosing_circle([p[2][:2] for p in pts])
     first = next((p for p in pts if p[1] == 'pick'), pts[0])[2]
-    d = first[:2] - centre
+    mount, z = centre, 0.0
+    for m in spec.markers:
+        if m.id == 'robot_base':
+            mount, z = np.array(m.position[:2], dtype=float), float(m.position[2])
+    d = first[:2] - mount
     yaw = math.atan2(d[1], d[0]) if np.linalg.norm(d) > 1e-9 else 0.0
-    return BasePose(position=(float(centre[0]), float(centre[1]), 0.0), yaw=yaw)
+    return BasePose(position=(float(mount[0]), float(mount[1]), z), yaw=yaw)
 
 
 def _path_length(path):
@@ -156,8 +165,11 @@ def derive(spec: TechnicalSpec, base: BasePose) -> list[Requirement]:
         result=(m_obj + tool) * sf, unit='kg', note=tool_note))
 
     # --- time budget and moves ---
-    dwell = float(sum(a.duration_s for a in spec.actions))
-    budget = max(pi.cycle_time_s - dwell, 0.1 * pi.cycle_time_s)
+    dwell = float(sum(a.duration_s for a in spec.actions if a.verb in DWELL_VERBS))
+    dwell_cap = MAX_DWELL_SHARE * pi.cycle_time_s
+    capped = dwell > dwell_cap
+    dwell = min(dwell, dwell_cap)
+    budget = pi.cycle_time_s - dwell
     drive_dist = 0.0
     if mobile:
         drive_dist = _path_length(spec.locomotion.path) if len(spec.locomotion.path) > 1 else pi.travel_distance_m
@@ -195,6 +207,9 @@ def derive(spec: TechnicalSpec, base: BasePose) -> list[Requirement]:
                    'T_move': _q(t_i, 's'), 'dwell': _q(dwell, 's'), 'n_moves': _q(len(moves))}
         mv_note = ('Time budget (cycle time minus dwell) split over the moves by distance; moves are the legs '
                    'between task points, the return to the first point and the approach up/down at each pick/place.')
+        if capped:
+            mv_note += (f' The specified dwell exceeds {MAX_DWELL_SHARE:.0%} of the cycle; it is capped at '
+                        f'{dwell:.3g} s so that at least {1 - MAX_DWELL_SHARE:.0%} of the cycle remains for motion.')
         add('tcp_speed', 'TCP speed', 'speed', '>=', Calc(
             formula='v = d / (T_move - t_a), t_a = T_move / 3, T_move = T_budget d_longest / sum_d',
             inputs=base_in if peak_a is None else {**base_in, 'a': _q(a_req, 'm/s^2')},

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/projects/<project_id>/versions/99",
+  "request_body": null,
+  "status": 404,
+  "response_body": {
+    "detail": "Version 99 not found"
+  }
+}

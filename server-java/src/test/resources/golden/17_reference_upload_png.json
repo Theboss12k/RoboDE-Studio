@@ -1,0 +1,31 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/reference/files?filename=photo.png",
+  "request_body": "<raw body: 28 bytes>",
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "x",
+    "brief": "x",
+    "reference": {
+      "text": "",
+      "files": [
+        {
+          "name": "photo.png",
+          "kind": "image"
+        }
+      ]
+    },
+    "stage": "brief",
+    "questions": [],
+    "answers": {},
+    "versions": [],
+    "approved_version": null,
+    "candidates_count": 0,
+    "selected_candidate": null,
+    "analyses": [],
+    "decision": null,
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

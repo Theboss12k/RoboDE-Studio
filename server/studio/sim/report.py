@@ -1,6 +1,8 @@
 """Turns requirement + actual value into a Check."""
 from __future__ import annotations
 
+import re
+
 from ..schemas import Calc, Check, Requirement
 
 
@@ -33,3 +35,22 @@ def custom(rid: str, name: str, required, actual, unit: str, comparator: str = '
 
 def all_ok(checks: list[Check]) -> bool:
     return all(c.passed for c in checks if c.passed is not None)
+
+
+NO_CONTACT = 'no contact found'
+_EPISODES = re.compile(r'^\s*(\d+) collision episode')
+
+
+def collision_detail(hits: int) -> str:
+    """The detail text of the `collision_free` check; episodes_from() parses it back."""
+    return f'{hits} collision episode(s)' if hits else NO_CONTACT
+
+
+def episodes_from(check: Check | None) -> int:
+    """Collision episodes a `collision_free` check reports (0 for no check or no contact; 1 when it failed without a count)."""
+    if check is None:
+        return 0
+    m = _EPISODES.match(check.detail or '')
+    if m:
+        return int(m.group(1))
+    return 0 if check.passed is not False else 1

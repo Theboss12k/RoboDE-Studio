@@ -1,0 +1,1362 @@
+{
+  "$defs": {
+    "BasePose": {
+      "properties": {
+        "position": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "title": "BasePose",
+      "type": "object"
+    },
+    "Calc": {
+      "description": "A traceable calculation: what was computed, how, from what.",
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Quantity"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "result": {
+          "title": "Result",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "inputs",
+        "result",
+        "unit"
+      ],
+      "title": "Calc",
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Passed"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "calc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Calc"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "requirement_id",
+        "name",
+        "required",
+        "actual",
+        "unit",
+        "passed"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "FleetAssignment": {
+      "properties": {
+        "members": {
+          "items": {
+            "$ref": "#/$defs/FleetMemberAssignment"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "handovers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FleetHandover"
+          },
+          "title": "Handovers",
+          "type": "array"
+        },
+        "source": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "user"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "confirmed": {
+          "default": false,
+          "title": "Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "members"
+      ],
+      "title": "FleetAssignment",
+      "type": "object"
+    },
+    "FleetHandover": {
+      "properties": {
+        "id": {
+          "pattern": "^h[1-9]$",
+          "title": "Id",
+          "type": "string"
+        },
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "from_member": {
+          "title": "From Member",
+          "type": "string"
+        },
+        "to_member": {
+          "title": "To Member",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "fixed": {
+          "default": false,
+          "title": "Fixed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "object",
+        "from_member",
+        "to_member"
+      ],
+      "title": "FleetHandover",
+      "type": "object"
+    },
+    "FleetLimits": {
+      "properties": {
+        "max_robots": {
+          "default": 2,
+          "maximum": 3,
+          "minimum": 2,
+          "title": "Max Robots",
+          "type": "integer"
+        },
+        "families": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Families",
+          "type": "array"
+        },
+        "max_reach_m": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 10,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Reach M"
+        },
+        "max_payload_kg": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 2000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Payload Kg"
+        },
+        "budget_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Usd"
+        },
+        "brands": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Brands",
+          "type": "array"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "title": "FleetLimits",
+      "type": "object"
+    },
+    "FleetMember": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "spec": {
+          "$ref": "#/$defs/TechnicalSpec"
+        },
+        "requirements": {
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          },
+          "title": "Requirements",
+          "type": "array"
+        },
+        "robot": {
+          "$ref": "#/$defs/RobotConcept"
+        },
+        "urdf": {
+          "title": "Urdf",
+          "type": "string"
+        },
+        "sim": {
+          "$ref": "#/$defs/SimResult"
+        },
+        "t_offset_s": {
+          "default": 0.0,
+          "title": "T Offset S",
+          "type": "number"
+        },
+        "limit_checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Limit Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "spec",
+        "requirements",
+        "robot",
+        "urdf",
+        "sim"
+      ],
+      "title": "FleetMember",
+      "type": "object"
+    },
+    "FleetMemberAssignment": {
+      "properties": {
+        "id": {
+          "pattern": "^r[1-9]$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Name",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "family": {
+          "default": "",
+          "title": "Family",
+          "type": "string"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        }
+      },
+      "required": [
+        "id",
+        "actions"
+      ],
+      "title": "FleetMemberAssignment",
+      "type": "object"
+    },
+    "Frame": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "joints": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Joints",
+          "type": "object"
+        },
+        "base": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base"
+        },
+        "holding": {
+          "default": "",
+          "title": "Holding",
+          "type": "string"
+        },
+        "tcp": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tcp"
+        },
+        "phase": {
+          "default": "",
+          "title": "Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "joints"
+      ],
+      "title": "Frame",
+      "type": "object"
+    },
+    "Locomotion": {
+      "properties": {
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "path": {
+          "default": [],
+          "items": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Path",
+          "type": "array"
+        },
+        "terrain": {
+          "default": "flat indoor floor",
+          "maxLength": 200,
+          "title": "Terrain",
+          "type": "string"
+        },
+        "slope_deg": {
+          "default": 0.0,
+          "maximum": 45,
+          "minimum": 0,
+          "title": "Slope Deg",
+          "type": "number"
+        }
+      },
+      "title": "Locomotion",
+      "type": "object"
+    },
+    "Marker": {
+      "description": "A named point in the world frame: pick-up and drop-off points, waypoints, docking stations.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "position": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "position"
+      ],
+      "title": "Marker",
+      "type": "object"
+    },
+    "PhysicsInputs": {
+      "description": "The numeric part of the payload and motion description. The physics engine reads only this.",
+      "properties": {
+        "object_mass_kg": {
+          "exclusiveMinimum": 0,
+          "maximum": 5000,
+          "title": "Object Mass Kg",
+          "type": "number"
+        },
+        "object_size_m": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Object Size M",
+          "type": "array"
+        },
+        "tool_mass_kg": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Mass Kg"
+        },
+        "grip": {
+          "default": "parallel",
+          "enum": [
+            "parallel",
+            "vacuum",
+            "magnetic",
+            "hook",
+            "fork",
+            "none"
+          ],
+          "title": "Grip",
+          "type": "string"
+        },
+        "friction_coefficient": {
+          "default": 0.4,
+          "exclusiveMinimum": 0,
+          "maximum": 2,
+          "title": "Friction Coefficient",
+          "type": "number"
+        },
+        "contact_count": {
+          "default": 2,
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Contact Count",
+          "type": "integer"
+        },
+        "cycle_time_s": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Cycle Time S",
+          "type": "number"
+        },
+        "positional_accuracy_m": {
+          "default": 0.005,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Positional Accuracy M",
+          "type": "number"
+        },
+        "safety_factor": {
+          "default": 1.5,
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Safety Factor",
+          "type": "number"
+        },
+        "clearance_m": {
+          "default": 0.05,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Clearance M",
+          "type": "number"
+        },
+        "approach_height_m": {
+          "default": 0.1,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Approach Height M",
+          "type": "number"
+        },
+        "peak_acceleration_m_s2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Acceleration M S2"
+        },
+        "travel_distance_m": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Travel Distance M",
+          "type": "number"
+        },
+        "travel_speed_m_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Travel Speed M S"
+        },
+        "slope_deg": {
+          "default": 0.0,
+          "maximum": 45,
+          "minimum": 0,
+          "title": "Slope Deg",
+          "type": "number"
+        },
+        "rolling_resistance": {
+          "default": 0.015,
+          "maximum": 0.5,
+          "minimum": 0,
+          "title": "Rolling Resistance",
+          "type": "number"
+        },
+        "vehicle_mass_kg": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vehicle Mass Kg"
+        },
+        "wheel_radius_m": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheel Radius M"
+        },
+        "shifts_per_day": {
+          "default": 1.0,
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Shifts Per Day",
+          "type": "number"
+        },
+        "cycles_per_hour": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cycles Per Hour"
+        }
+      },
+      "required": [
+        "object_mass_kg",
+        "object_size_m",
+        "cycle_time_s"
+      ],
+      "title": "PhysicsInputs",
+      "type": "object"
+    },
+    "Quantity": {
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    },
+    "Requirement": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "reach",
+            "payload",
+            "grip",
+            "speed",
+            "acceleration",
+            "torque",
+            "locomotion",
+            "accuracy",
+            "energy",
+            "workspace",
+            "cycle"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "comparator": {
+          "default": ">=",
+          "enum": [
+            ">=",
+            "<=",
+            "info"
+          ],
+          "title": "Comparator",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "calc": {
+          "$ref": "#/$defs/Calc"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "category",
+        "target",
+        "unit",
+        "calc"
+      ],
+      "title": "Requirement",
+      "type": "object"
+    },
+    "RobotConcept": {
+      "properties": {
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        },
+        "base": {
+          "$ref": "#/$defs/BasePose",
+          "default": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "yaw": 0.0
+          }
+        }
+      },
+      "required": [
+        "family",
+        "name"
+      ],
+      "title": "RobotConcept",
+      "type": "object"
+    },
+    "SimEvent": {
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "info",
+            "warning",
+            "collision",
+            "unreachable",
+            "limit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "kind",
+        "text"
+      ],
+      "title": "SimEvent",
+      "type": "object"
+    },
+    "SimResult": {
+      "properties": {
+        "frames": {
+          "items": {
+            "$ref": "#/$defs/Frame"
+          },
+          "title": "Frames",
+          "type": "array"
+        },
+        "events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SimEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "ok": {
+          "default": false,
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "frames"
+      ],
+      "title": "SimResult",
+      "type": "object"
+    },
+    "TaskAction": {
+      "description": "One step of the task, in order. `target` is a Marker id.",
+      "properties": {
+        "verb": {
+          "enum": [
+            "pick",
+            "place",
+            "move",
+            "drive",
+            "wait",
+            "inspect",
+            "push",
+            "press",
+            "home"
+          ],
+          "title": "Verb",
+          "type": "string"
+        },
+        "object": {
+          "default": "",
+          "title": "Object",
+          "type": "string"
+        },
+        "target": {
+          "default": "",
+          "title": "Target",
+          "type": "string"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verb"
+      ],
+      "title": "TaskAction",
+      "type": "object"
+    },
+    "TaskObject": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "mass_kg": {
+          "exclusiveMinimum": 0,
+          "maximum": 5000,
+          "title": "Mass Kg",
+          "type": "number"
+        },
+        "size_m": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Size M",
+          "type": "array"
+        },
+        "shape": {
+          "default": "box",
+          "enum": [
+            "box",
+            "cylinder",
+            "sphere"
+          ],
+          "title": "Shape",
+          "type": "string"
+        },
+        "grip": {
+          "default": "parallel",
+          "enum": [
+            "parallel",
+            "vacuum",
+            "magnetic",
+            "hook",
+            "fork",
+            "none"
+          ],
+          "title": "Grip",
+          "type": "string"
+        },
+        "fragile": {
+          "default": false,
+          "title": "Fragile",
+          "type": "boolean"
+        },
+        "start_marker": {
+          "default": "",
+          "title": "Start Marker",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mass_kg",
+        "size_m"
+      ],
+      "title": "TaskObject",
+      "type": "object"
+    },
+    "TechnicalSpec": {
+      "properties": {
+        "title": {
+          "maxLength": 160,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "frame": {
+          "default": "World frame: metres, z up, origin on the floor.",
+          "maxLength": 400,
+          "title": "Frame",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/TaskAction"
+          },
+          "minItems": 1,
+          "title": "Actions",
+          "type": "array"
+        },
+        "objects": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TaskObject"
+          },
+          "title": "Objects",
+          "type": "array"
+        },
+        "markers": {
+          "items": {
+            "$ref": "#/$defs/Marker"
+          },
+          "minItems": 1,
+          "title": "Markers",
+          "type": "array"
+        },
+        "locomotion": {
+          "$ref": "#/$defs/Locomotion",
+          "default": {
+            "required": false,
+            "path": [],
+            "terrain": "flat indoor floor",
+            "slope_deg": 0.0
+          }
+        },
+        "environment": {
+          "default": "indoor",
+          "maxLength": 400,
+          "title": "Environment",
+          "type": "string"
+        },
+        "duty_cycle": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Duty Cycle",
+          "type": "string"
+        },
+        "accuracy_m": {
+          "default": 0.005,
+          "exclusiveMinimum": 0,
+          "title": "Accuracy M",
+          "type": "number"
+        },
+        "speed_target": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Speed Target",
+          "type": "string"
+        },
+        "payload_description": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Payload Description",
+          "type": "string"
+        },
+        "physics_inputs": {
+          "$ref": "#/$defs/PhysicsInputs"
+        },
+        "assumptions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "reference": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "summary",
+        "actions",
+        "markers",
+        "physics_inputs"
+      ],
+      "title": "TechnicalSpec",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "task": {
+      "$ref": "#/$defs/TechnicalSpec"
+    },
+    "limits": {
+      "$ref": "#/$defs/FleetLimits"
+    },
+    "assignment": {
+      "$ref": "#/$defs/FleetAssignment"
+    },
+    "members": {
+      "items": {
+        "$ref": "#/$defs/FleetMember"
+      },
+      "title": "Members",
+      "type": "array"
+    },
+    "primary": {
+      "title": "Primary",
+      "type": "string"
+    },
+    "checks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "events": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SimEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "duration_s": {
+      "default": 0.0,
+      "title": "Duration S",
+      "type": "number"
+    },
+    "period_s": {
+      "default": 0.0,
+      "title": "Period S",
+      "type": "number"
+    },
+    "ok": {
+      "default": false,
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "trigger": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Trigger",
+      "type": "array"
+    },
+    "planner_log": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Planner Log",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task",
+    "limits",
+    "assignment",
+    "members",
+    "primary"
+  ],
+  "title": "FleetPlan",
+  "type": "object"
+}

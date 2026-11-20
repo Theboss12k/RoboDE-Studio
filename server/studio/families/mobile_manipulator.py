@@ -92,6 +92,22 @@ class MobileManipulator:
         base = BASE.size_from_physics(requirements, spec, base_hint, extra_mass_kg=arm_mass)
         return MobileManipulatorParams(base=base, arm=arm, arm_mount_m=tuple(float(x) for x in mount))
 
+    SIZED_FIELDS = frozenset()          # nested: see SerialArm.SIZED_FIELDS and MobileBase.SIZED_FIELDS
+
+    def clamp_to_caps(self, params: dict) -> dict:
+        p = self.parse(params)
+        return MobileManipulatorParams(base=MobileBaseParams.model_validate(BASE.clamp_to_caps(p.base.model_dump())),
+                                       arm=SerialArmParams.model_validate(ARM.clamp_to_caps(p.arm.model_dump())),
+                                       arm_mount_m=p.arm_mount_m).model_dump()
+
+    def sizing_hint(self, params: dict) -> dict:
+        """Hint without the previously sized numbers (arm and base), keeping the qualitative choices and the mount."""
+        d = dict(params or {})
+        for key, fam in (('arm', ARM), ('base', BASE)):
+            if isinstance(d.get(key), dict):
+                d[key] = {k: v for k, v in d[key].items() if k not in fam.SIZED_FIELDS}
+        return d
+
     def build_urdf(self, p, name):
         u = U.Urdf(name)
         BASE.add_to_urdf(u, p.base)

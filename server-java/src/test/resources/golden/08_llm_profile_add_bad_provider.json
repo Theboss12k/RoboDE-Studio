@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/llm/profiles",
+  "request_body": {
+    "name": "Bad",
+    "kind": "openai",
+    "model": "gpt-x"
+  },
+  "status": 422,
+  "response_body": {
+    "detail": "Unknown provider kind openai"
+  }
+}

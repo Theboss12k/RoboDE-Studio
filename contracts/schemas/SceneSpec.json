@@ -1,0 +1,291 @@
+{
+  "$defs": {
+    "BasePose": {
+      "properties": {
+        "position": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "title": "BasePose",
+      "type": "object"
+    },
+    "Marker": {
+      "description": "A named point in the world frame: pick-up and drop-off points, waypoints, docking stations.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "position": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "position"
+      ],
+      "title": "Marker",
+      "type": "object"
+    },
+    "SceneBox": {
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "obstacle",
+          "enum": [
+            "table",
+            "shelf",
+            "wall",
+            "obstacle",
+            "conveyor",
+            "pallet",
+            "box",
+            "floor_zone"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "center": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "size": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Size",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "title": "Yaw",
+          "type": "number"
+        },
+        "color": {
+          "default": "#9aa5b1",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "title": "Color",
+          "type": "string"
+        },
+        "collides": {
+          "default": true,
+          "title": "Collides",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "center",
+        "size"
+      ],
+      "title": "SceneBox",
+      "type": "object"
+    },
+    "SceneObject": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "shape": {
+          "default": "box",
+          "enum": [
+            "box",
+            "cylinder",
+            "sphere"
+          ],
+          "title": "Shape",
+          "type": "string"
+        },
+        "center": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "size": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Size",
+          "type": "array"
+        },
+        "color": {
+          "default": "#2f80ed",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "title": "Color",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "center",
+        "size"
+      ],
+      "title": "SceneObject",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "floor_size_m": {
+      "default": [
+        4.0,
+        4.0
+      ],
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Floor Size M",
+      "type": "array"
+    },
+    "boxes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SceneBox"
+      },
+      "title": "Boxes",
+      "type": "array"
+    },
+    "objects": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SceneObject"
+      },
+      "title": "Objects",
+      "type": "array"
+    },
+    "markers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Marker"
+      },
+      "title": "Markers",
+      "type": "array"
+    },
+    "robot_base": {
+      "$ref": "#/$defs/BasePose",
+      "default": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "yaw": 0.0
+      }
+    },
+    "notes": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Notes",
+      "type": "string"
+    }
+  },
+  "title": "SceneSpec",
+  "type": "object"
+}

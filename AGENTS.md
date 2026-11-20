@@ -1,5 +1,18 @@
 # RoboDE Studio repository instructions
 
+## Architecture
+
+- Java (`server-java/`, Spring Boot) owns HTTP under `/api/v1`, jobs, the project store (`runtime/projects/**`),
+  LLM profiles and keys (`runtime/llm/**`) and the usage ledger. It is the only writer of those files.
+- Python (`server/studio/`) does the AI and numeric work. Each job is one subprocess,
+  `python -m studio.tasks <task>`, with the request on stdin and JSON lines on stdout, as specified in
+  `docs/PROTOCOL.md`. Python writes `runtime/` only inside the job's output folder.
+- API keys travel only on stdin: never in argv, environment, logs or stdout.
+- A scripted (fixture) LLM profile is accepted only when `STUDIO_ALLOW_SCRIPTED=1`. It exists for tests.
+- Pure logic lives in `server/studio/pipeline/design.py` and `pipeline/catalog.py`, with no store access.
+- `packages/core` is DOM-free shared code (generated types, API client, kinematics, playback). The client
+  and `contracts/` schemas are kept in step with `npm run contracts:check`.
+
 ## Change documentation
 
 The user requires a maintained change document. Update `docs/PROJECT_TIMELINE.md`

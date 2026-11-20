@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "ManufacturerValue": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 600,
+          "title": "Quote",
+          "type": "string"
+        },
+        "page": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Page",
+          "type": "string"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "unit",
+        "quote"
+      ],
+      "title": "ManufacturerValue",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "document_url": {
+      "title": "Document Url",
+      "type": "string"
+    },
+    "document_title": {
+      "default": "",
+      "title": "Document Title",
+      "type": "string"
+    },
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "values": {
+      "items": {
+        "$ref": "#/$defs/ManufacturerValue"
+      },
+      "title": "Values",
+      "type": "array"
+    },
+    "kinematics_note": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Kinematics Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "document_url",
+    "family",
+    "values"
+  ],
+  "title": "ManufacturerSpec",
+  "type": "object"
+}

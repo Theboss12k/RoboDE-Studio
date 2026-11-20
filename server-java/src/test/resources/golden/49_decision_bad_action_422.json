@@ -1,0 +1,25 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/decision",
+  "request_body": {
+    "candidate_id": "acme_ra_6",
+    "action": "delete"
+  },
+  "status": 422,
+  "response_body": {
+    "detail": [
+      {
+        "type": "literal_error",
+        "loc": [
+          "body",
+          "action"
+        ],
+        "msg": "Input should be 'approve' or 'robot_studio'",
+        "input": "delete",
+        "ctx": {
+          "expected": "'approve' or 'robot_studio'"
+        }
+      }
+    ]
+  }
+}

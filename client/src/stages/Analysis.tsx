@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { JobStatus, StageHead, fmt, useJob } from "../components/common";
+import { JobStatus, StageHead, fmt } from "../components/common";
+import { useProjectJob } from "../jobs";
 import Player from "../components/Player";
 import Requirements from "../components/Requirements";
 import { ConceptPanel } from "../components/SpecPanels";
@@ -19,7 +20,28 @@ function Differences({ list }: { list: Difference[] }) {
   );
 }
 
-function ManufacturerValues({ spec, unverified }: { spec: ManufacturerSpec; unverified: string[] }) {
+const KIND_TAG: Record<string, string> = { verified: "ok", derived: "", carried: "", default: "warn" };
+
+function Provenance({ provenance }: { provenance: Record<string, string> }) {
+  const rows = Object.entries(provenance).map(([param, text]) => {
+    const i = text.indexOf(":");
+    return { param, kind: i < 0 ? text : text.slice(0, i), why: i < 0 ? "" : text.slice(i + 1).trim() };
+  });
+  if (!rows.length) return null;
+  return (
+    <details>
+      <summary className="small"><b>Where each model value comes from</b> ({rows.filter((r) => r.kind === "default").length} not published, assumed)</summary>
+      <div className="table-wrap"><table>
+        <thead><tr><th>Parameter</th><th>Source</th><th>How</th></tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.param}><td><code>{r.param}</code></td><td><span className={`tag ${KIND_TAG[r.kind] ?? ""}`}>{r.kind}</span></td><td className="small">{r.why}</td></tr>))}</tbody>
+      </table></div>
+      <p className="small muted">verified: stated by the manufacturer with a checked quote. derived: computed from verified values. carried: from the generated design (for example the gripper). default: not published, a family default or sized value; checks that depend on it give no verdict.</p>
+    </details>
+  );
+}
+
+function ManufacturerValues({ spec, unverified, provenance }: { spec: ManufacturerSpec; unverified: string[]; provenance: Record<string, string> }) {
   return (
     <div className="panel">
       <h3>Manufacturer values</h3>
@@ -34,7 +56,8 @@ function ManufacturerValues({ spec, unverified }: { spec: ManufacturerSpec; unve
             <td><span className={`tag ${v.verified ? "ok" : "warn"}`}>{v.verified ? "verified" : "unverified"}</span></td></tr>))}</tbody>
       </table></div>
       {spec.kinematics_note && <p className="small">{spec.kinematics_note}</p>}
-      {unverified.length > 0 && <div className="notice warning small"><b>Estimated, not from the manufacturer:</b> {unverified.join(", ")}. These were scaled from the generated robot.</div>}
+      <Provenance provenance={provenance} />
+      {unverified.length > 0 && <div className="notice warning small"><b>Estimated, not from the manufacturer:</b> {unverified.join(", ")}. These were estimated from the generated robot.</div>}
     </div>
   );
 }
@@ -47,7 +70,12 @@ export default function Analysis({ project, reload, cid, setCid, decide }: {
   const [analysis, setAnalysis] = useState<AnalysisT | null>(null);
   const [url, setUrl] = useState("");
   const [uploading, setUploading] = useState("");
-  const job = useJob();
+  // An analysis of this robot that finished while the stage was away: load it once.
+  const job = useProjectJob<AnalysisT>(project.id, "analyse", cid ?? undefined, async (r) => {
+    if (!cid) return;
+    await reload();
+    setAnalysis(r.parsed ? r : await api.get<AnalysisT>(`/projects/${project.id}/analysis/${cid}`));
+  });
   const analysed = project.analyses ?? [];
   const vNum = project.approved_version ?? project.versions?.[project.versions.length - 1];
   const cand = cands.find((c) => c.id === cid);
@@ -109,10 +137,10 @@ export default function Analysis({ project, reload, cid, setCid, decide }: {
           <div className="design-grid">
             <div className="panel"><h3>The same task with this robot</h3>
               <Player scene={version.scene} parsed={analysis.parsed} sim={analysis.sim} robotBase={analysis.robot.base ?? version.scene.robot_base} /></div>
-            <div className="panel"><h3>Requirements</h3><Requirements requirements={version.requirements} checks={analysis.sim.checks} caption="Requirements and this robot's values" /></div>
+            <div className="panel"><h3>Requirements</h3><Requirements requirements={version.requirements} checks={analysis.sim.checks} caption="Requirements and this robot's values" candidate /></div>
           </div>
           <div className="panel"><h3>Differences from the generated robot</h3><Differences list={analysis.differences} /></div>
-          <div className="grid-2"><ManufacturerValues spec={analysis.manufacturer_spec} unverified={analysis.unverified ?? []} /><ConceptPanel robot={analysis.robot} title="Model built from the datasheet" /></div>
+          <div className="grid-2"><ManufacturerValues spec={analysis.manufacturer_spec} unverified={analysis.unverified ?? []} provenance={analysis.provenance ?? {}} /><ConceptPanel robot={analysis.robot} title="Model built from the datasheet" /></div>
           <div className="row"><button className="go big" onClick={decide}>Continue to decision</button></div>
         </>
       )}

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Bot } from "lucide-react";
 import { api } from "../api";
-import { JobStatus, StageHead, fmt, screenChips, useJob } from "../components/common";
+import { JobStatus, StageHead, fmt, screenChips } from "../components/common";
+import { useProjectJob } from "../jobs";
+import { RobotPlaceholder } from "../components/icons";
 import type { Candidate, PriceEstimate, Project, SourcedValue } from "../types";
 
 function Image({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
-  if (!url || failed) return <div className="cand-img fallback" aria-hidden="true"><Bot size={36} /></div>;
+  if (!url || failed) return <div className="cand-img fallback" aria-hidden="true"><RobotPlaceholder size={36} /></div>;
   return <img className="cand-img" src={url} alt="" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} />;
 }
 
@@ -15,7 +16,7 @@ function Price({ price }: { price: PriceEstimate | null }) {
   const range = price.low != null && price.high != null && price.low !== price.high ? `${fmt(price.low)} to ${fmt(price.high)}` : fmt(price.low ?? price.high);
   return (
     <span><b>{range} {price.currency}</b> <span className="tag warn">web estimate</span>
-      <span className="small muted"> {price.date && `seen ${price.date}, `}<a href={price.source_url} target="_blank" rel="noreferrer noopener">source</a>{price.note ? `. ${price.note}` : ""}</span></span>
+      <span className="small muted"> {price.date && `${/^seen\b/i.test(price.date) ? price.date : `dated ${price.date}`}, `}<a href={price.source_url} target="_blank" rel="noreferrer noopener">source</a>{price.note ? `. ${price.note}` : ""}</span></span>
   );
 }
 
@@ -25,7 +26,7 @@ function Spec({ label, v }: { label: string; v: SourcedValue }) {
   );
 }
 
-function Card({ c, onAnalyse, analysed }: { c: Candidate; onAnalyse: () => void; analysed: boolean }) {
+function Card({ c, onAnalyse, analysed, supported }: { c: Candidate; onAnalyse: () => void; analysed: boolean; supported: boolean }) {
   const specs: [string, SourcedValue | null][] = [["Payload (kg)", c.payload_kg], ["Reach (m)", c.reach_m], ["Axes", c.dof], ["Repeatability (mm)", c.repeatability_mm]];
   return (
     <article className="panel cand">
@@ -41,7 +42,9 @@ function Card({ c, onAnalyse, analysed }: { c: Candidate; onAnalyse: () => void;
       </ul>
       <div className="row" aria-label="Quick screen against the task">{screenChips(c.screen ?? [])}</div>
       <div className="row">
-        <button className="go" onClick={onAnalyse}>{analysed ? "View analysis" : "Analyse"}</button>
+        {supported || analysed
+          ? <button className="go" onClick={onAnalyse}>{analysed ? "View analysis" : "Analyse"}</button>
+          : <span className="small muted">{c.model} is a {c.family.replace("_", " ")} robot; Studio can model serial arms, gantries, mobile bases and mobile manipulators. Its listed specs and the quick screen still apply.</span>}
         {c.product_url && <a className="small" href={c.product_url} target="_blank" rel="noreferrer noopener">Product page</a>}
       </div>
       <p className="small muted">Image linked from the vendor's site, not stored here.</p>
@@ -52,7 +55,10 @@ function Card({ c, onAnalyse, analysed }: { c: Candidate; onAnalyse: () => void;
 export default function Options({ project, reload, analyse }: { project: Project; reload: () => Promise<void>; analyse: (cid: string) => void }) {
   const [cands, setCands] = useState<Candidate[]>([]);
   const [loadError, setLoadError] = useState("");
-  const job = useJob();
+  const [families, setFamilies] = useState<string[] | null>(null);
+  // A search that finished while this stage was away: show its candidates once.
+  const job = useProjectJob<{ candidates: Candidate[] }>(project.id, "search", undefined, async (r) => { setCands(r.candidates ?? []); await reload(); });
+  useEffect(() => { api.get<{ name: string }[]>("/families").then((f) => setFamilies(f.map((x) => x.name))).catch(() => setFamilies(null)); }, []);
   const load = () => api.get<Candidate[] | { candidates: Candidate[] }>(`/projects/${project.id}/candidates`)
     .then((r) => { setCands(Array.isArray(r) ? r : r?.candidates ?? []); setLoadError(""); }).catch((e) => setLoadError(e.message));
   useEffect(() => { void load(); }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,7 +74,7 @@ export default function Options({ project, reload, analyse }: { project: Project
       <div className="row"><button className="go big" disabled={job.busy} onClick={() => void search()}>{cands.length ? "Search again" : "Find real robots"}</button></div>
       <JobStatus {...job} label="Searching" />
       {loadError && <div className="notice error" role="alert">{loadError}</div>}
-      <div className="cand-grid">{cands.map((c) => <Card key={c.id} c={c} analysed={(project.analyses ?? []).includes(c.id)} onAnalyse={() => analyse(c.id)} />)}</div>
+      <div className="cand-grid">{cands.map((c) => <Card key={c.id} c={c} analysed={(project.analyses ?? []).includes(c.id)} supported={c.family !== "other" && (families === null || families.includes(c.family))} onAnalyse={() => analyse(c.id)} />)}</div>
     </div>
   );
 }

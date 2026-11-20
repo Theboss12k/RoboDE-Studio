@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/api/projects",
+  "request_body": {},
+  "status": 422,
+  "response_body": {
+    "detail": [
+      {
+        "type": "missing",
+        "loc": [
+          "body",
+          "brief"
+        ],
+        "msg": "Field required",
+        "input": {}
+      }
+    ]
+  }
+}

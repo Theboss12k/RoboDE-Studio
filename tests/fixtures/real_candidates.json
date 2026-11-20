@@ -1,0 +1,128 @@
+[
+  {
+    "id": "fanuc_crx_5ia",
+    "manufacturer": "FANUC",
+    "model": "CRX-5iA",
+    "family": "serial_arm",
+    "product_url": "https://www.fanucamerica.com/products/robot/crx-5ia",
+    "image_url": "https://www.fanucamerica.com/uploads/uploads/CRX-5iA.png?fit=cover&height=630&width=1200&s=K1i_pq-xYWDCATmTNiHwb7BDJzxqTzRsaomgkezPXtU",
+    "datasheet_url": "",
+    "price": null,
+    "payload_kg": {
+      "value": "5",
+      "unit": "kg",
+      "quote": "Max Payload 5 kg",
+      "source_url": "https://www.fanucamerica.com/products/robot/crx-5ia"
+    },
+    "reach_m": {
+      "value": "994",
+      "unit": "mm",
+      "quote": "Reach 994 mm",
+      "source_url": "https://www.fanucamerica.com/products/robot/crx-5ia"
+    },
+    "dof": {
+      "value": "6",
+      "unit": "",
+      "quote": "Axes 6",
+      "source_url": "https://www.fanucamerica.com/products/robot/crx-5ia"
+    },
+    "repeatability_mm": {
+      "value": "\u00b10.03",
+      "unit": "mm",
+      "quote": "Repeatability \u00b10.03 mm",
+      "source_url": "https://www.fanucamerica.com/products/robot/crx-5ia"
+    },
+    "key_specs": [],
+    "confidence": "high",
+    "screen": [
+      {
+        "requirement_id": "payload",
+        "name": "Payload at the tool flange",
+        "required": 0.968,
+        "actual": 5.0,
+        "unit": "kg",
+        "passed": true,
+        "detail": "5 kg stated by the source, 0.968 kg required",
+        "calc": null
+      },
+      {
+        "requirement_id": "reach_max",
+        "name": "Maximum reach",
+        "required": 0.951,
+        "actual": 0.994,
+        "unit": "m",
+        "passed": true,
+        "detail": "0.994 m stated by the source, 0.951 m required",
+        "calc": null
+      }
+    ]
+  },
+  {
+    "id": "dobot_cr5a",
+    "manufacturer": "Dobot",
+    "model": "CR5A",
+    "family": "serial_arm",
+    "product_url": "https://www.robotshop.com/products/dobot-cr5a-6-axis-collaborative-robot-arm-5kg-900mm",
+    "image_url": "",
+    "datasheet_url": "https://dobot-robots.com/products/cr-series/cr5.html?lang=en",
+    "price": {
+      "low": 23350.0,
+      "high": 23350.0,
+      "currency": "USD",
+      "date": "seen 2026-11-20",
+      "source_url": "https://www.robotshop.com/products/dobot-cr5a-6-axis-collaborative-robot-arm-5kg-900mm",
+      "quote": "Price: 23350.00 USD",
+      "note": "Reseller (RobotShop) price for the arm. I did not confirm what else is included."
+    },
+    "payload_kg": {
+      "value": "5",
+      "unit": "kg",
+      "quote": "a maximum payload of 5 kg",
+      "source_url": "https://www.robotshop.com/products/dobot-cr5a-6-axis-collaborative-robot-arm-5kg-900mm"
+    },
+    "reach_m": {
+      "value": "900",
+      "unit": "mm",
+      "quote": "The CR5A has a working radius of 900 mm",
+      "source_url": "https://www.robotshop.com/products/dobot-cr5a-6-axis-collaborative-robot-arm-5kg-900mm"
+    },
+    "dof": null,
+    "repeatability_mm": {
+      "value": "\u00b10.02",
+      "unit": "mm",
+      "quote": "Repeatability\uff08mm\uff09 \u00b10.02mm",
+      "source_url": "https://dobot-robots.com/products/cr-series/cr5.html?lang=en"
+    },
+    "key_specs": [
+      {
+        "value": "4",
+        "unit": "m/s",
+        "quote": "Maximum Linear Speed 4 m/s",
+        "source_url": "https://dobot-robots.com/products/cr-series/cr5.html?lang=en"
+      }
+    ],
+    "confidence": "medium",
+    "screen": [
+      {
+        "requirement_id": "payload",
+        "name": "Payload at the tool flange",
+        "required": 0.968,
+        "actual": 5.0,
+        "unit": "kg",
+        "passed": true,
+        "detail": "5 kg stated by the source, 0.968 kg required",
+        "calc": null
+      },
+      {
+        "requirement_id": "reach_max",
+        "name": "Maximum reach",
+        "required": 0.951,
+        "actual": 0.9,
+        "unit": "m",
+        "passed": false,
+        "detail": "0.9 m stated by the source, 0.951 m required",
+        "calc": null
+      }
+    ]
+  }
+]

@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "RepairAttempt": {
+      "properties": {
+        "attempt": {
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "request": {
+          "maxLength": 4000,
+          "title": "Request",
+          "type": "string"
+        },
+        "t": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "T"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "collisions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collisions"
+        },
+        "checks_passed": {
+          "default": 0,
+          "title": "Checks Passed",
+          "type": "integer"
+        },
+        "checks_total": {
+          "default": 0,
+          "title": "Checks Total",
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "kept",
+            "worse",
+            "no_change",
+            "changed_task",
+            "invalid"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt",
+        "request",
+        "outcome"
+      ],
+      "title": "RepairAttempt",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "trigger": {
+      "const": "collision",
+      "default": "collision",
+      "title": "Trigger",
+      "type": "string"
+    },
+    "collisions_before": {
+      "title": "Collisions Before",
+      "type": "integer"
+    },
+    "attempts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RepairAttempt"
+      },
+      "title": "Attempts",
+      "type": "array"
+    },
+    "kept": {
+      "default": 0,
+      "title": "Kept",
+      "type": "integer"
+    },
+    "stop_reason": {
+      "default": "",
+      "maxLength": 200,
+      "title": "Stop Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "collisions_before"
+  ],
+  "title": "RepairLog",
+  "type": "object"
+}

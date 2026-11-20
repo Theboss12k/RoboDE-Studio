@@ -1,0 +1,659 @@
+{
+ "rules": [
+  {
+   "match": "connection test",
+   "answers": [
+    "ready"
+   ]
+  },
+  {
+   "match": "3D scene",
+   "answers": [
+    {
+     "floor_size_m": [
+      3.0,
+      3.0
+     ],
+     "boxes": [
+      {
+       "id": "table_a",
+       "kind": "table",
+       "center": [
+        0.5,
+        0.3,
+        0.375
+       ],
+       "size": [
+        0.3,
+        0.3,
+        0.75
+       ]
+      },
+      {
+       "id": "table_b",
+       "kind": "table",
+       "center": [
+        0.5,
+        -0.3,
+        0.375
+       ],
+       "size": [
+        0.3,
+        0.3,
+        0.75
+       ]
+      }
+     ],
+     "markers": [
+      {
+       "id": "a",
+       "name": "A",
+       "position": [
+        0.5,
+        0.3,
+        0.75
+       ],
+       "note": ""
+      },
+      {
+       "id": "b",
+       "name": "B",
+       "position": [
+        0.5,
+        -0.3,
+        0.75
+       ],
+       "note": ""
+      }
+     ],
+     "objects": [
+      {
+       "id": "bottle",
+       "shape": "cylinder",
+       "center": [
+        0.5,
+        0.3,
+        0.86
+       ],
+       "size": [
+        0.07,
+        0.07,
+        0.22
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "kind of robot",
+   "answers": [
+    {
+     "family": "serial_arm",
+     "name": "Bottle mover arm",
+     "rationale": "A 6-axis arm reaches both points.",
+     "params": {
+      "dof": 6
+     }
+    }
+   ]
+  },
+  {
+   "match": "change an existing",
+   "answers": [
+    {
+     "targets": [
+      "spec",
+      "scene"
+     ],
+     "spec": {
+      "title": "Bottle A to B",
+      "summary": "Move a bottle between two points on a table.",
+      "frame": "World frame: metres, z up, origin on the floor.",
+      "actions": [
+       {
+        "verb": "pick",
+        "object": "bottle",
+        "target": "a",
+        "duration_s": 0.0,
+        "description": "pick bottle at A"
+       },
+       {
+        "verb": "place",
+        "object": "bottle",
+        "target": "b",
+        "duration_s": 0.0,
+        "description": "place bottle at B"
+       }
+      ],
+      "objects": [
+       {
+        "id": "bottle",
+        "name": "Bottle",
+        "mass_kg": 0.3,
+        "size_m": [
+         0.07,
+         0.07,
+         0.22
+        ],
+        "shape": "cylinder",
+        "grip": "parallel",
+        "fragile": false,
+        "start_marker": "a"
+       }
+      ],
+      "markers": [
+       {
+        "id": "a",
+        "name": "A",
+        "position": [
+         0.5,
+         0.3,
+         0.75
+        ],
+        "note": ""
+       },
+       {
+        "id": "b",
+        "name": "B",
+        "position": [
+         0.5,
+         -0.5,
+         0.75
+        ],
+        "note": ""
+       }
+      ],
+      "locomotion": {
+       "required": false,
+       "path": [],
+       "terrain": "flat indoor floor",
+       "slope_deg": 0.0
+      },
+      "environment": "indoor",
+      "duty_cycle": "",
+      "accuracy_m": 0.005,
+      "speed_target": "",
+      "payload_description": "",
+      "physics_inputs": {
+       "object_mass_kg": 0.3,
+       "object_size_m": [
+        0.07,
+        0.07,
+        0.22
+       ],
+       "tool_mass_kg": null,
+       "grip": "parallel",
+       "friction_coefficient": 0.4,
+       "contact_count": 2,
+       "cycle_time_s": 6.0,
+       "positional_accuracy_m": 0.005,
+       "safety_factor": 1.5,
+       "clearance_m": 0.05,
+       "approach_height_m": 0.1,
+       "peak_acceleration_m_s2": 2.0,
+       "travel_distance_m": 0.0,
+       "travel_speed_m_s": null,
+       "slope_deg": 0.0,
+       "rolling_resistance": 0.015,
+       "vehicle_mass_kg": null,
+       "wheel_radius_m": null,
+       "shifts_per_day": 1.0,
+       "cycles_per_hour": null
+      },
+      "assumptions": [],
+      "reference": ""
+     },
+     "scene": {
+      "floor_size_m": [
+       3.0,
+       3.0
+      ],
+      "boxes": [
+       {
+        "id": "table_a",
+        "kind": "table",
+        "center": [
+         0.5,
+         0.3,
+         0.375
+        ],
+        "size": [
+         0.3,
+         0.3,
+         0.75
+        ]
+       },
+       {
+        "id": "table_b",
+        "kind": "table",
+        "center": [
+         0.5,
+         -0.5,
+         0.375
+        ],
+        "size": [
+         0.3,
+         0.3,
+         0.75
+        ]
+       }
+      ],
+      "markers": [
+       {
+        "id": "a",
+        "name": "A",
+        "position": [
+         0.5,
+         0.3,
+         0.75
+        ],
+        "note": ""
+       },
+       {
+        "id": "b",
+        "name": "B",
+        "position": [
+         0.5,
+         -0.5,
+         0.75
+        ],
+        "note": ""
+       }
+      ],
+      "objects": [
+       {
+        "id": "bottle",
+        "shape": "cylinder",
+        "center": [
+         0.5,
+         0.3,
+         0.86
+        ],
+        "size": [
+         0.07,
+         0.07,
+         0.22
+        ]
+       }
+      ]
+     },
+     "summary": "B 20 cm further"
+    }
+   ]
+  },
+  {
+   "match": "find real robots",
+   "answers": [
+    {
+     "candidates": [
+      {
+       "manufacturer": "Acme",
+       "model": "RA-6",
+       "family": "serial_arm",
+       "product_url": "https://acme.example/ra6",
+       "payload_kg": {
+        "value": "6",
+        "unit": "kg",
+        "quote": "Rated payload 6 kg",
+        "source_url": "https://acme.example/ra6"
+       },
+       "reach_m": {
+        "value": "900",
+        "unit": "mm",
+        "quote": "Reach 900 mm",
+        "source_url": "https://acme.example/ra6"
+       },
+       "price": {
+        "low": 9000,
+        "currency": "USD",
+        "date": "2026-01-01",
+        "source_url": "https://shop.example/ra6",
+        "quote": "Price $9,000",
+        "note": "arm only"
+       }
+      },
+      {
+       "manufacturer": "Acme",
+       "model": "RA-6",
+       "family": "serial_arm",
+       "product_url": "https://acme.example/ra6b",
+       "payload_kg": {
+        "value": "2",
+        "unit": "kg",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       },
+       "reach_m": {
+        "value": "1.2 m",
+        "unit": "",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       },
+       "price": {
+        "low": 100,
+        "source_url": "",
+        "quote": "",
+        "date": ""
+       }
+      },
+      {
+       "manufacturer": "Bad",
+       "model": "Ftp",
+       "family": "serial_arm",
+       "product_url": "ftp://bad.example/x"
+      },
+      {
+       "manufacturer": "Mystery",
+       "model": "M1",
+       "family": "gantry",
+       "product_url": "https://m.example/m1",
+       "payload_kg": {
+        "value": "heavy",
+        "unit": "",
+        "quote": "q",
+        "source_url": "https://acme.example/ra6"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "manufacturer's datasheet",
+   "answers": [
+    {
+     "document_title": "Acme RA-6",
+     "kinematics_note": "6 axes",
+     "values": [
+      {
+       "key": "payload_kg",
+       "value": 6,
+       "unit": "kg",
+       "quote": "Rated payload | 6 kg",
+       "page": "1"
+      },
+      {
+       "key": "reach_m",
+       "value": 900,
+       "unit": "mm",
+       "quote": "Maximum reach | 900 mm"
+      },
+      {
+       "key": "mass_kg",
+       "value": 30,
+       "unit": "kg",
+       "quote": "Weight | 24 kg"
+      },
+      {
+       "key": "repeatability_mm",
+       "value": 0.01,
+       "unit": "mm",
+       "quote": "Pose repeatability | \u00b10.01 mm"
+      },
+      {
+       "key": "j1_max_deg",
+       "value": 170,
+       "unit": "deg",
+       "quote": "Axis 1 range \u00b1170\u00b0"
+      },
+      {
+       "key": "j1_speed_deg_s",
+       "value": 180,
+       "unit": "deg/s",
+       "quote": "maximum speed 180\u00b0/s"
+      },
+      {
+       "key": "colour",
+       "value": 1,
+       "unit": "",
+       "quote": "x"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "explain, in plain",
+   "answers": [
+    {
+     "differences": [
+      {
+       "topic": "Maximum reach",
+       "generated": "1.2 m (passes, needs 0.989)",
+       "candidate": "1.33 m (passes, needs 0.989)",
+       "impact": "Maximum reach: fine for this task.",
+       "severity": "ok"
+      },
+      {
+       "topic": "Payload at the tool flange",
+       "generated": "0.968 kg (passes, needs 0.968)",
+       "candidate": "6 kg (passes, needs 0.968)",
+       "impact": "Payload at the tool flange: fine for this task.",
+       "severity": "ok"
+      },
+      {
+       "topic": "TCP speed",
+       "generated": "1 m/s (passes, needs 0.36)",
+       "candidate": "not published (Not published by the manufacturer; max_tcp_speed_m_s assumed 1 m/s)",
+       "impact": "TCP speed: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "TCP acceleration",
+       "generated": "4 m/s^2 (passes, needs 2)",
+       "candidate": "not published (Not published by the manufacturer; max_tcp_accel_m_s2 assumed 4 m/s^2)",
+       "impact": "TCP acceleration: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Grip force",
+       "generated": "7 N (passes, needs 6.64)",
+       "candidate": "7 N (passes, needs 6.64)",
+       "impact": "Grip force: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Cycle time",
+       "generated": "6 s (passes, needs 6)",
+       "candidate": "not published (Not published by the manufacturer; max_speed_deg_s, max_tcp_accel_m_s2 assumed; estimated time 6 s (fastest feasible 2.5 s; played at the 6.0 s cycle))",
+       "impact": "Cycle time: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Repeatability",
+       "generated": "0.0005 m (passes, needs 0.0025)",
+       "candidate": "not published (Not published by the manufacturer; repeatability_m assumed 0.0005 m)",
+       "impact": "Repeatability: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Joint limits",
+       "generated": "passes (all waypoint poses inside the joint ranges)",
+       "candidate": "passes (all waypoint poses inside the joint ranges; link lengths estimated from the verified reach)",
+       "impact": "Joint limits: fine for this task.",
+       "severity": "ok"
+      },
+      {
+       "topic": "Static load j1",
+       "generated": "23 N*m (passes, needs 0)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 23 N*m)",
+       "impact": "Static load j1: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Static load j2",
+       "generated": "46 N*m (passes, needs 12.5)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 46 N*m)",
+       "impact": "Static load j2: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Static load j3",
+       "generated": "20 N*m (passes, needs 7.83)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 20 N*m)",
+       "impact": "Static load j3: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Static load j4",
+       "generated": "5 N*m (passes, needs 0)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 5 N*m)",
+       "impact": "Static load j4: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Static load j5",
+       "generated": "1 N*m (passes, needs 0)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 1 N*m)",
+       "impact": "Static load j5: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Static load j6",
+       "generated": "1 N*m (passes, needs 0)",
+       "candidate": "not published (Not published by the manufacturer; max_torque_nm assumed 1 N*m)",
+       "impact": "Static load j6: fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "Peak joint speed (j1)",
+       "generated": "3.14 rad/s or m/s (passes, needs 1.29)",
+       "candidate": "not published (Not published by the manufacturer; max_speed_deg_s assumed 3.14 rad/s or m/s)",
+       "impact": "Peak joint speed (j1): fine for this task.",
+       "severity": "minor"
+      },
+      {
+       "topic": "No collisions with the scene",
+       "generated": "passes (no contact found)",
+       "candidate": "passes (no contact found; link lengths estimated from the verified reach)",
+       "impact": "No collisions with the scene: fine for this task.",
+       "severity": "ok"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\"cycle\":",
+   "answers": [
+    {
+     "spec": {
+      "title": "Bottle A to B",
+      "summary": "Move a bottle between two points on a table.",
+      "frame": "World frame: metres, z up, origin on the floor.",
+      "actions": [
+       {
+        "verb": "pick",
+        "object": "bottle",
+        "target": "a",
+        "duration_s": 0.0,
+        "description": "pick bottle at A"
+       },
+       {
+        "verb": "place",
+        "object": "bottle",
+        "target": "b",
+        "duration_s": 0.0,
+        "description": "place bottle at B"
+       }
+      ],
+      "objects": [
+       {
+        "id": "bottle",
+        "name": "Bottle",
+        "mass_kg": 0.3,
+        "size_m": [
+         0.07,
+         0.07,
+         0.22
+        ],
+        "shape": "cylinder",
+        "grip": "parallel",
+        "fragile": false,
+        "start_marker": "a"
+       }
+      ],
+      "markers": [
+       {
+        "id": "a",
+        "name": "A",
+        "position": [
+         0.5,
+         0.3,
+         0.75
+        ],
+        "note": ""
+       },
+       {
+        "id": "b",
+        "name": "B",
+        "position": [
+         0.5,
+         -0.3,
+         0.75
+        ],
+        "note": ""
+       }
+      ],
+      "locomotion": {
+       "required": false,
+       "path": [],
+       "terrain": "flat indoor floor",
+       "slope_deg": 0.0
+      },
+      "environment": "indoor",
+      "duty_cycle": "",
+      "accuracy_m": 0.005,
+      "speed_target": "",
+      "payload_description": "",
+      "physics_inputs": {
+       "object_mass_kg": 0.3,
+       "object_size_m": [
+        0.07,
+        0.07,
+        0.22
+       ],
+       "tool_mass_kg": null,
+       "grip": "parallel",
+       "friction_coefficient": 0.4,
+       "contact_count": 2,
+       "cycle_time_s": 6.0,
+       "positional_accuracy_m": 0.005,
+       "safety_factor": 1.5,
+       "clearance_m": 0.05,
+       "approach_height_m": 0.1,
+       "peak_acceleration_m_s2": 2.0,
+       "travel_distance_m": 0.0,
+       "travel_speed_m_s": null,
+       "slope_deg": 0.0,
+       "rolling_resistance": 0.015,
+       "vehicle_mass_kg": null,
+       "wheel_radius_m": null,
+       "shifts_per_day": 1.0,
+       "cycles_per_hour": null
+      },
+      "assumptions": [],
+      "reference": ""
+     }
+    }
+   ]
+  },
+  {
+   "match": "requirements engineer",
+   "answers": [
+    {
+     "questions": [
+      {
+       "id": "cycle",
+       "text": "Cycle time?",
+       "kind": "number",
+       "unit": "s",
+       "default": 6
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

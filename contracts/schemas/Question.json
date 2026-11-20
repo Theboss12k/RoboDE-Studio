@@ -1,0 +1,54 @@
+{
+  "properties": {
+    "id": {
+      "pattern": "^[a-z][a-z0-9_]{0,40}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 400,
+      "title": "Text",
+      "type": "string"
+    },
+    "kind": {
+      "default": "text",
+      "enum": [
+        "choice",
+        "number",
+        "text",
+        "boolean"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "options": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Options",
+      "type": "array"
+    },
+    "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
+    },
+    "default": {
+      "default": null,
+      "title": "Default"
+    },
+    "why": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Why",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "text"
+  ],
+  "title": "Question",
+  "type": "object"
+}

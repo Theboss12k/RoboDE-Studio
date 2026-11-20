@@ -1,0 +1,10 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/candidates/acme_ra_6/datasheet?filename=ra6.md",
+  "request_body": "<raw body: 432 bytes>",
+  "status": 200,
+  "response_body": {
+    "ok": true,
+    "characters": 424
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "method": "PUT",
+  "path": "/api/llm/keys/gemini",
+  "request_body": {
+    "key": "<api_key>"
+  },
+  "status": 200,
+  "response_body": {
+    "gemini": {
+      "saved": true,
+      "environment": null,
+      "ready": true
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "Calc": {
+      "description": "A traceable calculation: what was computed, how, from what.",
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Quantity"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "result": {
+          "title": "Result",
+          "type": "number"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "inputs",
+        "result",
+        "unit"
+      ],
+      "title": "Calc",
+      "type": "object"
+    },
+    "Quantity": {
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "default": "",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Quantity",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "reach",
+        "payload",
+        "grip",
+        "speed",
+        "acceleration",
+        "torque",
+        "locomotion",
+        "accuracy",
+        "energy",
+        "workspace",
+        "cycle"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "comparator": {
+      "default": ">=",
+      "enum": [
+        ">=",
+        "<=",
+        "info"
+      ],
+      "title": "Comparator",
+      "type": "string"
+    },
+    "target": {
+      "title": "Target",
+      "type": "number"
+    },
+    "unit": {
+      "title": "Unit",
+      "type": "string"
+    },
+    "calc": {
+      "$ref": "#/$defs/Calc"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "category",
+    "target",
+    "unit",
+    "calc"
+  ],
+  "title": "Requirement",
+  "type": "object"
+}

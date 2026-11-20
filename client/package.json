@@ -14,7 +14,8 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "three": "0.186.1",
-    "lucide-react": "1.61.0"
+    "lucide-react": "1.61.0",
+    "@robode/studio-core": "*"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

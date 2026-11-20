@@ -13,6 +13,8 @@ from . import urdf as U
 from .base import Capabilities, IKResult, Joint
 from .params import GantryParams
 
+MAX_AXIS_SPEED_M_S = 5.0        # plausible family limits: rated values are capped here, so an absurd
+MAX_AXIS_ACCEL_M_S2 = 50.0      # requirement fails visibly instead of being 'met'
 STEEL, DARK, ORANGE = (0.72, 0.75, 0.78, 1), (0.25, 0.28, 0.32, 1), (0.95, 0.55, 0.15, 1)
 
 
@@ -129,8 +131,8 @@ class Gantry:
         if acc:
             upd['repeatability_m'] = min(p.repeatability_m, acc * 0.8)
         vt, at = t('tcp_speed', 0.0), t('tcp_accel', 0.0)
-        vxy = max(p.max_speed_m_s[0], 1.3 * vt)
-        axy = max(p.max_accel_m_s2[0], 1.3 * at)
+        vxy = min(max(p.max_speed_m_s[0], 1.3 * vt), MAX_AXIS_SPEED_M_S)
+        axy = min(max(p.max_accel_m_s2[0], 1.3 * at), MAX_AXIS_ACCEL_M_S2)
         upd['max_speed_m_s'] = (vxy, vxy, max(p.max_speed_m_s[2], 0.5 * vxy))
         upd['max_accel_m_s2'] = (axy, axy, max(p.max_accel_m_s2[2], 0.7 * axy))
         m = upd['payload_kg'] + p.tool_mass_kg
@@ -140,6 +142,36 @@ class Gantry:
         fz = (p.z_moving_mass_kg + m) * (statics.G + az) * sf
         upd['max_force_n'] = tuple(float(math.ceil(f / 10) * 10) for f in (fx, fy, fz))
         return p.model_copy(update=upd)
+
+    SIZED_FIELDS = frozenset({'x_stroke_m', 'y_stroke_m', 'z_stroke_m', 'frame_height_m', 'max_speed_m_s',
+                              'max_accel_m_s2', 'max_force_n', 'payload_kg', 'gripper_force_n', 'repeatability_m'})
+
+    def clamp_to_caps(self, params: dict) -> dict:
+        """Axis speeds <= MAX_AXIS_SPEED_M_S and accelerations <= MAX_AXIS_ACCEL_M_S2, whatever their source."""
+        p = self.parse(params)
+        return p.model_copy(update={'max_speed_m_s': tuple(min(v, MAX_AXIS_SPEED_M_S) for v in p.max_speed_m_s),
+                                    'max_accel_m_s2': tuple(min(a, MAX_AXIS_ACCEL_M_S2) for a in p.max_accel_m_s2)}).model_dump()
+
+    def raise_speeds(self, params: dict, factors: dict[str, float], keep=frozenset()):
+        """Raise speed and acceleration of the axes in `factors` (x_axis, y_axis, z_axis), capped at
+        MAX_AXIS_SPEED_M_S / MAX_AXIS_ACCEL_M_S2; the axis force rating grows with the acceleration (x, y)."""
+        p = self.parse(params)
+        v, a, f = list(p.max_speed_m_s), list(p.max_accel_m_s2), list(p.max_force_n)
+        notes, capped = [], []
+        for name, k in factors.items():
+            i = 'xyz'.index(name[0])
+            if name == 'tool_yaw' or 'max_speed_m_s' in keep:
+                continue
+            nv, na = min(v[i] * k, max(MAX_AXIS_SPEED_M_S, v[i])), min(a[i] * k, max(MAX_AXIS_ACCEL_M_S2, a[i]))
+            if nv > v[i] * 1.001:
+                notes.append(f'{name} {v[i]:.2g} -> {nv:.2g} m/s')
+            if nv < v[i] * k * 0.999 or na < a[i] * k * 0.999:
+                capped.append(name)
+            if 'max_force_n' not in keep and i < 2:
+                f[i] = float(math.ceil(f[i] * na / a[i] / 10) * 10)
+            v[i], a[i] = nv, na
+        return p.model_copy(update={'max_speed_m_s': tuple(v), 'max_accel_m_s2': tuple(a),
+                                    'max_force_n': tuple(f)}).model_dump(), notes, capped
 
     def build_urdf(self, p, name):
         u = U.Urdf(name)

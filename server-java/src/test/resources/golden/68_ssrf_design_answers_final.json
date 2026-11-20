@@ -1,0 +1,26 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/<job_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "design",
+    "robot_id": "<project_id>",
+    "status": "done",
+    "progress": [
+      "Updating the specification (round 2)",
+      "Working out the requirements",
+      "Building the scene and the robot concept",
+      "Sizing the serial arm from the requirements",
+      "Task simulated: 16 of 19 checks pass"
+    ],
+    "result": {
+      "status": "designed",
+      "version": 1
+    },
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

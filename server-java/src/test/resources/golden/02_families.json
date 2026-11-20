@@ -1,0 +1,808 @@
+{
+  "method": "GET",
+  "path": "/api/families",
+  "request_body": null,
+  "status": 200,
+  "response_body": [
+    {
+      "name": "serial_arm",
+      "title": "Serial arm",
+      "description": "Anthropomorphic 4-6 DOF arm on a fixed base: base yaw, shoulder, elbow, wrist pitch, optional wrist joints. Keeps the tool pointing down at picks and places.",
+      "mobile": false,
+      "params_schema": {
+        "description": "An anthropomorphic arm: J1 base yaw (z), J2 shoulder pitch, J3 elbow pitch, J4 wrist pitch, then optional\nJ5 wrist roll about the tool axis and J6 (6 DOF: J4 wrist pitch, J5 wrist yaw-in-plane, J6 tool roll). The tool\npoints down (-z) at every pick and place when the arm has a wrist pitch joint (dof >= 4).\nZero pose: upper arm and forearm straight up, tool pointing up along +z.",
+        "properties": {
+          "dof": {
+            "default": 6,
+            "maximum": 6,
+            "minimum": 4,
+            "title": "Dof",
+            "type": "integer"
+          },
+          "base_height_m": {
+            "default": 0.15,
+            "exclusiveMinimum": 0,
+            "maximum": 3,
+            "title": "Base Height M",
+            "type": "number"
+          },
+          "upper_arm_m": {
+            "default": 0.4,
+            "exclusiveMinimum": 0,
+            "maximum": 5,
+            "title": "Upper Arm M",
+            "type": "number"
+          },
+          "forearm_m": {
+            "default": 0.35,
+            "exclusiveMinimum": 0,
+            "maximum": 5,
+            "title": "Forearm M",
+            "type": "number"
+          },
+          "wrist_m": {
+            "default": 0.08,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Wrist M",
+            "type": "number"
+          },
+          "tool_length_m": {
+            "default": 0.12,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Tool Length M",
+            "type": "number"
+          },
+          "link_radius_m": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 0.5,
+            "title": "Link Radius M",
+            "type": "number"
+          },
+          "joint_limits_deg": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Joint Limits Deg",
+            "type": "array"
+          },
+          "max_speed_deg_s": {
+            "default": [],
+            "items": {
+              "type": "number"
+            },
+            "title": "Max Speed Deg S",
+            "type": "array"
+          },
+          "max_torque_nm": {
+            "default": [],
+            "items": {
+              "type": "number"
+            },
+            "title": "Max Torque Nm",
+            "type": "array"
+          },
+          "base_mass_kg": {
+            "default": 4.0,
+            "minimum": 0,
+            "title": "Base Mass Kg",
+            "type": "number"
+          },
+          "upper_arm_mass_kg": {
+            "default": 3.0,
+            "minimum": 0,
+            "title": "Upper Arm Mass Kg",
+            "type": "number"
+          },
+          "forearm_mass_kg": {
+            "default": 2.0,
+            "minimum": 0,
+            "title": "Forearm Mass Kg",
+            "type": "number"
+          },
+          "wrist_mass_kg": {
+            "default": 1.0,
+            "minimum": 0,
+            "title": "Wrist Mass Kg",
+            "type": "number"
+          },
+          "tool_mass_kg": {
+            "default": 0.5,
+            "minimum": 0,
+            "title": "Tool Mass Kg",
+            "type": "number"
+          },
+          "gripper": {
+            "default": "parallel",
+            "enum": [
+              "parallel",
+              "vacuum",
+              "magnetic",
+              "hook",
+              "fork",
+              "none"
+            ],
+            "title": "Gripper",
+            "type": "string"
+          },
+          "gripper_force_n": {
+            "default": 40.0,
+            "minimum": 0,
+            "title": "Gripper Force N",
+            "type": "number"
+          },
+          "gripper_stroke_m": {
+            "default": 0.08,
+            "minimum": 0,
+            "title": "Gripper Stroke M",
+            "type": "number"
+          },
+          "payload_kg": {
+            "default": 3.0,
+            "minimum": 0,
+            "title": "Payload Kg",
+            "type": "number"
+          },
+          "repeatability_m": {
+            "default": 0.0005,
+            "exclusiveMinimum": 0,
+            "title": "Repeatability M",
+            "type": "number"
+          },
+          "max_tcp_speed_m_s": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "title": "Max Tcp Speed M S",
+            "type": "number"
+          }
+        },
+        "title": "SerialArmParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "gantry",
+      "title": "Cartesian gantry",
+      "description": "Frame with X and Y beams and a vertical Z axis (optional tool yaw). Straight-line moves over a box-shaped workspace; good for pallets and long, repeatable transfers.",
+      "mobile": false,
+      "params_schema": {
+        "description": "A Cartesian gantry: X and Y prismatic axes on a frame, Z prismatic axis hanging down, optional tool yaw.\nBase frame origin: centre of the footprint on the floor (or mount surface). X and Y travel are centred on it.\nTool tip height = frame_height_m - z_offset_m - q_z - tool_length_m, where q_z in [0, z_stroke_m] moves the tool\ndown.",
+        "properties": {
+          "x_stroke_m": {
+            "default": 1.0,
+            "exclusiveMinimum": 0,
+            "maximum": 50,
+            "title": "X Stroke M",
+            "type": "number"
+          },
+          "y_stroke_m": {
+            "default": 0.8,
+            "exclusiveMinimum": 0,
+            "maximum": 50,
+            "title": "Y Stroke M",
+            "type": "number"
+          },
+          "z_stroke_m": {
+            "default": 0.5,
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "title": "Z Stroke M",
+            "type": "number"
+          },
+          "frame_height_m": {
+            "default": 1.4,
+            "exclusiveMinimum": 0,
+            "maximum": 20,
+            "title": "Frame Height M",
+            "type": "number"
+          },
+          "z_offset_m": {
+            "default": 0.1,
+            "maximum": 5,
+            "minimum": 0,
+            "title": "Z Offset M",
+            "type": "number"
+          },
+          "tool_length_m": {
+            "default": 0.12,
+            "maximum": 2,
+            "minimum": 0,
+            "title": "Tool Length M",
+            "type": "number"
+          },
+          "tool_yaw": {
+            "default": false,
+            "title": "Tool Yaw",
+            "type": "boolean"
+          },
+          "beam_size_m": {
+            "default": 0.08,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Beam Size M",
+            "type": "number"
+          },
+          "max_speed_m_s": {
+            "default": [
+              1.0,
+              1.0,
+              0.5
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Max Speed M S",
+            "type": "array"
+          },
+          "max_accel_m_s2": {
+            "default": [
+              3.0,
+              3.0,
+              2.0
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Max Accel M S2",
+            "type": "array"
+          },
+          "max_force_n": {
+            "default": [
+              300.0,
+              300.0,
+              300.0
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Max Force N",
+            "type": "array"
+          },
+          "x_moving_mass_kg": {
+            "default": 12.0,
+            "minimum": 0,
+            "title": "X Moving Mass Kg",
+            "type": "number"
+          },
+          "y_moving_mass_kg": {
+            "default": 6.0,
+            "minimum": 0,
+            "title": "Y Moving Mass Kg",
+            "type": "number"
+          },
+          "z_moving_mass_kg": {
+            "default": 3.0,
+            "minimum": 0,
+            "title": "Z Moving Mass Kg",
+            "type": "number"
+          },
+          "tool_mass_kg": {
+            "default": 0.5,
+            "minimum": 0,
+            "title": "Tool Mass Kg",
+            "type": "number"
+          },
+          "gripper": {
+            "default": "parallel",
+            "enum": [
+              "parallel",
+              "vacuum",
+              "magnetic",
+              "hook",
+              "fork",
+              "none"
+            ],
+            "title": "Gripper",
+            "type": "string"
+          },
+          "gripper_force_n": {
+            "default": 40.0,
+            "minimum": 0,
+            "title": "Gripper Force N",
+            "type": "number"
+          },
+          "gripper_stroke_m": {
+            "default": 0.08,
+            "minimum": 0,
+            "title": "Gripper Stroke M",
+            "type": "number"
+          },
+          "payload_kg": {
+            "default": 10.0,
+            "minimum": 0,
+            "title": "Payload Kg",
+            "type": "number"
+          },
+          "repeatability_m": {
+            "default": 0.0002,
+            "exclusiveMinimum": 0,
+            "title": "Repeatability M",
+            "type": "number"
+          }
+        },
+        "title": "GantryParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "mobile_base",
+      "title": "Mobile base",
+      "description": "Differential-drive base that carries goods on its deck along a path. No arm.",
+      "mobile": true,
+      "params_schema": {
+        "description": "A differential-drive base. Base frame origin: centre of the footprint on the floor; deck at deck_height_m.",
+        "properties": {
+          "length_m": {
+            "default": 0.7,
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "title": "Length M",
+            "type": "number"
+          },
+          "width_m": {
+            "default": 0.5,
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "title": "Width M",
+            "type": "number"
+          },
+          "deck_height_m": {
+            "default": 0.3,
+            "exclusiveMinimum": 0,
+            "maximum": 3,
+            "title": "Deck Height M",
+            "type": "number"
+          },
+          "wheel_radius_m": {
+            "default": 0.08,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Wheel Radius M",
+            "type": "number"
+          },
+          "track_m": {
+            "default": 0.45,
+            "exclusiveMinimum": 0,
+            "maximum": 10,
+            "title": "Track M",
+            "type": "number"
+          },
+          "mass_kg": {
+            "default": 40.0,
+            "exclusiveMinimum": 0,
+            "title": "Mass Kg",
+            "type": "number"
+          },
+          "max_speed_m_s": {
+            "default": 1.2,
+            "exclusiveMinimum": 0,
+            "maximum": 20,
+            "title": "Max Speed M S",
+            "type": "number"
+          },
+          "max_accel_m_s2": {
+            "default": 0.8,
+            "exclusiveMinimum": 0,
+            "maximum": 20,
+            "title": "Max Accel M S2",
+            "type": "number"
+          },
+          "max_slope_deg": {
+            "default": 5.0,
+            "maximum": 45,
+            "minimum": 0,
+            "title": "Max Slope Deg",
+            "type": "number"
+          },
+          "wheel_torque_nm": {
+            "default": 10.0,
+            "exclusiveMinimum": 0,
+            "title": "Wheel Torque Nm",
+            "type": "number"
+          },
+          "drive_wheels": {
+            "default": 2,
+            "maximum": 8,
+            "minimum": 2,
+            "title": "Drive Wheels",
+            "type": "integer"
+          },
+          "battery_wh": {
+            "default": 500.0,
+            "exclusiveMinimum": 0,
+            "title": "Battery Wh",
+            "type": "number"
+          },
+          "payload_kg": {
+            "default": 50.0,
+            "minimum": 0,
+            "title": "Payload Kg",
+            "type": "number"
+          }
+        },
+        "title": "MobileBaseParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "mobile_manipulator",
+      "title": "Mobile manipulator",
+      "description": "Differential-drive base with a serial arm on the deck: drives to a stop, then works with the arm.",
+      "mobile": true,
+      "params_schema": {
+        "$defs": {
+          "MobileBaseParams": {
+            "description": "A differential-drive base. Base frame origin: centre of the footprint on the floor; deck at deck_height_m.",
+            "properties": {
+              "length_m": {
+                "default": 0.7,
+                "exclusiveMinimum": 0,
+                "maximum": 10,
+                "title": "Length M",
+                "type": "number"
+              },
+              "width_m": {
+                "default": 0.5,
+                "exclusiveMinimum": 0,
+                "maximum": 10,
+                "title": "Width M",
+                "type": "number"
+              },
+              "deck_height_m": {
+                "default": 0.3,
+                "exclusiveMinimum": 0,
+                "maximum": 3,
+                "title": "Deck Height M",
+                "type": "number"
+              },
+              "wheel_radius_m": {
+                "default": 0.08,
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "title": "Wheel Radius M",
+                "type": "number"
+              },
+              "track_m": {
+                "default": 0.45,
+                "exclusiveMinimum": 0,
+                "maximum": 10,
+                "title": "Track M",
+                "type": "number"
+              },
+              "mass_kg": {
+                "default": 40.0,
+                "exclusiveMinimum": 0,
+                "title": "Mass Kg",
+                "type": "number"
+              },
+              "max_speed_m_s": {
+                "default": 1.2,
+                "exclusiveMinimum": 0,
+                "maximum": 20,
+                "title": "Max Speed M S",
+                "type": "number"
+              },
+              "max_accel_m_s2": {
+                "default": 0.8,
+                "exclusiveMinimum": 0,
+                "maximum": 20,
+                "title": "Max Accel M S2",
+                "type": "number"
+              },
+              "max_slope_deg": {
+                "default": 5.0,
+                "maximum": 45,
+                "minimum": 0,
+                "title": "Max Slope Deg",
+                "type": "number"
+              },
+              "wheel_torque_nm": {
+                "default": 10.0,
+                "exclusiveMinimum": 0,
+                "title": "Wheel Torque Nm",
+                "type": "number"
+              },
+              "drive_wheels": {
+                "default": 2,
+                "maximum": 8,
+                "minimum": 2,
+                "title": "Drive Wheels",
+                "type": "integer"
+              },
+              "battery_wh": {
+                "default": 500.0,
+                "exclusiveMinimum": 0,
+                "title": "Battery Wh",
+                "type": "number"
+              },
+              "payload_kg": {
+                "default": 50.0,
+                "minimum": 0,
+                "title": "Payload Kg",
+                "type": "number"
+              }
+            },
+            "title": "MobileBaseParams",
+            "type": "object"
+          },
+          "SerialArmParams": {
+            "description": "An anthropomorphic arm: J1 base yaw (z), J2 shoulder pitch, J3 elbow pitch, J4 wrist pitch, then optional\nJ5 wrist roll about the tool axis and J6 (6 DOF: J4 wrist pitch, J5 wrist yaw-in-plane, J6 tool roll). The tool\npoints down (-z) at every pick and place when the arm has a wrist pitch joint (dof >= 4).\nZero pose: upper arm and forearm straight up, tool pointing up along +z.",
+            "properties": {
+              "dof": {
+                "default": 6,
+                "maximum": 6,
+                "minimum": 4,
+                "title": "Dof",
+                "type": "integer"
+              },
+              "base_height_m": {
+                "default": 0.15,
+                "exclusiveMinimum": 0,
+                "maximum": 3,
+                "title": "Base Height M",
+                "type": "number"
+              },
+              "upper_arm_m": {
+                "default": 0.4,
+                "exclusiveMinimum": 0,
+                "maximum": 5,
+                "title": "Upper Arm M",
+                "type": "number"
+              },
+              "forearm_m": {
+                "default": 0.35,
+                "exclusiveMinimum": 0,
+                "maximum": 5,
+                "title": "Forearm M",
+                "type": "number"
+              },
+              "wrist_m": {
+                "default": 0.08,
+                "maximum": 1,
+                "minimum": 0,
+                "title": "Wrist M",
+                "type": "number"
+              },
+              "tool_length_m": {
+                "default": 0.12,
+                "maximum": 1,
+                "minimum": 0,
+                "title": "Tool Length M",
+                "type": "number"
+              },
+              "link_radius_m": {
+                "default": 0.05,
+                "exclusiveMinimum": 0,
+                "maximum": 0.5,
+                "title": "Link Radius M",
+                "type": "number"
+              },
+              "joint_limits_deg": {
+                "default": [],
+                "items": {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "title": "Joint Limits Deg",
+                "type": "array"
+              },
+              "max_speed_deg_s": {
+                "default": [],
+                "items": {
+                  "type": "number"
+                },
+                "title": "Max Speed Deg S",
+                "type": "array"
+              },
+              "max_torque_nm": {
+                "default": [],
+                "items": {
+                  "type": "number"
+                },
+                "title": "Max Torque Nm",
+                "type": "array"
+              },
+              "base_mass_kg": {
+                "default": 4.0,
+                "minimum": 0,
+                "title": "Base Mass Kg",
+                "type": "number"
+              },
+              "upper_arm_mass_kg": {
+                "default": 3.0,
+                "minimum": 0,
+                "title": "Upper Arm Mass Kg",
+                "type": "number"
+              },
+              "forearm_mass_kg": {
+                "default": 2.0,
+                "minimum": 0,
+                "title": "Forearm Mass Kg",
+                "type": "number"
+              },
+              "wrist_mass_kg": {
+                "default": 1.0,
+                "minimum": 0,
+                "title": "Wrist Mass Kg",
+                "type": "number"
+              },
+              "tool_mass_kg": {
+                "default": 0.5,
+                "minimum": 0,
+                "title": "Tool Mass Kg",
+                "type": "number"
+              },
+              "gripper": {
+                "default": "parallel",
+                "enum": [
+                  "parallel",
+                  "vacuum",
+                  "magnetic",
+                  "hook",
+                  "fork",
+                  "none"
+                ],
+                "title": "Gripper",
+                "type": "string"
+              },
+              "gripper_force_n": {
+                "default": 40.0,
+                "minimum": 0,
+                "title": "Gripper Force N",
+                "type": "number"
+              },
+              "gripper_stroke_m": {
+                "default": 0.08,
+                "minimum": 0,
+                "title": "Gripper Stroke M",
+                "type": "number"
+              },
+              "payload_kg": {
+                "default": 3.0,
+                "minimum": 0,
+                "title": "Payload Kg",
+                "type": "number"
+              },
+              "repeatability_m": {
+                "default": 0.0005,
+                "exclusiveMinimum": 0,
+                "title": "Repeatability M",
+                "type": "number"
+              },
+              "max_tcp_speed_m_s": {
+                "default": 1.0,
+                "exclusiveMinimum": 0,
+                "title": "Max Tcp Speed M S",
+                "type": "number"
+              }
+            },
+            "title": "SerialArmParams",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "base": {
+            "$ref": "#/$defs/MobileBaseParams",
+            "default": {
+              "length_m": 0.7,
+              "width_m": 0.5,
+              "deck_height_m": 0.3,
+              "wheel_radius_m": 0.08,
+              "track_m": 0.45,
+              "mass_kg": 40.0,
+              "max_speed_m_s": 1.2,
+              "max_accel_m_s2": 0.8,
+              "max_slope_deg": 5.0,
+              "wheel_torque_nm": 10.0,
+              "drive_wheels": 2,
+              "battery_wh": 500.0,
+              "payload_kg": 50.0
+            }
+          },
+          "arm": {
+            "$ref": "#/$defs/SerialArmParams",
+            "default": {
+              "dof": 6,
+              "base_height_m": 0.15,
+              "upper_arm_m": 0.4,
+              "forearm_m": 0.35,
+              "wrist_m": 0.08,
+              "tool_length_m": 0.12,
+              "link_radius_m": 0.05,
+              "joint_limits_deg": [],
+              "max_speed_deg_s": [],
+              "max_torque_nm": [],
+              "base_mass_kg": 4.0,
+              "upper_arm_mass_kg": 3.0,
+              "forearm_mass_kg": 2.0,
+              "wrist_mass_kg": 1.0,
+              "tool_mass_kg": 0.5,
+              "gripper": "parallel",
+              "gripper_force_n": 40.0,
+              "gripper_stroke_m": 0.08,
+              "payload_kg": 3.0,
+              "repeatability_m": 0.0005,
+              "max_tcp_speed_m_s": 1.0
+            }
+          },
+          "arm_mount_m": {
+            "default": [
+              0.15,
+              0.0,
+              0.0
+            ],
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Arm Mount M",
+            "type": "array"
+          }
+        },
+        "title": "MobileManipulatorParams",
+        "type": "object"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>RoboDE Studio industrial DE monogram</title>
+  <path d="M8 2h48l6 6v48l-6 6H8l-6-6V8Z" fill="#313637"/>
+  <path d="M10 7h44l3 3v44l-3 3H10l-3-3V10Z" fill="#f18137"/>
+  <g fill="#25292a" fill-rule="evenodd">
+    <path transform="translate(12 19) scale(.77)" d="M0 0h15l10 9v16l-10 9H0Zm7 7v20h5l6-5V12l-6-5Z"/>
+    <path transform="translate(35 19) scale(.77)" d="M0 0h23v7H7v6h13l-3 7H7v7h16v7H0Z"/>
+  </g>
+</svg>

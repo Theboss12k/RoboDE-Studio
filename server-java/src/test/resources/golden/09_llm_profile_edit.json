@@ -1,0 +1,22 @@
+{
+  "method": "PUT",
+  "path": "/api/llm/profiles/<profile_id>",
+  "request_body": {
+    "name": "Fixture profile",
+    "kind": "claude_cli",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "timeout_s": 300,
+    "cli_path": ""
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<profile_id>",
+    "name": "Fixture profile",
+    "kind": "claude_cli",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "timeout_s": 300,
+    "cli_path": ""
+  }
+}

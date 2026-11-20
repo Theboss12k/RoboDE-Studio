@@ -1,0 +1,23 @@
+{
+  "method": "GET",
+  "path": "/api/projects/<project_id>/export",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "status": 200,
+    "content_type": "application/zip",
+    "zip_entries": [
+      "README.txt",
+      "candidates/acme_ra_6/analysis.json",
+      "candidates/acme_ra_6/candidate.urdf",
+      "candidates/acme_ra_6/manufacturer_values.json",
+      "decision.json",
+      "design.glb",
+      "design.urdf",
+      "requirements.json",
+      "scene.json",
+      "sim_summary.json",
+      "spec.json"
+    ]
+  }
+}

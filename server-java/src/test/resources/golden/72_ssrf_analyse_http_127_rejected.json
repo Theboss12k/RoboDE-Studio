@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/candidates/acme_ra_6/analyse",
+  "request_body": {
+    "datasheet_url": "http://127.0.0.1/secret.pdf"
+  },
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "analyse",
+    "robot_id": "<project_id>",
+    "status": "running",
+    "progress": [],
+    "result": null,
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

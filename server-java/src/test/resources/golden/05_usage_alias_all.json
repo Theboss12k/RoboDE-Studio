@@ -1,0 +1,27 @@
+{
+  "method": "GET",
+  "path": "/api/usage?period=all",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "period": "all",
+    "totals": {
+      "calls": 0,
+      "input": 0,
+      "cache_write": 0,
+      "cache_read": 0,
+      "output": 0,
+      "cost_usd": 0.0,
+      "seconds": "<duration>",
+      "images": 0,
+      "web_calls": 0,
+      "cache_hit_rate": null
+    },
+    "by_role": {},
+    "by_model": {},
+    "by_robot_id": {},
+    "by_task": {},
+    "by_day": {},
+    "recent": []
+  }
+}

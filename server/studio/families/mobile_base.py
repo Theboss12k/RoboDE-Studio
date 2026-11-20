@@ -13,6 +13,8 @@ from . import urdf as U
 from .base import Capabilities, IKResult, Joint
 from .params import MobileBaseParams
 
+MAX_SPEED_M_S = 3.0             # plausible family limits: rated values are capped here, so an absurd
+MAX_ACCEL_M_S2 = 3.0            # requirement fails visibly instead of being 'met'
 BODY, WHEEL, DECK = (0.35, 0.4, 0.5, 1), (0.1, 0.1, 0.1, 1), (0.8, 0.8, 0.82, 1)
 
 
@@ -106,8 +108,8 @@ class MobileBase:
             upd['wheel_radius_m'] = pi.wheel_radius_m
         upd['mass_kg'] = (pi.vehicle_mass_kg or p.mass_kg) + extra_mass_kg
         upd['payload_kg'] = max(t('payload', p.payload_kg), _hinted(hint, 'payload_kg'))
-        upd['max_speed_m_s'] = max(1.1 * t('drive_speed'), _hinted(hint, 'max_speed_m_s'), 0.1)
-        upd['max_accel_m_s2'] = max(1.1 * t('drive_accel'), _hinted(hint, 'max_accel_m_s2'), 0.1)
+        upd['max_speed_m_s'] = min(max(1.1 * t('drive_speed'), _hinted(hint, 'max_speed_m_s'), 0.1), MAX_SPEED_M_S)
+        upd['max_accel_m_s2'] = min(max(1.1 * t('drive_accel'), _hinted(hint, 'max_accel_m_s2'), 0.1), MAX_ACCEL_M_S2)
         slope = max(t('slope'), pi.slope_deg)
         upd['max_slope_deg'] = max(1.1 * slope, _hinted(hint, 'max_slope_deg'))
         q = p.model_copy(update=upd)
@@ -119,6 +121,15 @@ class MobileBase:
         upd['wheel_torque_nm'] = float(math.ceil(max(tq, 1.1 * t('wheel_torque'), _hinted(hint, 'wheel_torque_nm'))))
         upd['battery_wh'] = max(math.ceil(1.1 * t('battery')), _hinted(hint, 'battery_wh')) or p.battery_wh
         return p.model_copy(update=upd)
+
+    SIZED_FIELDS = frozenset({'length_m', 'width_m', 'track_m', 'max_speed_m_s', 'max_accel_m_s2', 'max_slope_deg',
+                              'wheel_torque_nm', 'battery_wh', 'payload_kg'})
+
+    def clamp_to_caps(self, params: dict) -> dict:
+        """Drive speed <= MAX_SPEED_M_S and acceleration <= MAX_ACCEL_M_S2, whatever their source."""
+        p = self.parse(params)
+        return p.model_copy(update={'max_speed_m_s': min(p.max_speed_m_s, MAX_SPEED_M_S),
+                                    'max_accel_m_s2': min(p.max_accel_m_s2, MAX_ACCEL_M_S2)}).model_dump()
 
     def add_to_urdf(self, u: U.Urdf, p):
         """Creates `base_link` (chassis and deck) and the wheel links and joints."""

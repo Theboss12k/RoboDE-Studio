@@ -1,18 +1,15 @@
 // Scene view with a playback bar: play/pause, scrub over time, speed, phase label, loop, event markers.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pause, Play } from "lucide-react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { baseAt, frameAt } from "@robode/studio-core";
+import { Pause, Play } from "./icons";
 import SceneView from "./SceneView";
 import { fmt } from "./common";
 import type { BasePose, Parsed, SceneSpec, SimResult } from "../types";
 
-/** Index of the last frame whose time is <= t (frames are in time order). */
-function frameAt(times: number[], t: number) {
-  let lo = 0, hi = times.length - 1;
-  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (times[mid] <= t) lo = mid; else hi = mid - 1; }
-  return lo;
-}
+/** What a parent can read from the player without re-rendering at the playback rate. */
+export type PlayerHandle = { getMoment: () => { t: number } };
 
-export default function Player({ scene, parsed, sim, robotBase, height }: { scene: SceneSpec; parsed?: Parsed; sim: SimResult; robotBase: BasePose; height?: number }) {
+const Player = forwardRef<PlayerHandle, { scene: SceneSpec; parsed?: Parsed; sim: SimResult; robotBase: BasePose; height?: number }>(function Player({ scene, parsed, sim, robotBase, height }, ref) {
   const frames = sim.frames ?? [];
   const times = useMemo(() => frames.map((f) => f.t), [frames]);
   const duration = Math.max(sim.duration_s || 0, times[times.length - 1] ?? 0, 0.001);
@@ -22,6 +19,9 @@ export default function Player({ scene, parsed, sim, robotBase, height }: { scen
   const [loop, setLoop] = useState(true);
   const state = useRef({ speed, loop, duration });
   state.current = { speed, loop, duration };
+  const moment = useRef(0);
+  moment.current = t;
+  useImperativeHandle(ref, () => ({ getMoment: () => ({ t: Math.min(Math.max(moment.current, 0), state.current.duration) }) }), []);
   useEffect(() => { setT(0); setPlaying(false); }, [sim]);
   useEffect(() => {
     if (!playing) return;
@@ -41,9 +41,7 @@ export default function Player({ scene, parsed, sim, robotBase, height }: { scen
   }, [playing]);
   const index = frames.length ? frameAt(times, t) : 0;
   const frame = frames[index];
-  const base = frame?.base
-    ? { x: frame.base[0], y: frame.base[1], z: robotBase.position[2], yaw: frame.base[2] }
-    : { x: robotBase.position[0], y: robotBase.position[1], z: robotBase.position[2], yaw: robotBase.yaw };
+  const base = baseAt(frame, robotBase);
   const bad = (sim.events ?? []).filter((e) => e.kind === "collision" || e.kind === "unreachable");
   return (
     <div className="stack">
@@ -70,4 +68,5 @@ export default function Player({ scene, parsed, sim, robotBase, height }: { scen
       {bad.length > 0 && <ul className="small event-list">{bad.map((e, i) => <li key={i}><span className="tag bad">{e.kind}</span> {fmt(e.t, "s")}: {e.text}</li>)}</ul>}
     </div>
   );
-}
+});
+export default Player;

@@ -9,9 +9,10 @@ SYSTEM = """You build the 3D scene for a robot task: the furniture and obstacles
 
 Rules:
 - Copy every marker of the spec into "markers" with the same id and position.
-- Put a table, shelf, conveyor or pallet under every marker that is above the floor: its top face (center z + size z / 2) is at the marker's z, and the marker's x and y lie inside its footprint. Make surfaces a little larger than the object. Markers at z = 0 need no support.
+- Put a table, shelf, conveyor or pallet under every pick or place target and every marker where an object starts, when it is above the floor: its top face (center z + size z / 2) is at the marker's z, and the marker's x and y lie inside its footprint. Make surfaces a little larger than the object. Markers at z = 0 need no support. Hover, home, waypoint and robot_base markers need no surface: never invent a shelf or support for them.
 - Every object of the spec appears in "objects" at its start marker: x and y equal the marker, the bottom of the object (center z - size z / 2) sits at the marker's z. Use the object's own size and shape.
-- Keep a circle of radius 0.3 m around the robot base (x, y of "robot_base") free of boxes that collide. Tables holding a marker may come closer, but never closer than 0.1 m.
+- Keep a circle of radius 0.3 m around the robot base (x, y of "robot_base") free of boxes that collide, except the table or plinth the base is mounted on when its z is above the floor (that surface's top is at the base z). Tables holding a marker may come closer, but never closer than 0.1 m.
+- When the robot base z is above 0 (it is mounted on a table or plinth), the scene must contain a mounting surface: a box (table, plinth, plate) whose top is at the base z and whose footprint contains the base x, y. If the tables under the markers leave a gap there, join them into one table or add a bridging plate; do not leave the base floating.
 - Floor: floor_size_m must be big enough to hold the markers, the path and the base with at least 0.5 m margin.
 - Add only what the brief implies (walls, a second table, obstacles it mentions). Do not invent obstacles on the robot's path. Floor markings use collides false.
 - Ids are lowercase letters, digits and underscores. Colours are #rrggbb.
@@ -58,17 +59,26 @@ def validate_scene(scene: SceneSpec, spec: TechnicalSpec, base: BasePose) -> Sce
             if abs(bottom - m.position[2]) > 0.01:
                 raise ValueError(f'Object "{o.id}": its bottom is at z = {bottom:.3f} but marker "{m.id}" is at z = {m.position[2]}; '
                                  'center z = marker z + size z / 2')
+    resting = {a.target for a in spec.actions if a.verb in ('pick', 'place') and a.target}
+    resting |= {o.start_marker for o in spec.objects if o.start_marker}
     for m in spec.markers:
-        if m.position[2] > 0.02 and not any(b.kind in TOP_KINDS and abs(b.center[2] + b.size[2] / 2 - m.position[2]) <= 0.02
+        if m.id in resting and m.position[2] > 0.02 and not any(b.kind in TOP_KINDS and abs(b.center[2] + b.size[2] / 2 - m.position[2]) <= 0.02
                                             and rect_distance(b, m.position[0], m.position[1]) == 0 for b in scene.boxes):
             raise ValueError(f'Marker "{m.id}" is at z = {m.position[2]} with nothing under it: add a table or shelf whose top is at that height '
                              'and whose footprint contains the marker')
+    if base.position[2] > 0.02 and not any(abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02
+                                           and rect_distance(b, base.position[0], base.position[1]) == 0 for b in scene.boxes):
+        raise ValueError(f'The robot base is mounted at ({base.position[0]:.2f}, {base.position[1]:.2f}, {base.position[2]:.2f}) '
+                         'with nothing under it: add a table, plinth or plate whose top is at that height and whose footprint '
+                         'contains the base x, y (join the tables if there is a gap)')
     for b in scene.boxes:
         # A surface holding a marker may come closer: the task itself puts the marker near the base.
         holds = any(m.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - m.position[2]) <= 0.02
                     and rect_distance(b, m.position[0], m.position[1]) == 0 for m in spec.markers)
         free = 0.1 if holds else 0.3
-        if b.collides and rect_distance(b, base.position[0], base.position[1]) < free and b.center[2] - b.size[2] / 2 < 2.0:
+        mount = base.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02 \
+            and rect_distance(b, base.position[0], base.position[1]) == 0      # the robot is mounted on this surface
+        if b.collides and not mount and rect_distance(b, base.position[0], base.position[1]) < free and b.center[2] - b.size[2] / 2 < 2.0:
             raise ValueError(f'Box "{b.id}" is within {free} m of the robot base at ({base.position[0]:.2f}, {base.position[1]:.2f}); keep it free')
     xs = [m.position[0] for m in spec.markers] + [base.position[0]] + [p[0] for p in spec.locomotion.path]
     ys = [m.position[1] for m in spec.markers] + [base.position[1]] + [p[1] for p in spec.locomotion.path]

@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "BasePose": {
+      "properties": {
+        "position": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Position",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "title": "BasePose",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 120,
+      "title": "Name",
+      "type": "string"
+    },
+    "rationale": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "params": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Params",
+      "type": "object"
+    },
+    "base": {
+      "$ref": "#/$defs/BasePose",
+      "default": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "yaw": 0.0
+      }
+    }
+  },
+  "required": [
+    "family",
+    "name"
+  ],
+  "title": "RobotConcept",
+  "type": "object"
+}

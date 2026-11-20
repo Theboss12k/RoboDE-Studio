@@ -1,0 +1,18 @@
+{
+  "method": "GET",
+  "path": "/api/health",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "ok": true,
+    "llm": {
+      "spec": "claude_opus",
+      "scene": "claude_sonnet",
+      "robot": "claude_opus",
+      "revise": "claude_opus",
+      "search": "claude_sonnet",
+      "extract": "claude_sonnet",
+      "analysis": "claude_sonnet"
+    }
+  }
+}

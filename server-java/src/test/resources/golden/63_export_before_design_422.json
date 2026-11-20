@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/projects/<project_id>/export",
+  "request_body": null,
+  "status": 422,
+  "response_body": {
+    "detail": "There is no design to export yet"
+  }
+}

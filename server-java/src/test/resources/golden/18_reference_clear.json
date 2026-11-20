@@ -1,0 +1,23 @@
+{
+  "method": "DELETE",
+  "path": "/api/projects/<project_id>/reference",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<project_id>",
+    "title": "x",
+    "brief": "x",
+    "reference": null,
+    "stage": "brief",
+    "questions": [],
+    "answers": {},
+    "versions": [],
+    "approved_version": null,
+    "candidates_count": 0,
+    "selected_candidate": null,
+    "analyses": [],
+    "decision": null,
+    "created": "<timestamp>",
+    "updated": "<timestamp>"
+  }
+}

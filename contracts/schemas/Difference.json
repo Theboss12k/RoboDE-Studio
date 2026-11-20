@@ -1,0 +1,39 @@
+{
+  "properties": {
+    "topic": {
+      "title": "Topic",
+      "type": "string"
+    },
+    "generated": {
+      "title": "Generated",
+      "type": "string"
+    },
+    "candidate": {
+      "title": "Candidate",
+      "type": "string"
+    },
+    "impact": {
+      "default": "",
+      "title": "Impact",
+      "type": "string"
+    },
+    "severity": {
+      "default": "minor",
+      "enum": [
+        "ok",
+        "minor",
+        "major",
+        "blocking"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic",
+    "generated",
+    "candidate"
+  ],
+  "title": "Difference",
+  "type": "object"
+}

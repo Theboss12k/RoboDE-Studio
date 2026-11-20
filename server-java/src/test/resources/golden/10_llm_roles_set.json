@@ -1,0 +1,19 @@
+{
+  "method": "PUT",
+  "path": "/api/llm/roles",
+  "request_body": {
+    "roles": {
+      "analysis": "claude_sonnet"
+    }
+  },
+  "status": 200,
+  "response_body": {
+    "spec": "claude_opus",
+    "scene": "claude_sonnet",
+    "robot": "claude_opus",
+    "revise": "claude_opus",
+    "search": "claude_sonnet",
+    "extract": "claude_sonnet",
+    "analysis": "claude_sonnet"
+  }
+}

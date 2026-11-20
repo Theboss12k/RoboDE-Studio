@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "robots_needed": {
+      "maximum": 4,
+      "minimum": 1,
+      "title": "Robots Needed",
+      "type": "integer"
+    },
+    "reason": {
+      "maxLength": 400,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "robots_needed",
+    "reason"
+  ],
+  "title": "FleetHint",
+  "type": "object"
+}

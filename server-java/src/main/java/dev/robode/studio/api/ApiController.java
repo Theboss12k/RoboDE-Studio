@@ -1,0 +1,294 @@
+package dev.robode.studio.api;
+
+import dev.robode.studio.common.Json;
+import dev.robode.studio.common.StudioException;
+import dev.robode.studio.config.BodyLimitFilter;
+import dev.robode.studio.jobs.JobService;
+import dev.robode.studio.jobs.TaskResult;
+import dev.robode.studio.jobs.TaskRunner;
+import dev.robode.studio.llm.LlmSettings;
+import dev.robode.studio.llm.UsageLedger;
+import dev.robode.studio.meta.MetaService;
+import dev.robode.studio.store.ProjectStore;
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+/** Every route of the former FastAPI app, under /api/v1, with the same bodies. */
+@RestController
+@RequestMapping("/api/v1")
+class ApiController {
+    private final ProjectStore store;
+    private final ProjectService projects;
+    private final LlmSettings llm;
+    private final UsageLedger usage;
+    private final JobService jobs;
+    private final MetaService meta;
+    private final TaskRunner runner;
+
+    ApiController(ProjectStore store, ProjectService projects, LlmSettings llm, UsageLedger usage, JobService jobs,
+                  MetaService meta, TaskRunner runner) {
+        this.store = store;
+        this.projects = projects;
+        this.llm = llm;
+        this.usage = usage;
+        this.jobs = jobs;
+        this.meta = meta;
+        this.runner = runner;
+    }
+
+    // -- jobs, health, families, LLM settings -------------------------------------------------------------------
+    @GetMapping("/jobs/{id}")
+    JsonNode job(@PathVariable String id) { return jobs.get(id); }
+
+    @GetMapping("/projects/{pid}/jobs")
+    JsonNode projectJobs(@PathVariable String pid) {
+        store.require(pid);
+        ArrayNode out = Json.arr();
+        jobs.list(pid).forEach(out::add);
+        return out;
+    }
+
+    @GetMapping("/jobs")
+    JsonNode runningJobs(@RequestParam(defaultValue = "true") boolean running) {
+        ArrayNode out = Json.arr();
+        jobs.running().forEach(out::add);
+        return out;
+    }
+
+    @GetMapping("/health")
+    JsonNode health() { return healthBody(); }
+
+    private ObjectNode healthBody() {
+        ObjectNode out = Json.obj();
+        out.put("ok", true);
+        out.set("llm", llm.roles());
+        return out;
+    }
+
+    @GetMapping("/families")
+    JsonNode families() { return meta.families(); }
+
+    @GetMapping("/llm")
+    JsonNode llmSettings() { return llm.describe(); }
+
+    @PostMapping("/llm/profiles")
+    JsonNode addProfile(@RequestBody(required = false) JsonNode body) { return llm.upsert(body, null); }
+
+    @PutMapping("/llm/profiles/{id}")
+    JsonNode editProfile(@PathVariable String id, @RequestBody(required = false) JsonNode body) {
+        llm.profile(id);
+        return llm.upsert(body, id);
+    }
+
+    @DeleteMapping("/llm/profiles/{id}")
+    JsonNode deleteProfile(@PathVariable String id) {
+        llm.delete(id);
+        return llm.describe();
+    }
+
+    @PutMapping("/llm/roles")
+    JsonNode setRoles(@RequestBody(required = false) JsonNode body) {
+        if (body == null || !body.has("roles")) throw StudioException.value("roles is required");
+        return llm.setRoles(body.get("roles"));
+    }
+
+    @GetMapping({"/llm/usage", "/usage"})
+    JsonNode llmUsage(@RequestParam(defaultValue = "7d") String period) { return usage.summary(period); }
+
+    @PostMapping("/llm/usage/reset")
+    JsonNode usageReset() {
+        usage.reset();
+        return usage.summary("all");
+    }
+
+    @PutMapping("/llm/keys/{provider}")
+    JsonNode saveKey(@PathVariable String provider, @RequestBody(required = false) JsonNode body) {
+        String key = body == null ? null : Json.text(body, "key");
+        if (key == null || key.isEmpty() || key.length() > 400) throw StudioException.value("key must be 1 to 400 characters");
+        llm.keys().set(provider, key);
+        return llm.keys().status();
+    }
+
+    @DeleteMapping("/llm/keys/{provider}")
+    JsonNode deleteKey(@PathVariable String provider) {
+        llm.keys().delete(provider);
+        return llm.keys().status();
+    }
+
+    @PostMapping("/llm/profiles/{id}/test")
+    JsonNode testProfile(@PathVariable String id) {
+        ObjectNode envelope = llm.forProfile(id); // 404 when the profile does not exist
+        return jobs.start("llm_test", null, job -> {
+            try (TaskResult r = runner.run(job.id(), "llm_test", Json.obj(), envelope, null, "llm_test", job.listener())) {
+                return r.data();
+            }
+        });
+    }
+
+    // -- projects -----------------------------------------------------------------------------------------------
+    @GetMapping("/projects")
+    JsonNode listProjects() { return store.list(); }
+
+    @PostMapping("/projects")
+    JsonNode createProject(@RequestBody(required = false) JsonNode body) {
+        String brief = body == null ? null : Json.text(body, "brief");
+        if (brief == null || brief.isEmpty() || brief.length() > 8000) throw StudioException.value("brief must be 1 to 8000 characters");
+        return store.create(brief);
+    }
+
+    @GetMapping("/projects/{pid}")
+    JsonNode getProject(@PathVariable String pid) {
+        store.require(pid);
+        return store.view(pid);
+    }
+
+    @DeleteMapping("/projects/{pid}")
+    JsonNode deleteProject(@PathVariable String pid) {
+        store.delete(pid);
+        return Json.obj().put("ok", true);
+    }
+
+    @PutMapping("/projects/{pid}/reference")
+    JsonNode putReference(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        String text = body == null || body.isNull() ? "" : Json.text(body, "text");
+        if (text != null && text.length() > ProjectStore.MAX_TEXT) throw StudioException.value("text must be at most 60000 characters");
+        store.require(pid);
+        store.setReferenceText(pid, text);
+        return store.view(pid);
+    }
+
+    @PostMapping("/projects/{pid}/reference/files")
+    JsonNode uploadReference(@PathVariable String pid, @RequestParam String filename, HttpServletRequest request) {
+        store.require(pid);
+        return projects.uploadReference(pid, filename, body(request));
+    }
+
+    @DeleteMapping("/projects/{pid}/reference")
+    JsonNode clearReference(@PathVariable String pid) {
+        store.require(pid);
+        store.clearReference(pid);
+        return store.view(pid);
+    }
+
+    // -- design -------------------------------------------------------------------------------------------------
+    @PostMapping("/projects/{pid}/design")
+    JsonNode design(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        JsonNode answers = body == null ? null : body.get("answers");
+        if (answers != null && !answers.isNull() && !answers.isObject()) throw StudioException.value("answers must be an object");
+        return projects.design(pid, answers);
+    }
+
+    @GetMapping("/projects/{pid}/versions/{n}")
+    JsonNode version(@PathVariable String pid, @PathVariable int n) { return projects.versionView(pid, n); }
+
+    @GetMapping("/projects/{pid}/versions/{n}/assets/{asset}")
+    ResponseEntity<?> asset(@PathVariable String pid, @PathVariable int n, @PathVariable String asset) {
+        store.require(pid);
+        ObjectNode version = store.version(pid, n);
+        return switch (asset) {
+            case "design.urdf" -> ResponseEntity.ok().contentType(MediaType.APPLICATION_XML)
+                    .body(Json.text(version, "urdf").getBytes(StandardCharsets.UTF_8));
+            case "frames.json" -> ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(version.path("sim").path("frames"));
+            case "design.glb" -> {
+                try {
+                    yield ResponseEntity.ok().contentType(MediaType.parseMediaType("model/gltf-binary"))
+                            .body(Files.readAllBytes(projects.glb(pid, n)));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+            default -> throw StudioException.notFound("Not found");
+        };
+    }
+
+    @PostMapping("/projects/{pid}/revise")
+    JsonNode revise(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        if (body == null || !body.isObject()) throw StudioException.value("request and base_version are required");
+        JsonNode base = body.get("base_version");
+        if (base != null && !base.isNull() && !base.canConvertToInt()) throw StudioException.value("base_version must be an integer");
+        return projects.revise(pid, Json.text(body, "request"), base == null || base.isNull() ? null : base.asInt(), body.get("t"));
+    }
+
+    @PostMapping("/projects/{pid}/approve")
+    JsonNode approve(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        JsonNode v = body == null ? null : body.get("version");
+        if (v == null || !v.canConvertToInt()) throw StudioException.value("version must be an integer");
+        return projects.approve(pid, v.asInt());
+    }
+
+    // -- catalog ------------------------------------------------------------------------------------------------
+    @PostMapping("/projects/{pid}/search")
+    JsonNode search(@PathVariable String pid) { return projects.search(pid); }
+
+    @GetMapping("/projects/{pid}/candidates")
+    JsonNode candidates(@PathVariable String pid) {
+        store.require(pid);
+        return store.candidates(pid);
+    }
+
+    @PostMapping("/projects/{pid}/candidates/{cid}/analyse")
+    JsonNode analyse(@PathVariable String pid, @PathVariable String cid, @RequestBody(required = false) JsonNode body) {
+        String url = body == null || body.isNull() ? null : Json.text(body, "datasheet_url");
+        if (url != null && url.length() > 800) throw StudioException.value("datasheet_url must be at most 800 characters");
+        return projects.analyse(pid, cid, url);
+    }
+
+    @PostMapping("/projects/{pid}/candidates/{cid}/datasheet")
+    JsonNode datasheet(@PathVariable String pid, @PathVariable String cid, @RequestParam String filename, HttpServletRequest request) {
+        store.require(pid);
+        store.candidate(pid, cid);
+        return projects.uploadDatasheet(pid, cid, filename, body(request));
+    }
+
+    @GetMapping("/projects/{pid}/analysis/{cid}")
+    JsonNode analysis(@PathVariable String pid, @PathVariable String cid) { return projects.analysisView(pid, cid); }
+
+    @PostMapping("/projects/{pid}/decision")
+    JsonNode decision(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        String cid = body == null ? null : Json.text(body, "candidate_id");
+        String action = body == null ? null : Json.text(body, "action");
+        if (cid == null || action == null || !(action.equals("approve") || action.equals("robot_studio")))
+            throw StudioException.value("candidate_id and action (approve or robot_studio) are required");
+        store.require(pid);
+        store.setDecision(pid, cid, action);
+        return store.view(pid);
+    }
+
+    // -- export -------------------------------------------------------------------------------------------------
+    @GetMapping("/projects/{pid}/export")
+    ResponseEntity<byte[]> export(@PathVariable String pid) {
+        ProjectService.Export zip = projects.export(pid);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + zip.filename() + "\"").body(zip.bytes());
+    }
+
+    private static byte[] body(HttpServletRequest request) {
+        try {
+            byte[] payload = request.getInputStream().readNBytes((int) BodyLimitFilter.MAX_BODY + 1);
+            if (payload.length > BodyLimitFilter.MAX_BODY) throw StudioException.tooLarge("The upload is too large (64 MB at most)");
+            return payload;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/search",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "search",
+    "robot_id": "<project_id>",
+    "status": "running",
+    "progress": [],
+    "result": null,
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

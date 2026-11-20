@@ -1,0 +1,22 @@
+{
+  "method": "GET",
+  "path": "/api/projects",
+  "request_body": null,
+  "status": 200,
+  "response_body": [
+    {
+      "id": "<project_id>",
+      "title": "Move a 0.3 kg bottle from A to B",
+      "stage": "brief",
+      "created": "<timestamp>",
+      "updated": "<timestamp>"
+    },
+    {
+      "id": "<project_id>",
+      "title": "x",
+      "stage": "brief",
+      "created": "<timestamp>",
+      "updated": "<timestamp>"
+    }
+  ]
+}

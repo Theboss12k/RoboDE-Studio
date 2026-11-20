@@ -1,0 +1,172 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/<job_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "search",
+    "robot_id": "<project_id>",
+    "status": "done",
+    "progress": [
+      "Searching the web for robots that fit",
+      "Found 3 candidates; screening payload and reach",
+      "1 price dropped: no source URL",
+      "Looking up product images"
+    ],
+    "result": {
+      "candidates": [
+        {
+          "id": "acme_ra_6",
+          "manufacturer": "Acme",
+          "model": "RA-6",
+          "family": "serial_arm",
+          "product_url": "https://acme.example/ra6",
+          "image_url": "",
+          "datasheet_url": "",
+          "price": {
+            "low": 9000.0,
+            "high": null,
+            "currency": "USD",
+            "date": "2026-01-01",
+            "source_url": "https://shop.example/ra6",
+            "quote": "Price $9,000",
+            "note": "arm only"
+          },
+          "payload_kg": {
+            "value": "6",
+            "unit": "kg",
+            "quote": "Rated payload 6 kg",
+            "source_url": "https://acme.example/ra6"
+          },
+          "reach_m": {
+            "value": "900",
+            "unit": "mm",
+            "quote": "Reach 900 mm",
+            "source_url": "https://acme.example/ra6"
+          },
+          "dof": null,
+          "repeatability_mm": null,
+          "key_specs": [],
+          "confidence": "medium",
+          "screen": [
+            {
+              "requirement_id": "payload",
+              "name": "Payload at the tool flange",
+              "required": 0.968,
+              "actual": 6.0,
+              "unit": "kg",
+              "passed": true,
+              "detail": "6 kg stated by the source, 0.968 kg required",
+              "calc": null
+            },
+            {
+              "requirement_id": "reach_max",
+              "name": "Maximum reach",
+              "required": 0.989,
+              "actual": 0.9,
+              "unit": "m",
+              "passed": false,
+              "detail": "0.9 m stated by the source, 0.989 m required",
+              "calc": null
+            }
+          ]
+        },
+        {
+          "id": "acme_ra_6_2",
+          "manufacturer": "Acme",
+          "model": "RA-6",
+          "family": "serial_arm",
+          "product_url": "https://acme.example/ra6b",
+          "image_url": "",
+          "datasheet_url": "",
+          "price": null,
+          "payload_kg": {
+            "value": "2",
+            "unit": "kg",
+            "quote": "q",
+            "source_url": "https://acme.example/ra6"
+          },
+          "reach_m": {
+            "value": "1.2 m",
+            "unit": "",
+            "quote": "q",
+            "source_url": "https://acme.example/ra6"
+          },
+          "dof": null,
+          "repeatability_mm": null,
+          "key_specs": [],
+          "confidence": "medium",
+          "screen": [
+            {
+              "requirement_id": "payload",
+              "name": "Payload at the tool flange",
+              "required": 0.968,
+              "actual": 2.0,
+              "unit": "kg",
+              "passed": true,
+              "detail": "2 kg stated by the source, 0.968 kg required",
+              "calc": null
+            },
+            {
+              "requirement_id": "reach_max",
+              "name": "Maximum reach",
+              "required": 0.989,
+              "actual": 1.2,
+              "unit": "m",
+              "passed": true,
+              "detail": "1.2 m stated by the source, 0.989 m required",
+              "calc": null
+            }
+          ]
+        },
+        {
+          "id": "mystery_m1",
+          "manufacturer": "Mystery",
+          "model": "M1",
+          "family": "gantry",
+          "product_url": "https://m.example/m1",
+          "image_url": "",
+          "datasheet_url": "",
+          "price": null,
+          "payload_kg": {
+            "value": "heavy",
+            "unit": "",
+            "quote": "q",
+            "source_url": "https://acme.example/ra6"
+          },
+          "reach_m": null,
+          "dof": null,
+          "repeatability_mm": null,
+          "key_specs": [],
+          "confidence": "medium",
+          "screen": [
+            {
+              "requirement_id": "payload",
+              "name": "Payload at the tool flange",
+              "required": 0.968,
+              "actual": null,
+              "unit": "kg",
+              "passed": null,
+              "detail": "Not stated, or not readable as a number with a unit",
+              "calc": null
+            },
+            {
+              "requirement_id": "reach_max",
+              "name": "Maximum reach",
+              "required": 0.989,
+              "actual": null,
+              "unit": "m",
+              "passed": null,
+              "detail": "Not stated, or not readable as a number with a unit",
+              "calc": null
+            }
+          ]
+        }
+      ]
+    },
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

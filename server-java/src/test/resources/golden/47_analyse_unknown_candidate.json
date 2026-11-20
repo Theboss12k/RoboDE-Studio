@@ -1,0 +1,9 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/candidates/nope/analyse",
+  "request_body": {},
+  "status": 404,
+  "response_body": {
+    "detail": "Candidate not found"
+  }
+}

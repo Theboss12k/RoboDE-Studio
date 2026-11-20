@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/projects/<project_id>/revise",
+  "request_body": {
+    "request": "make it reach 20 cm further"
+  },
+  "status": 409,
+  "response_body": {
+    "detail": "This design is approved (version 2) and frozen; changes are disabled"
+  }
+}

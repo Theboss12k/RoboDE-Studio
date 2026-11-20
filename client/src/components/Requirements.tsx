@@ -1,6 +1,7 @@
 // Requirement table: required value, the robot's value, PASS/FAIL/—, and each row's traceable calculation.
 import { useState } from "react";
 import { PassChip, fmt } from "./common";
+import { Collapse, Expand } from "./icons";
 import type { Calc, Check, Requirement } from "../types";
 
 function CalcView({ title, calc }: { title: string; calc: Calc }) {
@@ -17,6 +18,15 @@ function CalcView({ title, calc }: { title: string; calc: Calc }) {
   );
 }
 
+// Info rows are context, not tests: show a dash when there is no measured robot value. The robot's minimum reach is a
+// family constant (0 m), not a measurement, so "Closest task point" gets a dash too.
+const NOT_MEASURED_INFO = new Set(["reach_min"]);
+function robotValue(r: Requirement, c?: Check): string {
+  if (!c) return "–";
+  if (r.comparator === "info" && (c.actual === null || c.actual === undefined || NOT_MEASURED_INFO.has(r.id))) return "—";
+  return fmt(c.actual, c.unit);
+}
+
 type Row = { id: string; name: string; required: string; actual: string; passed: boolean | null; requirement?: Requirement; check?: Check };
 
 function rows(requirements: Requirement[], checks: Check[]): Row[] {
@@ -26,7 +36,7 @@ function rows(requirements: Requirement[], checks: Check[]): Row[] {
     return {
       id: r.id, name: r.name, requirement: r, check: c, passed: c ? c.passed : null,
       required: r.comparator === "info" ? `info: ${fmt(r.target, r.unit)}` : `${r.comparator} ${fmt(r.target, r.unit)}`,
-      actual: c ? fmt(c.actual, c.unit) : "–",
+      actual: robotValue(r, c),
     };
   });
   const known = new Set(requirements.map((r) => r.id));
@@ -34,7 +44,7 @@ function rows(requirements: Requirement[], checks: Check[]): Row[] {
   return out;
 }
 
-export default function Requirements({ requirements, checks, caption }: { requirements: Requirement[]; checks: Check[]; caption?: string }) {
+export default function Requirements({ requirements, checks, caption, candidate }: { requirements: Requirement[]; checks: Check[]; caption?: string; candidate?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const list = rows(requirements, checks);
   return (
@@ -45,23 +55,23 @@ export default function Requirements({ requirements, checks, caption }: { requir
           <thead><tr><th>Requirement</th><th>Required</th><th>Robot</th><th>Result</th></tr></thead>
           <tbody>
             {list.map((r) => (
-              <RowView key={r.id} row={r} open={open === r.id} toggle={() => setOpen(open === r.id ? null : r.id)} />
+              <RowView key={r.id} row={r} candidate={!!candidate} open={open === r.id} toggle={() => setOpen(open === r.id ? null : r.id)} />
             ))}
           </tbody>
         </table>
       </div>
-      <p className="small muted">Kinematic and static-load checks, not dynamics or hardware tests. A dash means the value could not be checked.</p>
+      <p className="small muted">Kinematic and static-load checks, not dynamics or hardware tests. A dash means the value could not be checked. On a real robot, "not published" means the manufacturer does not state the value, so no verdict is given.</p>
     </div>
   );
 }
 
-function RowView({ row, open, toggle }: { row: Row; open: boolean; toggle: () => void }) {
+function RowView({ row, open, toggle, candidate }: { row: Row; open: boolean; toggle: () => void; candidate: boolean }) {
   const has = !!(row.requirement?.calc || row.check?.calc || row.check?.detail);
   return (
     <>
       <tr>
-        <td>{has ? <button type="button" className="link" aria-expanded={open} onClick={toggle}>{open ? "▾" : "▸"} {row.name}</button> : row.name}</td>
-        <td>{row.required}</td><td>{row.actual}</td><td><PassChip passed={row.passed} /></td>
+        <td>{has ? <button type="button" className="link" aria-expanded={open} onClick={toggle}>{open ? <Collapse size={16} aria-hidden="true" /> : <Expand size={16} aria-hidden="true" />} {row.name}</button> : row.name}</td>
+        <td>{row.required}</td><td>{row.actual}</td><td><PassChip passed={row.passed} unpublished={candidate && !!row.check && row.passed === null && row.requirement?.comparator !== "info"} detail={row.check?.detail} /></td>
       </tr>
       {open && (
         <tr><td colSpan={4}>

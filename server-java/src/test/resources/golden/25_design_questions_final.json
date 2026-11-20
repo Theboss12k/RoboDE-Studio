@@ -1,0 +1,32 @@
+{
+  "method": "GET",
+  "path": "/api/jobs/<job_id>",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "id": "<job_id>",
+    "kind": "design",
+    "robot_id": "<project_id>",
+    "status": "done",
+    "progress": [
+      "Reading your brief"
+    ],
+    "result": {
+      "status": "questions",
+      "questions": [
+        {
+          "id": "cycle",
+          "text": "Cycle time?",
+          "kind": "number",
+          "options": [],
+          "unit": "s",
+          "default": 6,
+          "why": ""
+        }
+      ]
+    },
+    "error": null,
+    "error_code": null,
+    "started": "<timestamp>"
+  }
+}

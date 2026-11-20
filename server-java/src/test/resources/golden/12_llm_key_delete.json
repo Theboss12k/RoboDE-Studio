@@ -1,0 +1,13 @@
+{
+  "method": "DELETE",
+  "path": "/api/llm/keys/gemini",
+  "request_body": null,
+  "status": 200,
+  "response_body": {
+    "gemini": {
+      "saved": false,
+      "environment": null,
+      "ready": false
+    }
+  }
+}
