@@ -78,7 +78,7 @@ class Registry:
 class TextOnly:
     """No invoke_multimodal."""
     def __init__(self):
-        self.inner = ScriptedLLM([{'match': 'requirements engineer', 'answers': [{'spec': spec_dict()}]}])
+        self.inner = ScriptedLLM([('requirements engineer', {'spec': spec_dict()})])
 
     async def invoke(self, input, system_prompt):
         return await self.inner.invoke(input, system_prompt)
@@ -99,7 +99,7 @@ def test_adapter_without_images_drops_them_once_and_keeps_comments():
 
 
 def test_more_than_eight_images_are_truncated():
-    adapter = ScriptedLLM([{'match': 'requirements engineer', 'answers': [{'spec': spec_dict()}]}])
+    adapter = ScriptedLLM([('requirements engineer', {'spec': spec_dict()})])
     reference = {'text': '', 'urdf': None, 'images': [img(f'r{i}.png') for i in range(3)]}
     extras = {'answer_images': [img(f'answer:q{i}:a.png') for i in range(7)]}
     lines = []
