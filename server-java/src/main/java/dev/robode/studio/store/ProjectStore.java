@@ -45,6 +45,10 @@ import tools.jackson.databind.node.ObjectNode;
 public class ProjectStore {
     public static final int MAX_TEXT = 60_000;
     public static final int MAX_IMAGES = 6;
+    /** Reference photos plus answer images that go to the spec agent (the Claude CLI's cap). */
+    public static final int MAX_SPEC_IMAGES = 8;
+    public static final String GENERAL = "_general";
+    static final String BUDGET_MESSAGE = "At most " + MAX_SPEC_IMAGES + " images in total go to the spec agent (reference photos count too)";
     private static final Pattern VERSION_FILE = Pattern.compile("^v(\\d+)\\.json$");
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -234,6 +238,13 @@ public class ProjectStore {
         });
     }
 
+    public boolean hasReferenceImage(String pid, String name) { return Files.exists(ref(pid).resolve("images").resolve(name)); }
+
+    public boolean hasAnswerImage(String pid, String name) {
+        for (JsonNode e : answerImages(pid)) if (name.equals(Json.text(e, "name"))) return true;
+        return false;
+    }
+
     public int imageCount(String pid) { return images(pid).size(); }
 
     /** Stores a validated image upload. */
@@ -242,8 +253,10 @@ public class ProjectStore {
             try {
                 Path folder = ref(pid).resolve("images");
                 Files.createDirectories(folder);
-                if (images(pid).size() >= MAX_IMAGES && !Files.exists(folder.resolve(name)))
-                    throw StudioException.value("At most " + MAX_IMAGES + " reference images");
+                if (!Files.exists(folder.resolve(name))) {
+                    if (images(pid).size() >= MAX_IMAGES) throw StudioException.value("At most " + MAX_IMAGES + " reference images");
+                    if (images(pid).size() + answerImages(pid).size() >= MAX_SPEC_IMAGES) throw StudioException.value(BUDGET_MESSAGE);
+                }
                 Json.move(source, folder.resolve(name));
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
@@ -270,6 +283,91 @@ public class ProjectStore {
     }
 
     public void clearReference(String pid) { locked(pid, () -> deleteTree(ref(pid))); }
+
+    // -- answer images ------------------------------------------------------------------------------------------
+    private Path answerDir(String pid) { return dir(pid).resolve("answers").resolve("images"); }
+
+    private Path answerIndex(String pid) { return dir(pid).resolve("answers").resolve("images.json"); }
+
+    /** The answer-image index: [{name, question, round, mime}], oldest first. */
+    public ArrayNode answerImages(String pid) {
+        JsonNode data = Json.read(answerIndex(pid));
+        ArrayNode out = arr();
+        if (data instanceof ArrayNode array)
+            for (JsonNode e : array) if (Files.isRegularFile(answerDir(pid).resolve(Json.text(e, "name")))) out.add(e);
+        return out;
+    }
+
+    /** Total images that would go to the spec agent: reference photos plus answer images. */
+    public int specImageCount(String pid) { return images(pid).size() + answerImages(pid).size(); }
+
+    static String sniffMime(Path file) {
+        try (var in = Files.newInputStream(file)) {
+            byte[] h = in.readNBytes(12);
+            if (h.length >= 4 && h[0] == (byte) 0x89 && h[1] == 'P' && h[2] == 'N' && h[3] == 'G') return "image/png";
+            if (h.length >= 3 && h[0] == (byte) 0xFF && h[1] == (byte) 0xD8) return "image/jpeg";
+            if (h.length >= 3 && h[0] == 'G' && h[1] == 'I' && h[2] == 'F') return "image/gif";
+            if (h.length >= 12 && h[0] == 'R' && h[1] == 'I' && h[8] == 'W' && h[9] == 'E') return "image/webp";
+            if (h.length >= 2 && h[0] == 'B' && h[1] == 'M') return "image/bmp";
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return "application/octet-stream";
+    }
+
+    /** Stores a validated image for a question (or "_general"); the budget is shared with the reference photos. */
+    public void addAnswerImage(String pid, String name, String question, Path source) {
+        locked(pid, () -> {
+            try {
+                ArrayNode index = answerImages(pid);
+                boolean replacing = false;
+                for (JsonNode e : index) if (name.equals(Json.text(e, "name"))) replacing = true;
+                if (!replacing && specImageCount(pid) >= MAX_SPEC_IMAGES) throw StudioException.value(BUDGET_MESSAGE);
+                Files.createDirectories(answerDir(pid));
+                Path target = answerDir(pid).resolve(name);
+                Json.move(source, target);
+                ArrayNode next = arr();
+                for (JsonNode e : index) if (!name.equals(Json.text(e, "name"))) next.add(e);
+                next.add(obj().put("name", name).put("question", question).put("round", meta(pid).path("round").asInt(0))
+                        .put("mime", sniffMime(target)));
+                Json.write(answerIndex(pid), next);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    public void removeAnswerImage(String pid, String name) {
+        locked(pid, () -> {
+            ArrayNode index = answerImages(pid);
+            boolean found = false;
+            ArrayNode next = arr();
+            for (JsonNode e : index) { if (name.equals(Json.text(e, "name"))) found = true; else next.add(e); }
+            if (!found) throw StudioException.notFound("Image not found");
+            try {
+                Files.deleteIfExists(answerDir(pid).resolve(name));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            Json.write(answerIndex(pid), next);
+        });
+    }
+
+    /** The index entry and file of one answer image (404 when unknown). */
+    public JsonNode answerImage(String pid, String name) {
+        for (JsonNode e : answerImages(pid)) if (name.equals(Json.text(e, "name"))) return e;
+        throw StudioException.notFound("Image not found");
+    }
+
+    public Path answerImagePath(String pid, String name) { return Ids.inside(answerDir(pid), name); }
+
+    /** The images as the design task takes them: [{path, question}]. */
+    public ArrayNode answerImagesForTask(String pid) {
+        ArrayNode out = arr();
+        for (JsonNode e : answerImages(pid))
+            out.add(obj().put("path", answerDir(pid).resolve(Json.text(e, "name")).toString()).put("question", Json.text(e, "question")));
+        return out;
+    }
 
     // -- versions -----------------------------------------------------------------------------------------------
     private Path versionsDir(String pid) { return dir(pid).resolve("versions"); }
@@ -486,6 +584,10 @@ public class ProjectStore {
         versions(pid).forEach(versions::add);
         view.set("versions", versions);
         view.set("approved_version", orNull(m, "approved_version"));
+        if (m.get("answer_comments") instanceof ObjectNode c && !c.isEmpty()) view.set("answer_comments", c);
+        if (m.get("answer_notes") instanceof ArrayNode n && !n.isEmpty()) view.set("answer_notes", n);
+        ArrayNode answerImages = answerImages(pid);
+        if (!answerImages.isEmpty()) view.set("answer_images", answerImages);
         view.put("candidates_count", candidates(pid).size());
         view.set("selected_candidate", orNull(m, "selected_candidate"));
         ArrayNode analyses = arr();

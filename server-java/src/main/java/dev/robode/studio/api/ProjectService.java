@@ -63,18 +63,39 @@ public class ProjectService {
     private Object flight(String key) { return flights.computeIfAbsent(key, k -> new Object()); }
 
     // -- design -------------------------------------------------------------------------------------------------
-    public ObjectNode design(String pid, JsonNode answers) {
+    public ObjectNode design(String pid, JsonNode answers) { return design(pid, answers, null, null, null); }
+
+    /** `comments` (question id to text) and `note` (one per round) are already validated by the controller. */
+    public ObjectNode design(String pid, JsonNode answers, JsonNode comments, String note, Boolean autoRepair) {
         store.require(pid);
         return jobs.start("design", pid, job -> {
             ObjectNode meta = store.meta(pid);
             ObjectNode merged = meta.get("answers") instanceof ObjectNode a ? a.deepCopy() : Json.obj();
             if (answers != null && answers.isObject()) answers.properties().forEach(e -> merged.set(e.getKey(), e.getValue()));
+            int currentRound = meta.path("round").asInt(0);
+            ObjectNode mergedComments = meta.get("answer_comments") instanceof ObjectNode c ? c.deepCopy() : Json.obj();
+            if (comments != null && comments.isObject()) comments.properties().forEach(e -> {
+                if (e.getValue().asString().isBlank()) mergedComments.remove(e.getKey()); else mergedComments.set(e.getKey(), e.getValue());
+            });
+            ArrayNode notes = Json.arr();
+            if (meta.get("answer_notes") instanceof ArrayNode n)
+                for (JsonNode old : n) if (!(note != null && !note.isBlank() && old.path("round").asInt(-1) == currentRound)) notes.add(old);
+            if (note != null && !note.isBlank()) notes.add(Json.obj().put("round", currentRound).put("text", note.strip()));
+            store.update(pid, m -> {
+                if (mergedComments.isEmpty()) m.remove("answer_comments"); else m.set("answer_comments", mergedComments);
+                if (notes.isEmpty()) m.remove("answer_notes"); else m.set("answer_notes", notes);
+            });
             ObjectNode input = Json.obj();
             input.put("brief", Json.text(meta, "brief"));
             input.set("reference", store.referenceForTask(pid));
             input.set("answers", merged);
-            input.put("round", meta.path("round").asInt(0));
+            input.put("round", currentRound);
             if (meta.hasNonNull("spec")) input.set("spec", meta.get("spec"));
+            if (!mergedComments.isEmpty()) input.set("comments", mergedComments);
+            if (!notes.isEmpty()) input.set("notes", notes);
+            ArrayNode images = store.answerImagesForTask(pid);
+            if (!images.isEmpty()) input.set("answer_images", images);
+            if (autoRepair != null) input.put("auto_repair", autoRepair);
             try (TaskResult r = runner.run(job.id(), "design", input, llm.resolveRoles(), pid, "design", job.listener())) {
                 JsonNode data = r.data();
                 int round = data.path("round").asInt(meta.path("round").asInt(0) + 1);
@@ -161,7 +182,9 @@ public class ProjectService {
         return "This design is approved (version " + frozen.asInt() + ") and frozen; changes are disabled";
     }
 
-    public ObjectNode revise(String pid, String request, Integer baseVersion, JsonNode t) {
+    public ObjectNode revise(String pid, String request, Integer baseVersion, JsonNode t) { return revise(pid, request, baseVersion, t, null); }
+
+    public ObjectNode revise(String pid, String request, Integer baseVersion, JsonNode t, Boolean autoRepair) {
         store.require(pid);
         if (request == null || request.isEmpty() || request.length() > 2000)
             throw StudioException.value("request must be 1 to 2000 characters");
@@ -183,6 +206,7 @@ public class ProjectService {
             input.set("base", base);
             input.put("request", request);
             input.set("t", t == null ? Json.MAPPER.nullNode() : t);
+            if (autoRepair != null) input.put("auto_repair", autoRepair);
             try (TaskResult r = runner.run(job.id(), "revise", input, llm.resolveRoles(), pid, "revise", job.listener())) {
                 int n = store.addVersion(pid, r.data().get("version"), baseVersionFinal, r.data().get("parsed"), meta -> {
                     JsonNode now = meta.get("approved_version");
@@ -302,12 +326,32 @@ public class ProjectService {
         boolean urdf = name.toLowerCase().endsWith(".urdf") || name.toLowerCase().endsWith(".zip");
         if (!urdf && store.imageCount(pid) >= ProjectStore.MAX_IMAGES)
             throw StudioException.value("At most " + ProjectStore.MAX_IMAGES + " reference images");
+        if (!urdf && store.specImageCount(pid) >= ProjectStore.MAX_SPEC_IMAGES && !store.hasReferenceImage(pid, name))
+            throw StudioException.value(ProjectStore.BUDGET_MESSAGE);
         Staged staged = inspect(name, payload, urdf ? "urdf" : "image");
         try (TaskResult result = staged.result()) {
             if (urdf) store.setReferenceUrdf(pid, name, staged.file(), result.data().get("summary"));
             else store.addReferenceImage(pid, name, staged.file());
         }
         return store.view(pid);
+    }
+
+    /** An image attached to a question (or "_general") of the spec round; returns the updated list. */
+    public ArrayNode uploadAnswerImage(String pid, String filename, String question, byte[] payload) {
+        store.require(pid);
+        String name = Ids.safeName(filename);
+        ObjectNode meta = store.meta(pid);
+        boolean known = ProjectStore.GENERAL.equals(question) || meta.path("answers").has(String.valueOf(question));
+        if (!known && meta.path("questions") instanceof ArrayNode qs)
+            for (JsonNode q : qs) if (String.valueOf(question).equals(Json.text(q, "id"))) known = true;
+        if (!known) throw StudioException.value("Unknown question; use a question id or _general");
+        if (store.specImageCount(pid) >= ProjectStore.MAX_SPEC_IMAGES && !store.hasAnswerImage(pid, name))
+            throw StudioException.value(ProjectStore.BUDGET_MESSAGE);
+        Staged staged = inspect(name, payload, "image");
+        try (TaskResult result = staged.result()) {
+            store.addAnswerImage(pid, name, question, staged.file());
+        }
+        return store.answerImages(pid);
     }
 
     public ObjectNode uploadDatasheet(String pid, String cid, String filename, byte[] payload) {

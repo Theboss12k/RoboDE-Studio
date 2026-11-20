@@ -195,7 +195,55 @@ class ApiController {
     JsonNode design(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
         JsonNode answers = body == null ? null : body.get("answers");
         if (answers != null && !answers.isNull() && !answers.isObject()) throw StudioException.value("answers must be an object");
-        return projects.design(pid, answers);
+        JsonNode comments = body == null ? null : body.get("comments");
+        if (comments != null && !comments.isNull()) {
+            if (!comments.isObject()) throw StudioException.value("comments must be an object");
+            for (var e : comments.properties()) {
+                if (!COMMENT_KEY.matcher(e.getKey()).matches()) throw StudioException.value("comments has an invalid question id: " + e.getKey());
+                if (!e.getValue().isString() || e.getValue().asString().length() > 1000)
+                    throw StudioException.value("each comment must be a string of at most 1000 characters");
+            }
+        }
+        JsonNode note = body == null ? null : body.get("note");
+        if (note != null && !note.isNull() && (!note.isString() || note.asString().length() > 4000))
+            throw StudioException.value("note must be a string of at most 4000 characters");
+        return projects.design(pid, answers, comments, note == null || note.isNull() ? null : note.asString(), autoRepair(body));
+    }
+
+    private static final java.util.regex.Pattern COMMENT_KEY = java.util.regex.Pattern.compile("^[a-z][a-z0-9_]{0,40}$");
+
+    /** The optional auto_repair flag of design and revise bodies; null when absent. */
+    private static Boolean autoRepair(JsonNode body) {
+        JsonNode v = body == null ? null : body.get("auto_repair");
+        if (v == null || v.isNull()) return null;
+        if (!v.isBoolean()) throw StudioException.value("auto_repair must be a boolean");
+        return v.asBoolean();
+    }
+
+    // -- answer images ------------------------------------------------------------------------------------------
+    @PostMapping("/projects/{pid}/answers/files")
+    JsonNode uploadAnswerImage(@PathVariable String pid, @RequestParam String filename, @RequestParam String question, HttpServletRequest request) {
+        store.require(pid);
+        return projects.uploadAnswerImage(pid, filename, question, body(request));
+    }
+
+    @DeleteMapping("/projects/{pid}/answers/files/{name}")
+    JsonNode deleteAnswerImage(@PathVariable String pid, @PathVariable String name) {
+        store.require(pid);
+        store.removeAnswerImage(pid, dev.robode.studio.common.Ids.safeName(name));
+        return store.answerImages(pid);
+    }
+
+    @GetMapping("/projects/{pid}/answers/files/{name}")
+    ResponseEntity<byte[]> answerImage(@PathVariable String pid, @PathVariable String name) {
+        store.require(pid);
+        JsonNode entry = store.answerImage(pid, dev.robode.studio.common.Ids.safeName(name));
+        try {
+            return ResponseEntity.ok().contentType(MediaType.parseMediaType(Json.text(entry, "mime")))
+                    .body(Files.readAllBytes(store.answerImagePath(pid, Json.text(entry, "name"))));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @GetMapping("/projects/{pid}/versions/{n}")
@@ -226,7 +274,7 @@ class ApiController {
         if (body == null || !body.isObject()) throw StudioException.value("request and base_version are required");
         JsonNode base = body.get("base_version");
         if (base != null && !base.isNull() && !base.canConvertToInt()) throw StudioException.value("base_version must be an integer");
-        return projects.revise(pid, Json.text(body, "request"), base == null || base.isNull() ? null : base.asInt(), body.get("t"));
+        return projects.revise(pid, Json.text(body, "request"), base == null || base.isNull() ? null : base.asInt(), body.get("t"), autoRepair(body));
     }
 
     @PostMapping("/projects/{pid}/approve")
