@@ -25,7 +25,7 @@ class LlmSettingsTest {
 
     @Test
     void objectsRoleDefaultsToHaiku() {
-        assertThat(LlmSettings.ROLES).containsExactly("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects");
+        assertThat(LlmSettings.ROLES).containsExactly("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects", "ask", "checks");
         ObjectNode data = settings().data();
         assertThat(data.get("roles").get("objects").asString()).isEqualTo("claude_haiku");
         JsonNode haiku = null;

@@ -64,14 +64,25 @@ def json_answer(text):
     raise ValueError('The answer contained no JSON object')
 
 
+_NAMED_SCHEMAS = ('properties', 'patternProperties', '$defs', 'definitions')   # maps of name -> schema
+
+
 def portable_schema(schema):
     """A copy of a JSON schema that strict validators accept: fixed-length tuples (`prefixItems`, which pydantic emits
-    for tuple fields and the Claude CLI's strict --json-schema rejects) become arrays with minItems/maxItems."""
+    for tuple fields and the Claude CLI's strict --json-schema rejects) become arrays with minItems/maxItems, and
+    vendor keywords such as our `x-optional` marker (which strict mode rejects as unknown) are dropped."""
     if isinstance(schema, list):
         return [portable_schema(item) for item in schema]
     if not isinstance(schema, dict):
         return schema
-    out = {key: portable_schema(value) for key, value in schema.items() if key != 'prefixItems'}
+    out = {}
+    for key, value in schema.items():
+        if key == 'prefixItems' or key.startswith('x-'):
+            continue
+        if key in _NAMED_SCHEMAS and isinstance(value, dict):   # the keys here are field names, kept as they are
+            out[key] = {name: portable_schema(sub) for name, sub in value.items()}
+        else:
+            out[key] = portable_schema(value)
     if 'prefixItems' in schema:
         items = [portable_schema(item) for item in schema['prefixItems']]
         out['items'] = items[0] if all(item == items[0] for item in items) else {}

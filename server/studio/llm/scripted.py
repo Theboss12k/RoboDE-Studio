@@ -6,7 +6,12 @@ Results from this adapter are fixture results, never model results.
 """
 import json
 
-from .base import Image
+from .base import Image, LLMError
+
+
+class NoScriptedAnswer(LLMError, AssertionError):
+    """No rule matched the prompt: an LLMError for callers that treat a failed model call as non-fatal (an AssertionError
+    too, so tests that expect one still see it)."""
 
 
 class ScriptedLLM:
@@ -36,4 +41,4 @@ class ScriptedLLM:
                 if callable(answer):
                     answer = answer(input, system_prompt, images)
                 return answer if isinstance(answer, str) else json.dumps(answer)
-        raise AssertionError('No scripted answer for this prompt: ' + system_prompt[:120])
+        raise NoScriptedAnswer('No scripted answer for this prompt: ' + system_prompt[:120])

@@ -33,6 +33,44 @@
       "title": "BasePose",
       "type": "object"
     },
+    "Baseline": {
+      "description": "The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).",
+      "properties": {
+        "manual_cycle_s": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Manual Cycle S",
+          "type": "number"
+        },
+        "operators": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Operators",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "user",
+            "estimate"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manual_cycle_s",
+        "operators",
+        "source"
+      ],
+      "title": "Baseline",
+      "type": "object"
+    },
     "Calc": {
       "description": "A traceable calculation: what was computed, how, from what.",
       "properties": {
@@ -132,6 +170,16 @@
             }
           ],
           "default": null
+        },
+        "source": {
+          "default": "sim",
+          "enum": [
+            "sim",
+            "planned"
+          ],
+          "title": "Source",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -143,6 +191,74 @@
         "passed"
       ],
       "title": "Check",
+      "type": "object"
+    },
+    "CheckPlan": {
+      "description": "A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and\nits own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.",
+      "properties": {
+        "id": {
+          "maxLength": 60,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "title": "Name",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Why",
+          "type": "string"
+        },
+        "expression": {
+          "maxLength": 400,
+          "title": "Expression",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 40,
+          "title": "Unit",
+          "type": "string"
+        },
+        "comparator": {
+          "enum": [
+            ">=",
+            "<="
+          ],
+          "title": "Comparator",
+          "type": "string"
+        },
+        "limit": {
+          "maxLength": 400,
+          "title": "Limit",
+          "type": "string"
+        },
+        "unit_limit": {
+          "maxLength": 40,
+          "title": "Unit Limit",
+          "type": "string"
+        },
+        "constants": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanConstant"
+          },
+          "title": "Constants",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "expression",
+        "unit",
+        "comparator",
+        "limit",
+        "unit_limit"
+      ],
+      "title": "CheckPlan",
       "type": "object"
     },
     "FleetAssignment": {
@@ -989,6 +1105,34 @@
           "default": null,
           "title": "Peak Acceleration M S2"
         },
+        "max_accel_m_s2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Accel M S2",
+          "x-optional": true
+        },
+        "max_jerk_m_s3": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Jerk M S3",
+          "x-optional": true
+        },
         "travel_distance_m": {
           "default": 0.0,
           "minimum": 0,
@@ -1077,6 +1221,38 @@
       "title": "PhysicsInputs",
       "type": "object"
     },
+    "PlanConstant": {
+      "description": "A number the checks agent declares for one planned check, with the reason for it.",
+      "properties": {
+        "name": {
+          "maxLength": 40,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "unit": {
+          "maxLength": 40,
+          "title": "Unit",
+          "type": "string"
+        },
+        "justification": {
+          "maxLength": 400,
+          "title": "Justification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "unit",
+        "justification"
+      ],
+      "title": "PlanConstant",
+      "type": "object"
+    },
     "Quantity": {
       "properties": {
         "value": {
@@ -1093,6 +1269,26 @@
         "value"
       ],
       "title": "Quantity",
+      "type": "object"
+    },
+    "RejectedPlan": {
+      "properties": {
+        "id": {
+          "default": "",
+          "maxLength": 60,
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 600,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "RejectedPlan",
       "type": "object"
     },
     "RepairAttempt": {
@@ -1628,7 +1824,8 @@
             "inspect",
             "push",
             "press",
-            "home"
+            "home",
+            "rotate"
           ],
           "title": "Verb",
           "type": "string"
@@ -1654,6 +1851,32 @@
           "maxLength": 400,
           "title": "Description",
           "type": "string"
+        },
+        "turns": {
+          "default": 0.0,
+          "title": "Turns",
+          "type": "number",
+          "x-optional": true
+        },
+        "rpm": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Rpm",
+          "type": "number",
+          "x-optional": true
+        },
+        "ramp_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Ramp S",
+          "type": "number",
+          "x-optional": true
+        },
+        "axis": {
+          "default": "tool_yaw",
+          "title": "Axis",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -1729,6 +1952,12 @@
           "default": "",
           "title": "Start Marker",
           "type": "string"
+        },
+        "attached": {
+          "default": false,
+          "title": "Attached",
+          "type": "boolean",
+          "x-optional": true
         }
       },
       "required": [
@@ -1837,6 +2066,18 @@
           "maxLength": 4000,
           "title": "Reference",
           "type": "string"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Baseline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "x-optional": true
         }
       },
       "required": [
@@ -1931,6 +2172,24 @@
         }
       ],
       "default": null,
+      "x-optional": true
+    },
+    "check_plan": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CheckPlan"
+      },
+      "title": "Check Plan",
+      "type": "array",
+      "x-optional": true
+    },
+    "check_plan_rejected": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RejectedPlan"
+      },
+      "title": "Check Plan Rejected",
+      "type": "array",
       "x-optional": true
     }
   },

@@ -1,5 +1,6 @@
 // Hand-written types that are not domain models: URDF parse output and the project/job envelopes.
 // Domain models (DesignVersion, SimResult, Candidate, ...) are generated: see ./generated/types.ts.
+import type { SavingsOverrides } from "./savings";
 import type { Analysis as GeneratedAnalysis, DesignVersion as GeneratedDesignVersion, FleetAssignment, FleetLimits, Question, StudioBuild } from "./generated/types";
 
 export type Vec3 = [number, number, number];
@@ -24,11 +25,13 @@ export type Project = {
   reference?: { text?: string; files?: { name: string; kind?: string }[] } | null;
   stage?: string; questions?: Question[]; answers?: Record<string, unknown>; versions?: number[]; approved_version?: number | null;
   candidates_count?: number; selected_candidate?: string | null; analyses?: string[];
-  decision?: { candidate_id: string; action: "approve" | "robot_studio" } | null;
+  decision?: ({ candidate_id: string; action: "approve" | "robot_studio" } | { action: "self"; build: number }) | null;
   /** Present only when a fleet was suggested or the user changed fleet settings. */
   fleet?: FleetState;
   /** Present only when the project has at least one Robot studio build. */
   studio?: StudioState;
+  /** Present only once the time-saved inputs were set (PUT /projects/{id}/baseline). */
+  savings_inputs?: SavingsOverrides & { hours_per_shift: number; days_per_week: number; days_per_year: number; supervision_min_per_shift: number };
   /** Present only when the user added them on the Questions stage. */
   answer_comments?: Record<string, string>; answer_notes?: { round: number; text: string }[]; answer_images?: AnswerImage[];
 };

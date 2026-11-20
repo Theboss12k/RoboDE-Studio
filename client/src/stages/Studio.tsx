@@ -1,12 +1,13 @@
 // Robot studio: build a manufacturable robot from the approved design (motors and electronics, CAD, digital twin),
 // change it in words, and approve it for the manufacturer PDF and build package.
+import { useAskRequest, useAskSelection } from "../components/AskBar";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Dictation, JobStatus, PassChip, StageHead, fmt } from "../components/common";
 import { Complete } from "../components/icons";
 import BuildTabs from "../components/studio/BuildTabs";
 import Downloads from "../components/studio/Downloads";
-import { ElectronicsTable, MotorTable } from "../components/studio/MotorTable";
+import { ElectronicsTable, MotorTable, SourcingNotes } from "../components/studio/MotorTable";
 import PartList from "../components/studio/PartList";
 import TwinPanel, { type TwinHandle } from "../components/twin/TwinPanel";
 import { useProjectJob } from "../jobs";
@@ -42,6 +43,8 @@ export default function Studio({ project, reload }: { project: Project; reload: 
     setBuilds((c) => ({ ...c, [n]: b }));
     return b;
   }, [base]);
+  useAskSelection({ build: current });
+  useAskRequest((n) => { if (n.build != null) setCurrent(n.build); });
   const summary = list.find((b) => b.build === current);
   const b = current !== undefined ? builds[current] : undefined;
   useEffect(() => {
@@ -119,6 +122,7 @@ export default function Studio({ project, reload }: { project: Project; reload: 
           <section className="panel stack" aria-labelledby="motors-h">
             <h3 id="motors-h">Motors and electronics</h3>
             <p className="small muted">Prices are web estimates as listed on the date shown, not quotes. "verified" values are quoted on the shop page and checked in code; "assumed" come from standard tables; "defined" are specs to procure to. Choosing an alternative repeats only the CAD step, with no new shop search.</p>
+            <SourcingNotes build={b} />
             <MotorTable motors={b.motors} sizing={b.sizing} frozen={frozen || working} onPin={pin} />
             <h4>Driver, controller and power supply</h4>
             <ElectronicsTable items={b.electronics} />

@@ -17,7 +17,8 @@ from studio import schemas  # noqa: E402
 MODELS = ['DesignVersion', 'TechnicalSpec', 'SceneSpec', 'RobotConcept', 'Requirement', 'Check', 'SimResult', 'Frame',
           'Candidate', 'Analysis', 'ManufacturerSpec', 'Difference', 'Question',
           'FleetLimits', 'FleetAssignment', 'FleetPlan', 'RepairLog', 'FleetHint',
-          'StudioBuild', 'TwinMoveRequest', 'TwinMoveResult']
+          'StudioBuild', 'TwinMoveRequest', 'TwinMoveResult', 'Baseline', 'SavingsInputs', 'Savings',
+          'AskRequest', 'AskResponse']
 OUT = ROOT / 'contracts' / 'schemas'
 
 

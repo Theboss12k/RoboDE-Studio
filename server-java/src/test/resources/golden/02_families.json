@@ -228,6 +228,12 @@
             "title": "Tool Yaw",
             "type": "boolean"
           },
+          "tool_yaw_continuous": {
+            "default": false,
+            "description": "Turn the tool yaw joint without limit (slewing ring); use it when the task rotates the tool more than half a turn.",
+            "title": "Tool Yaw Continuous",
+            "type": "boolean"
+          },
           "beam_size_m": {
             "default": 0.08,
             "exclusiveMinimum": 0,

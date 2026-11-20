@@ -7,6 +7,7 @@ import dev.robode.studio.jobs.JobService;
 import dev.robode.studio.jobs.TaskResult;
 import dev.robode.studio.jobs.TaskRunner;
 import dev.robode.studio.llm.LlmSettings;
+import dev.robode.studio.settings.PreferredVendors;
 import dev.robode.studio.llm.UsageLedger;
 import dev.robode.studio.meta.MetaService;
 import dev.robode.studio.store.ProjectStore;
@@ -41,17 +42,19 @@ class ApiController {
     private final ProjectStore store;
     private final ProjectService projects;
     private final LlmSettings llm;
+    private final PreferredVendors vendors;
     private final UsageLedger usage;
     private final JobService jobs;
     private final MetaService meta;
     private final TaskRunner runner;
     private final JobApi jobApi;
 
-    ApiController(ProjectStore store, ProjectService projects, LlmSettings llm, UsageLedger usage, JobService jobs,
+    ApiController(ProjectStore store, ProjectService projects, LlmSettings llm, PreferredVendors vendors, UsageLedger usage, JobService jobs,
                   MetaService meta, TaskRunner runner, JobApi jobApi) {
         this.store = store;
         this.projects = projects;
         this.llm = llm;
+        this.vendors = vendors;
         this.usage = usage;
         this.jobs = jobs;
         this.meta = meta;
@@ -96,6 +99,12 @@ class ApiController {
 
     @GetMapping("/families")
     JsonNode families() { return meta.families(); }
+
+    @GetMapping("/settings/vendors")
+    JsonNode preferredVendors() { return vendors.get(); }
+
+    @PutMapping("/settings/vendors")
+    JsonNode setPreferredVendors(@RequestBody(required = false) JsonNode body) { return vendors.replace(body); }
 
     @GetMapping("/llm")
     JsonNode llmSettings() { return llm.describe(); }
@@ -380,6 +389,36 @@ class ApiController {
     private static final java.util.Set<String> FLEET_LIMIT_KEYS =
             java.util.Set.of("max_robots", "max_reach_m", "max_payload_kg", "budget_usd", "families", "brands", "note");
 
+    // -- baseline (time saved) ----------------------------------------------------------------------------------
+    private static final java.util.Map<String, double[]> BASELINE_FIELDS = new java.util.LinkedHashMap<>();
+    static {   // key -> {min, max, integer?1:0, minExclusive?1:0}
+        BASELINE_FIELDS.put("manual_cycle_s", new double[] {0, 86400, 0, 1});
+        BASELINE_FIELDS.put("operators", new double[] {1, 100, 1, 0});
+        BASELINE_FIELDS.put("hours_per_shift", new double[] {0, 24, 0, 1});
+        BASELINE_FIELDS.put("days_per_week", new double[] {0, 7, 0, 1});
+        BASELINE_FIELDS.put("days_per_year", new double[] {0, 366, 0, 1});
+        BASELINE_FIELDS.put("supervision_min_per_shift", new double[] {0, 1440, 0, 0});
+    }
+
+    @PutMapping("/projects/{pid}/baseline")
+    JsonNode putBaseline(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
+        if (body == null || !body.isObject()) throw StudioException.value("Send at least one of " + String.join(", ", BASELINE_FIELDS.keySet()));
+        ObjectNode changes = Json.obj();
+        for (var field : BASELINE_FIELDS.entrySet()) {
+            String k = field.getKey();
+            if (!body.has(k)) continue;
+            JsonNode v = body.get(k);
+            if (v.isNull()) { changes.putNull(k); continue; }
+            double[] r = field.getValue();
+            boolean integer = r[2] == 1, exclusive = r[3] == 1;
+            if (!v.isNumber() || (integer && !v.isIntegralNumber()) || v.asDouble() > r[1] || (exclusive ? v.asDouble() <= r[0] : v.asDouble() < r[0]))
+                throw StudioException.value(k + " must be " + (integer ? "an integer" : "a number") + (exclusive ? " above " : " from ") + (long) r[0] + (exclusive ? " and " : " to ") + "at most " + (long) r[1]);
+            changes.set(k, v);
+        }
+        if (changes.isEmpty()) throw StudioException.value("Send at least one of " + String.join(", ", BASELINE_FIELDS.keySet()));
+        return projects.setBaseline(pid, changes);
+    }
+
     @PostMapping("/projects/{pid}/fleet/assign")
     JsonNode fleetAssign(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
         JsonNode base = body == null ? null : body.get("base_version");
@@ -439,8 +478,16 @@ class ApiController {
     JsonNode decision(@PathVariable String pid, @RequestBody(required = false) JsonNode body) {
         String cid = body == null ? null : Json.text(body, "candidate_id");
         String action = body == null ? null : Json.text(body, "action");
+        if ("self".equals(action)) {
+            JsonNode b = body.get("build");
+            if (b != null && !b.isNull() && (!b.isIntegralNumber() || !b.canConvertToInt() || b.asInt() < 1))
+                throw StudioException.value("build must be a positive integer");
+            store.require(pid);
+            store.setSelfDecision(pid, b == null || b.isNull() ? null : b.asInt());
+            return store.view(pid);
+        }
         if (cid == null || action == null || !(action.equals("approve") || action.equals("robot_studio")))
-            throw StudioException.value("candidate_id and action (approve or robot_studio) are required");
+            throw StudioException.value("candidate_id and action (approve or robot_studio) are required, or action self for your own design");
         store.require(pid);
         store.setDecision(pid, cid, action);
         return store.view(pid);

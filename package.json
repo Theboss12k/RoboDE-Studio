@@ -15,7 +15,7 @@
     "build": "npm run build --workspace client",
     "typecheck": "npm run typecheck --workspace packages/core && npm run typecheck --workspace client",
     "contracts:types": "node scripts/contracts-types.mjs",
-    "contracts:check": "node scripts/contracts-types.mjs --check && node scripts/contracts-openapi.mjs --check && node scripts/twin-parity.mjs",
+    "contracts:check": "node scripts/contracts-types.mjs --check && node scripts/contracts-openapi.mjs --check && node scripts/twin-parity.mjs && node scripts/savings-parity.mjs",
     "contracts:openapi": "node scripts/contracts-openapi.mjs"
   },
   "engines": {

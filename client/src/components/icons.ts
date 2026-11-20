@@ -27,6 +27,7 @@ export {
   Play,
   Plus as Add,
   Settings as SettingsGear,
+  Star as PreferredVendor,
   Square as StopDictation,
   Trash2 as Delete,
   Truck as TaskTransport,
@@ -37,5 +38,6 @@ export {
   X as Fail,
   ArrowDownLeft as UseExample,
   ArrowRight as Next,
+  MessageCircleQuestionMark as AskIcon,
 } from "lucide-react";
 export type { LucideIcon } from "lucide-react";

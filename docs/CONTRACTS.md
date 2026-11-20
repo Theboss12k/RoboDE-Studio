@@ -35,7 +35,7 @@ Every requirement carries a `Calc` (formula text, named inputs with units, resul
   m (g + a) * SF; none/fork/hook: info), `tcp_speed` (>=, m/s) and `tcp_accel` (>=, m/s^2) from a trapezoid move
   over the longest single move in the cycle in the time budget (cycle_time_s split over the moves by distance,
   dwell excluded: only `wait`/`inspect`/`press` durations are dwell, capped at 50 % of the cycle (the Calc note says
-  so when the cap applies); accel phase = 1/3 of each move unless peak_acceleration_m_s2 given), `cycle_time` (<=, s),
+  so when the cap applies); the time of `rotate` actions (turns / rpm + ramp) and of `move` actions with a `duration_s` is excluded too, leaving at least 5 % of the cycle; accel phase = 1/3 of each move unless peak_acceleration_m_s2 given), `cycle_time` (<=, s),
   `accuracy` (<=, m, repeatability needed = positional_accuracy_m / 2), and when locomotion is required:
   `travel_distance` (info, m), `drive_speed` (>=, m/s), `drive_accel` (>=), `wheel_torque` (>=, N*m per drive
   wheel: (m_total (a + g sin(theta) + g Crr cos(theta)) * r / n_wheels) * SF), `slope` (>=, deg), `battery` (>=,
@@ -69,6 +69,17 @@ Every requirement carries a `Calc` (formula text, named inputs with units, resul
   similarly; carry between at max(approach heights). A `move` goes to carry height above its marker (marker z + object
   height + approach height), never to the surface; it holds the object only after a pick. A press/push dwells
   `duration_s` at the surface. Grasp point = object top centre for vacuum, centre for parallel.
+- Generic motions (all optional in JSON, dropped when default). `TaskAction.verb` also has `rotate` with `turns`
+  (signed, may be fractional), `rpm` (> 0, peak speed), `ramp_s` (>= 0; 0 = the joint's own acceleration) and `axis`
+  (`tool_yaw` or a joint name; `tool_yaw` falls back to the last rotating joint). `duration_s` is a dwell for
+  wait/inspect/press; for `move` and `rotate` it is an optional upper time for that motion (a `move_time_<n>` check
+  fails when the move cannot be done that fast; a faster move is stretched to exactly that time; a `rotate_<n>`
+  check reports the played time). `TaskObject.attached` holds the object from t=0 (its mass is in every load).
+  `PhysicsInputs.max_accel_m_s2` / `max_jerk_m_s3` are comfort or fragile "at most" limits (requirements `max_accel`,
+  `max_jerk`, comparator `<=`); `peak_acceleration_m_s2` stays the capability the robot needs. The simulator reports
+  the peak TCP acceleration (and the rim acceleration of a rotated object) for `max_accel`; jerk is not bounded by
+  trapezoid profiles, so `max_jerk` has no verdict. Gantry param `tool_yaw_continuous` makes the yaw joint
+  `continuous`; a rotate beyond a limited joint's range fails `rotate_range_<joint>`.
 - `sim.task.simulate(spec, requirements, scene, concept, params=None, dt=0.04) -> SimResult`: IK per waypoint
   (seeded by the previous), joint-space interpolation with per-joint trapezoid limits (speed/accel from joints),
   mobile bases drive the path with `motion.sample`, wheel joints animated. Frames: `Frame(t, joints by URDF name,
@@ -151,6 +162,24 @@ frame, origin at the centre of its box, z up); both keys are absent from JSON wh
 inside the box (2 % tolerance), the parts cover at least 90 % of the box per axis. Failure is never fatal (no model, no progress line); on
 success `design` emits `Object models: <n> made`. `revise` reuses the models of objects whose name, size and shape did not change; fleet
 versions keep the base version's models. The client draws `model`, else the keyword models (`objectModels.tsx`), else the primitive.
+
+`agents/checks.py` (role `checks`, default `claude_opus`): `run(adapter, spec, concept, requirements, checks, catalogue, previous=None) ->
+{'plans': [CheckPlan], 'checks': [Check], 'rejected': [{id, reason}]}`. `CheckPlan` = `{id, name, why, expression, unit, comparator ('>=' | '<='),
+limit (an expression), unit_limit, constants: [{name, value, unit, justification}]}`, at most 12 per version. The model proposes; code decides:
+`physics/quantities.py` `catalogue(spec, concept, requirements, sim, scene=None, fleet=None)` builds the named quantities with units (object
+masses and sizes, `I_<object>_z` computed for box, cylinder and sphere, `cycle_time`, `turns/rpm/ramp/omega/alpha_rotate_<n>`, joint
+`rating_/vmax_/stroke_`, `payload`, moving masses, the simulation's `peak_speed_/peak_accel_<joint>`, `peak_tcp_speed/accel`, `duration`,
+`static_load_<joint>`, `g`, `pi`); `physics/formulas.py` parses each expression with `ast` (numbers, names, `+ - * / **`, unary `+ -`, and
+`sqrt abs min max sin cos tan`; never eval/exec/compile of the text), evaluates it with pint Quantities, and requires dimensional consistency
+(expression vs `unit`, limit vs `unit_limit`, the two vs each other), finite values, known names, at most 6 constants each with unit and a
+justification, unique ids `^[a-z][a-z0-9_]{0,40}$`. A bare number with a unit has to be a declared constant. An accepted plan becomes a
+`Check` (`requirement_id` `planned_<id>`, `source: "planned"`, `calc` = formula text, inputs with units, result) that counts toward `sim.ok`.
+A plan code rejects goes back to the model once (`ask_json` repairs=1); what is still rejected is dropped into
+`DesignVersion.check_plan_rejected`. Accepted plans are stored in `DesignVersion.check_plan` and re-evaluated in code whenever the version is
+simulated again (repair rounds, revise when the agent is unavailable). `Check.source`, `check_plan` and `check_plan_rejected` are x-optional
+(absent from JSON when `sim` / empty). Results of this role are AI-planned formulas evaluated in code, not model-computed numbers.
+`robot/sizing.py` adds, for each rotate action that turns a held or attached object on a joint, `tau = I_obj_z * alpha_rotate`
+(`physics.quantities`, code-computed, not from a plan) to that joint's peak demand, with a `Calc`.
 
 ## API (Java, 127.0.0.1:8800, `/api/v1`; long work = job: POST returns `Job`, poll `GET /api/v1/jobs/{id}`)
 Full wire protocol between the Java server and the Python tasks: [PROTOCOL.md](PROTOCOL.md). The OpenAPI document is

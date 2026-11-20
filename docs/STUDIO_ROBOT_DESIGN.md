@@ -206,9 +206,9 @@ Code only (`server/studio/robot/sizing.py`). No model call.
 | Figure | Rule |
 |---|---|
 | Static torque | Worst `gravity_torques` over the task's sim frames and a stretched pose, with payload |
-| Acceleration torque | (I_link + m r^2) times alpha; alpha from the design's peak joint speed over `ACCEL_RAMP_S` (alpha = peak speed / 0.2 s) |
-| Continuous | RMS over the sim frames, times 1.25 |
-| Peak | Worst instant, times 1.5 |
+| Acceleration torque | J(q) times alpha at the SAME sim frame; alpha = smoothed second difference of q(t) (median of 3, mean of 3; the robot at rest at both ends), so it follows the sim's trapezoid limits. `ACCEL_RAMP_S` is kept for wheels only |
+| Continuous | RMS over the sim frames of (static + J alpha), times 1.25 |
+| Peak | 1.5 times the max over frames of (static + J alpha) at the same frame, or of the static hold at the stretched pose (rated payload, no acceleration) |
 | Speed | The design's peak joint speed |
 
 `extra_masses` (motor and gearbox masses per link) feed back on each iteration (3.4).
@@ -221,8 +221,8 @@ Code only (`server/studio/robot/sizing.py`). No model call.
 | Motor speed | omega_m = omega * N, at most 0.8 times rated speed |
 | Inertia ratio | At most 5 for steppers, 10 for servos (and bldc, dc_gear), 5 for other. Taken as load over motor rotor inertia, both at the motor shaft (the usual convention; the sources do not define it). |
 
-Standard ratios: planetary 5, 10, 20, 50; harmonic 50, 100; belt 3:1; leadscrew lead 2, 5, 8 or 10 mm. Rack and wheel
-gearbox ratios come from the design. Gearbox efficiencies are set in code.
+Standard ratios: planetary 3, 4, 5, 7, 10, 15, 20, 30, 50, 100 (efficiency 0.90 up to 10, 0.85 up to 50, 0.80 at 100); harmonic 50, 100; belt 3:1; leadscrew lead 2, 5, 8 or 10 mm. Rack and wheel
+gearbox ratios come from the design. Gearbox efficiencies are set in code. A candidate gets the smallest standard ratio that meets torque (tau / (N eta) within the motor's continuous and peak torque) and speed (omega N at most 0.8 of its speed); when none does, the rejection names the binding constraint. Each motor row also carries the motor-side torque and speed after the chosen ratio as calcs.
 
 ### 3.4 Mass feedback
 

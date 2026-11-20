@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, runJob } from "../api";
 import Usage from "../Usage";
 import { StageHead } from "../components/common";
+import PreferredVendors from "../components/settings/PreferredVendors";
 
 type Profile = { id: string; name: string; kind: string; model: string; effort: string; timeout_s: number; cli_path: string };
 type KeyStatus = { saved: boolean; environment: string | null; ready: boolean };
@@ -18,6 +19,8 @@ const ROLES: Record<string, string> = {
   search: "Searches the web for real robots and their prices",
   extract: "Reads manufacturer datasheets and quotes the values it finds",
   analysis: "Explains what each difference means for your task",
+  ask: "Ask bar: answers questions about your project and can start changes",
+  checks: "Task-specific checks: plans extra checks that code computes",
   objects: "Builds simple 3D models of the task objects (a small, fast model is enough)",
 };
 const ROLE_LABELS: Record<string, string> = { objects: "Object models" };
@@ -73,6 +76,7 @@ export default function Settings() {
       <StageHead artifact="settings" title="Settings and AI models">Assign models to workflow stages, manage provider connections, and review usage.</StageHead>
       {error && <div className="notice error">{error}</div>}
       <Usage />
+      <PreferredVendors />
       <div className="panel">
         <h3>Who does what</h3>
         <table><tbody>{Object.entries(ROLES).map(([role, text]) => (

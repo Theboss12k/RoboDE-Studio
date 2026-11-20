@@ -43,3 +43,27 @@ async def test_repairs_can_be_limited_per_call():
     model = Seq([json.dumps({'table': False})] * 2)
     with pytest.raises(LLMError, match='after 2 attempts'):
         await ask_json(model, 'make a scene', 'system', validate=needs_table, repairs=1)
+
+
+def test_portable_schema_drops_vendor_keywords_for_strict_validators():
+    """The Claude CLI's strict --json-schema rejects unknown keywords: the `x-optional` marker on TechnicalSpec.baseline
+    made every real spec call fail (2026-11-21). Field names are kept, even unusual ones."""
+    from studio.llm.base import portable_schema
+    from studio.schemas import TechnicalSpec
+
+    def keys(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                yield k
+                yield from keys(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from keys(v)
+
+    raw = TechnicalSpec.model_json_schema()
+    assert 'x-optional' in set(keys(raw))
+    clean = portable_schema(raw)
+    assert not any(k.startswith('x-') for k in keys(clean))
+    assert 'baseline' in clean['properties']
+    assert portable_schema({'properties': {'x-name': {'type': 'string', 'x-optional': True}}}) == \
+        {'properties': {'x-name': {'type': 'string'}}}

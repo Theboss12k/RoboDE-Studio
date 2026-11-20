@@ -100,8 +100,9 @@ def collect_checks(motors, electronics, style, cad_checks) -> list[Check]:
 
 async def build(llms, version: DesignVersion, member: str | None, base_build: StudioBuild | None, request: str,
                 pinned: dict[str, str], build_no: int, out_dir: Path, progress, *, download=None,
-                now=None) -> StudioBuild:
-    """One studio build. `now` (tests) returns the datetime used for `created` and `search_date`."""
+                now=None, vendors=None) -> StudioBuild:
+    """One studio build. `now` (tests) returns the datetime used for `created` and `search_date`. `vendors` are the
+    user's preferred vendors (a list of catalog.vendors.Vendor); passed to the shop search only when there are any."""
     request = (request or '').strip()[:2000]
     pinned = dict(pinned or {})
     version = member_view(version, member)          # no member (or the primary): the top-level fields are the robot
@@ -114,12 +115,16 @@ async def build(llms, version: DesignVersion, member: str | None, base_build: St
     first = await asyncio.to_thread(sz.size_joints, version)
     reuse = (base_build is not None and not request and base_build.design_version == version.version
              and base_build.family == family)
+    search_notes: list[str] = []
     if reuse:
         options, search_date = _alternatives(base_build), base_build.search_date
+        search_notes.append(f'No new search: candidates and prices are from the search of {search_date}.')
     else:
         progress('Searching the shops')
+        extra = {'vendors': vendors} if vendors else {}
         options = await sourcing.search_motors(llms, needs_of(version, first, request),
-                                               stamp.date().isoformat(), progress, download=download)
+                                               stamp.date().isoformat(), progress, download=download, notes=search_notes,
+                                               **extra)
         search_date = stamp.date().isoformat()
 
     def choose(sizing):
@@ -128,6 +133,18 @@ async def build(llms, version: DesignVersion, member: str | None, base_build: St
     sizing, motors = await asyncio.to_thread(sz.iterate_sizing, version, choose)
     p = families.get(family).parse(version.robot.params)
     electronics = sz.electronics_for(motors, family, getattr(p, 'battery_wh', None) if family == 'mobile_base' else None)
+    try:                                                # shop drivers and supplies replace the defined ones that pass
+        if reuse:
+            cands = sourcing.reuse_candidates(base_build.electronics)
+        else:
+            needs = sourcing.electronics_needs(electronics)
+            cands = (await sourcing.search_electronics(llms, needs, stamp.date().isoformat(), progress, download=download,
+                                                       notes=search_notes, **({'vendors': vendors} if vendors else {}))
+                     if needs else {})
+        electronics = sourcing.select_electronics(electronics, cands)
+    except Exception as error:                          # optional step: the defined drivers and supplies stay
+        search_notes.append(f'Electronics search failed ({type(error).__name__}): drivers and power supplies stay '
+                            f'defined specs.')
 
     structure = await style_mod.choose_style(HintedLLMs(llms, request), version, motors, progress)
 
@@ -145,5 +162,6 @@ async def build(llms, version: DesignVersion, member: str | None, base_build: St
         parent_build=base_build.build if base_build else None,
         created=stamp.strftime('%Y-%m-%dT%H:%M:%SZ'), request=request, summary=_summary(motors, cad_result.parts, checks, request),
         family=family, search_date=search_date, sizing=sizing, motors=motors, electronics=electronics, style=structure,
-        parts=cad_result.parts, urdf=cad_result.urdf, twin_limits=limits, checks=checks, files=cad_result.files)
+        parts=cad_result.parts, urdf=cad_result.urdf, twin_limits=limits, checks=checks, files=cad_result.files,
+        sourcing_notes=sourcing.sourcing_notes(motors, electronics, search_notes))
 

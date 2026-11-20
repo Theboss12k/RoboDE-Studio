@@ -4,7 +4,7 @@ import { PassChip, fmt } from "./common";
 import { Collapse, Expand } from "./icons";
 import type { Calc, Check, Requirement } from "../types";
 
-function CalcView({ title, calc }: { title: string; calc: Calc }) {
+export function CalcView({ title, calc }: { title: string; calc: Calc }) {
   return (
     <div className="calc">
       <b className="small">{title}</b>
@@ -26,6 +26,9 @@ function robotValue(r: Requirement, c?: Check): string {
   if (r.comparator === "info" && (c.actual === null || c.actual === undefined || NOT_MEASURED_INFO.has(r.id))) return "—";
   return fmt(c.actual, c.unit);
 }
+
+/** Shown with every check the checks agent planned: its formula is a proposal, code computed the numbers. */
+export const PLANNED_LABEL = "AI-planned, code-computed";
 
 type Row = { id: string; name: string; required: string; actual: string; passed: boolean | null; requirement?: Requirement; check?: Check };
 
@@ -70,14 +73,14 @@ function RowView({ row, open, toggle, candidate }: { row: Row; open: boolean; to
   return (
     <>
       <tr>
-        <td>{has ? <button type="button" className="link" aria-expanded={open} onClick={toggle}>{open ? <Collapse size={16} aria-hidden="true" /> : <Expand size={16} aria-hidden="true" />} {row.name}</button> : row.name}</td>
+        <td>{has ? <button type="button" className="link" aria-expanded={open} onClick={toggle}>{open ? <Collapse size={16} aria-hidden="true" /> : <Expand size={16} aria-hidden="true" />} {row.name}</button> : row.name}{row.check?.source === "planned" && <> <span className="tag" title="A formula planned by the checks agent; code verified its units and computed every number from the stored task, robot and simulation">{PLANNED_LABEL}</span></>}</td>
         <td>{row.required}</td><td>{row.actual}</td><td><PassChip passed={row.passed} unpublished={candidate && !!row.check && row.passed === null && row.requirement?.comparator !== "info"} detail={row.check?.detail} /></td>
       </tr>
       {open && (
         <tr><td colSpan={4}>
           <div className="calc-grid">
             {row.requirement?.calc && <CalcView title="How the requirement was derived" calc={row.requirement.calc} />}
-            {row.check?.calc && <CalcView title="How the robot's value was obtained" calc={row.check.calc} />}
+            {row.check?.calc && <CalcView title={row.check.source === "planned" ? `How the value was computed (${PLANNED_LABEL})` : "How the robot's value was obtained"} calc={row.check.calc} />}
             {row.check?.detail && <div className="small">{row.check.detail}</div>}
           </div>
         </td></tr>

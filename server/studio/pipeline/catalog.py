@@ -34,16 +34,17 @@ class Document:
     downloaded: bool = False
 
 
-async def find(llms, version, progress, download=safe_download, limit=6, member=None):
+async def find(llms, version, progress, download=safe_download, limit=6, member=None, vendors=None):
     """Search the web for robots that fit `version` (normally the approved one); on a multi-robot version, for
-    robot `member` (None = the primary robot, which the top-level fields already describe). Returns
+    robot `member` (None = the primary robot, which the top-level fields already describe). `vendors` are the user's
+    preferred vendors (raw list): searched first and ranked first. Returns
     {'candidates': [Candidate], 'dropped': {reason: count}}; nothing is stored here."""
     version = member_view(version, member)
     progress('Searching the web for robots that fit')
     set_context(task='search')
     dropped = Counter()
     candidates = await search.search(llms.for_role('search'), version.spec, version.requirements, version.robot,
-                                     limit=limit, dropped=dropped)
+                                     limit=limit, dropped=dropped, vendors=vendors)
     progress(f'Found {len(candidates)} candidates; screening payload and reach')
     if dropped:
         reasons = ', '.join(f'{reason}' + (f' ({n})' if n > 1 else '') for reason, n in dropped.items())

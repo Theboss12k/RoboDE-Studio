@@ -22,7 +22,7 @@ from studio.tasks.llms import TaskLLMs
 from studio_scripts import ROBOT, llms as scripted_llms, scene_dict, spec_dict
 
 ROOT = Path(__file__).resolve().parents[1]
-ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects')
+ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects', 'ask', 'checks')
 KEY = 'SECRET-API-KEY-abc123'
 
 
@@ -362,3 +362,18 @@ async def test_find_and_analyse_handlers_with_fake_download(v1, tmp_path):
     uploaded.write_text(DATASHEET)
     again = await handlers.analyse({'version': version, 'candidate': cand, 'datasheet_url': None, 'document_path': str(uploaded)}, ctx)
     assert again['document'] is None and again['analysis']['manufacturer_spec']['values']
+
+
+def test_ask_task_records_proposals_and_never_acts(tmp_path):
+    """The `ask` task through the real subprocess entry point with a scripted fixture (fixture result, not a model result)."""
+    rules = [{'match': 'Ask bar', 'answers': [
+        {'tool': 'search', 'args': {}},
+        {'final': {'answer': 'Queued a search.', 'citations': [{'kind': 'version', 'ref': '7', 'label': 'v7'}], 'confirm': [], 'navigate': None}}]}]
+    grounding = {'project': {'id': 'p_0123456789', 'versions': [{'version': 1}]}}
+    run = run_task('ask', request('ask', {'question': 'Find robots', 'history': [], 'context': {'project_id': 'p_0123456789'},
+                                          'grounding': grounding}, tmp_path, profiles(fixture(tmp_path, rules))))
+    assert run.code == 0, run.stderr
+    assert run.result == {'answer': 'Queued a search.', 'citations': [], 'confirm': [], 'navigate': None,
+                          'proposals': [{'kind': 'search', 'args': {}}]}
+    empty = run_task('ask', request('ask', {'question': ' '}, tmp_path, profiles(fixture(tmp_path, rules))))
+    assert empty.error['kind'] == 'value'

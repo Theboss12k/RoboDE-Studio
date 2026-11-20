@@ -18,7 +18,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class LlmSettings {
     private static final Logger LOG = LoggerFactory.getLogger(LlmSettings.class);
-    public static final List<String> ROLES = List.of("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects");
+    public static final List<String> ROLES = List.of("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects", "ask", "checks");
     private static final List<String> EFFORTS = List.of("", "low", "medium", "high", "xhigh", "max");
 
     private final Path path;
@@ -37,7 +37,7 @@ public class LlmSettings {
     private static ObjectNode defaultRoles() {
         ObjectNode r = Json.obj();
         r.put("spec", "claude_opus").put("scene", "claude_sonnet").put("robot", "claude_opus").put("revise", "claude_opus")
-                .put("search", "claude_sonnet").put("extract", "claude_sonnet").put("analysis", "claude_sonnet").put("objects", "claude_haiku");
+                .put("search", "claude_sonnet").put("extract", "claude_sonnet").put("analysis", "claude_sonnet").put("objects", "claude_haiku").put("ask", "claude_sonnet").put("checks", "claude_opus");
         return r;
     }
 

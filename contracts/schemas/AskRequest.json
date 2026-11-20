@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "AskContext": {
+      "description": "What the client is looking at. Only ids and the moment: every number is read from storage by the server.",
+      "properties": {
+        "project_id": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id",
+          "x-optional": true
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage",
+          "x-optional": true
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version",
+          "x-optional": true
+        },
+        "t": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "T",
+          "x-optional": true
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate",
+          "x-optional": true
+        },
+        "build": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build",
+          "x-optional": true
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selection",
+          "x-optional": true
+        }
+      },
+      "title": "AskContext",
+      "type": "object"
+    },
+    "AskTurn": {
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "AskTurn",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "question": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Question",
+      "type": "string"
+    },
+    "history": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AskTurn"
+      },
+      "maxItems": 6,
+      "title": "History",
+      "type": "array",
+      "x-optional": true
+    },
+    "context": {
+      "$ref": "#/$defs/AskContext",
+      "x-optional": true
+    }
+  },
+  "required": [
+    "question"
+  ],
+  "title": "AskRequest",
+  "type": "object"
+}

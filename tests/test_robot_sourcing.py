@@ -136,9 +136,9 @@ async def test_select_picks_the_passing_alternative_with_a_drive(tmp_path):
     choices = so.select([joint()], {'j2': list(alts.values())}, 'serial_arm', {})
     c = choices[0]
     assert c.source == 'shop' and c.alternative_id == 'robu_nema_23_stepper_motor_3_n_m_76mm' and not c.pinned
-    assert c.drive.type == 'planetary' and c.drive.ratio == 20     # lowest ratio that carries 20 / 25 N*m
-    assert c.margins['continuous'] == pytest.approx(3.0 * 0.7 * 20 * 0.85 / 20) and min(c.margins.values()) >= 1
-    assert c.required['continuous'] == 20.0 and c.provided['continuous'] == pytest.approx(35.7)
+    assert c.drive.type == 'planetary' and c.drive.ratio == 15     # smallest standard ratio (3,4,5,7,10,15,..) that carries 20 / 25 N*m
+    assert c.margins['continuous'] == pytest.approx(3.0 * 0.7 * 15 * 0.85 / 20) and min(c.margins.values()) >= 1
+    assert c.required['continuous'] == 20.0 and c.provided['continuous'] == pytest.approx(3.0 * 0.7 * 15 * 0.85)
     assert all(ch.passed is not False for ch in c.checks) and c.price.amount == 2499
     by = {a.id: a for a in c.alternatives}
     assert by[c.alternative_id].passes and not by['stepperonline_nema_23_stepper_motor_1_26nm'].passes
@@ -212,3 +212,167 @@ def test_select_stepper_without_speed_uses_assumed_speed_on_the_choice():
     assert speed.status == 'assumed' and speed.value == 300.0
     by = {a.id: a for a in c.alternatives}
     assert by['pololu_x'].passes and 'speed assumed (conservative)' in by['pololu_x'].reason
+
+
+# --- realism round: unverified prices, rejection reasons, ratio choice, preferred vendors, electronics -------------------
+
+from studio.catalog.vendors import normalize as normalize_vendors  # noqa: E402
+from studio.schemas import ElectronicsItem  # noqa: E402
+
+
+async def blocked_download(url, max_bytes=0, timeout_s=0):
+    raise ValueError('The server answered 403')
+
+
+def challenge_download(url, max_bytes=0, timeout_s=0):
+    async def go():
+        return Downloaded(b'<html><title>Just a moment...</title><body>Checking your browser before accessing</body></html>',
+                          'text/html', url, 'page.html')
+    return go()
+
+
+async def test_blocked_fetch_keeps_the_price_unverified_and_unranked(tmp_path):
+    notes = []
+    out = await so.search_motors(registry(tmp_path, [GOOD]), [need()], DATE, lambda t: None, download=blocked_download, notes=notes)
+    alt = out['j2'][0]
+    assert alt.price.status == 'unverified' and alt.price.amount == 2499 and alt.price_issue == 'page_blocked'
+    assert 'holding_torque_nm' not in {v.key for v in alt.values}        # values need the page: never unverified
+    assert any('robu.in' in n and 'HTTP 403' in n for n in notes)
+    assert so.price_rank(alt)[1] == 2                                  # counts as unpriced
+    assert alt.price.model_dump()['status'] == 'unverified'
+    assert 'status' not in ShopPrice(amount=1, seen=DATE, shop='robu', source_url='https://robu.in/x').model_dump()
+
+
+async def test_challenge_page_counts_as_blocked_but_a_wrong_quote_does_not(tmp_path):
+    out = await so.search_motors(registry(tmp_path, [GOOD]), [need()], DATE, lambda t: None, download=challenge_download)
+    assert out['j2'][0].price.status == 'unverified'
+    nopage = {**GOOD, 'price': {**GOOD['price'], 'quote': 'Rs. 2,499.00 only today'}}
+    alt = (await found(tmp_path, [nopage]))['robu_nema_23_stepper_motor_3_n_m_76mm']
+    assert alt.price is None and alt.price_issue == 'quote_not_found'
+    wrong = {**GOOD, 'price': {**GOOD['price'], 'amount': 1999}}
+    assert (await found(tmp_path, [wrong]))['robu_nema_23_stepper_motor_3_n_m_76mm'].price_issue == 'price_not_in_quote'
+    none = {**GOOD, 'price': None}
+    assert (await found(tmp_path, [none]))['robu_nema_23_stepper_motor_3_n_m_76mm'].price_issue == 'no_price'
+
+
+async def test_rejected_entries_carry_reasons_and_notes(tmp_path):
+    alts = await found(tmp_path)
+    c = so.select([joint()], {'j2': list(alts.values())}, 'serial_arm', {})[0]
+    assert [r.id for r in c.rejected] == ['stepperonline_nema_23_stepper_motor_1_26nm']
+    assert c.rejected[0].reason.startswith('missing_values: ') and 'torque' in c.rejected[0].reason   # its quote was not on the page
+    weak = MotorAlternative(id='robu_weak', name='Weak', shop='robu', motor_type='stepper', values=[
+        SpecValue(key=k, value=x, status='verified', quote='q') for k, x in
+        (('holding_torque_nm', 0.4), ('rated_speed_rpm', 600.0), ('current_a', 1.5), ('voltage_v', 24.0))])
+    c3 = so.select([joint()], {'j2': [weak] + list(alts.values())[:1]}, 'serial_arm', {})[0]
+    assert c3.rejected[0].id == 'robu_weak' and c3.rejected[0].reason.startswith('fails_margin: ')
+    assert 'torque binds' in c3.rejected[0].reason or 'torque needs ratio' in c3.rejected[0].reason
+    nov = MotorAlternative(id='robu_nov', name='No values', shop='robu', motor_type='stepper')
+    c2 = so.select([joint()], {'j2': [nov]}, 'serial_arm', {})[0]
+    assert c2.source == 'defined' and c2.rejected[0].reason.startswith('missing_values: ')
+    notes = so.sourcing_notes([c, c2], [], ['search line'])
+    assert notes[0] == 'search line' and 'no shop product passed' in notes[2] and 'missing_values' in notes[2]
+    assert c.calcs and c.calcs[1].formula.startswith('tau_m_peak')
+
+
+def motor_values(**over):
+    base = {'holding_torque_nm': 3.0, 'rated_speed_rpm': 600.0, 'current_a': 2.8, 'voltage_v': 24.0}
+    base.update(over)
+    return [SpecValue(key=k, value=x, status='verified', quote=f'{k} {x}') for k, x in base.items()]
+
+
+def alt(values, kind='stepper'):
+    return MotorAlternative(id='robu_x', name='X', motor_type=kind, values=values)
+
+
+def test_ratio_choice_names_the_binding_constraint():
+    s = joint(peak=112.0, continuous=20.0, speed=2.09)                 # the bottle arm's j1 numbers
+    weak = alt(motor_values(holding_torque_nm=0.8, rated_speed_rpm=300.0))
+    d, ok, _, _, reason = sz.choose_drive(weak, s, sz.drive_options('serial_arm', 0, s), 'stepper')
+    assert not ok and 'torque binds' in reason and '112' in reason
+    mid = alt(motor_values(holding_torque_nm=3.0, rated_speed_rpm=300.0))
+    reason = sz.choose_drive(mid, s, sz.drive_options('serial_arm', 0, s), 'stepper')[4]
+    assert 'torque needs ratio >= 100:1 but speed allows <= 10:1' in reason
+    slow = alt(motor_values(holding_torque_nm=3.0, rated_speed_rpm=20.0))
+    assert 'speed binds' in sz.choose_drive(slow, joint(speed=5.0), sz.drive_options('serial_arm', 1, joint()), 'stepper')[4]
+    # smallest ratio that fits both: 3 N*m holding (2.1 N*m rated) at 600 rpm for 25 N*m peak, 20 continuous
+    good = alt(motor_values())
+    d, ok, margins, _, _ = sz.choose_drive(good, joint(), sz.drive_options('serial_arm', 1, joint()), 'stepper')
+    assert ok and d.ratio == 15 and margins['speed'] >= 1
+    smaller = [x for x in sz.drive_options('serial_arm', 1, joint()) if x.ratio < d.ratio]
+    assert all(not sz.choose_drive(good, joint(), [x], 'stepper')[1] for x in smaller)
+
+
+def test_published_speed_ranks_before_price_and_preferred_before_both():
+    cheap = priced('robu_assumed', 1000, 'INR')
+    cheap.values = [v_ for v_ in cheap.values if v_.key != 'rated_speed_rpm'] + [SpecValue(key='frame', text='NEMA 23', status='verified', quote='q')]
+    dear = priced('robu_published', 3000, 'INR')
+    c = so.select([joint()], {'j2': [cheap, dear]}, 'serial_arm', {})[0]
+    assert c.alternative_id == 'robu_published'
+    pref = priced('evelta_pref', 9000, 'INR').model_copy(update={'preferred': True})
+    assert so.select([joint()], {'j2': [cheap, dear, pref]}, 'serial_arm', {})[0].alternative_id == 'evelta_pref'
+    assert so.select([joint()], {'j2': [cheap, dear, pref]}, 'serial_arm', {})[0].preferred is True
+    unver = priced('robu_unver', 1, 'INR')
+    unver.price = unver.price.model_copy(update={'status': 'unverified'})
+    assert so.price_rank(unver)[1] == 2 and so.price_rank(dear)[1] == 0
+
+
+async def test_preferred_vendors_extend_the_allowlist_and_flag_products(tmp_path):
+    vendors = normalize_vendors([{'name': 'Robu', 'domain': 'robu.in', 'categories': ['motors']},
+                                 {'name': 'Acme', 'domain': 'acme-motors.com', 'categories': ['motors']}])
+    llm = ScriptedLLM([('find real motors', {'candidates': [GOOD, {'name': 'Acme M', 'url': 'https://acme-motors.com/m1', 'values': []}]})])
+    out = await so.search_motors(LLMRegistry(tmp_path, {'search': llm}), [need()], DATE, lambda t: None,
+                                 download=fake_download, vendors=vendors)
+    by = {a.shop: a for a in out['j2']}
+    assert by['robu'].preferred and by['acme_motors_com'].preferred and 'Search these preferred vendors first' in llm.calls[0]['system_prompt']
+    assert 'acme-motors.com' in llm.calls[0]['system_prompt']
+    none = await so.search_motors(LLMRegistry(tmp_path, {'search': ScriptedLLM([('find real motors', {'candidates': [GOOD, {'name': 'Acme M', 'url': 'https://acme-motors.com/m1', 'values': []}]})])}),
+                                  [need()], DATE, lambda t: None, download=fake_download)
+    assert [a.shop for a in none['j2']] == ['robu'] and not none['j2'][0].preferred
+
+
+def test_electronics_selection_replaces_defined_items_and_lists_rejections():
+    motor = so.select([joint()], {}, 'serial_arm', {})[0]
+    defined = sz.electronics_for([motor.model_copy(update={'values': motor.values})], 'serial_arm')
+    needs = so.electronics_needs(defined)
+    assert {n['role'] for n in needs} == {'driver', 'power_supply'}
+    drv = next(i for i in defined if i.role == 'driver')
+    need_a = drv.checks[0].required
+
+    def cand(cid, amps, volts, price=None, role='driver', watts=None, kind='stepper'):
+        vals = [SpecValue(key='current_a', value=amps, status='verified', quote='q'),
+                SpecValue(key='voltage_v', value=volts, status='verified', quote='q')]
+        if kind:
+            vals.append(SpecValue(key='driver_type', text=kind, status='verified', quote='q'))
+        if watts:
+            vals.append(SpecValue(key='power_w', value=watts, status='verified', quote='q'))
+        return {'id': cid, 'name': cid, 'shop': 'robu', 'url': 'https://robu.in/' + cid, 'role': role, 'values': vals,
+                'price': price, 'price_issue': '' if price else 'no_price', 'preferred': False}
+    inr = ShopPrice(amount=900, currency='INR', seen=DATE, shop='robu', source_url='https://robu.in/x')
+    cheap = ShopPrice(amount=500, currency='INR', seen=DATE, shop='robu', source_url='https://robu.in/y')
+    cands = {drv.id: [cand('weak', need_a / 2, 48), cand('good', need_a * 2, 48, inr), cand('lowv', need_a * 2, 5),
+                      cand('brushed', need_a * 2, 48, cheap, kind='dc'), cand('untyped', need_a * 2, 48, cheap, kind=None)]}
+    out = so.select_electronics(defined, cands)
+    new = next(i for i in out if i.id == drv.id)
+    assert new.source == 'shop' and new.name == 'good' and new.price.amount == 900 and new.checks[0].passed
+    assert {r.id: r.reason.split(':')[0] for r in new.rejected} == {'weak': 'fails_margin', 'lowv': 'fails_margin',
+                                                                     'brushed': 'fails_margin', 'untyped': 'missing_values'}
+    why = {r.id: r.reason for r in new.rejected}
+    assert 'driver type dc cannot drive stepper motors' in why['brushed'] and 'verified driver type' in why['untyped']
+    assert next(n for n in needs if n['role'] == 'driver')['driver_type'] == 'stepper'
+    assert next(i for i in out if i.role == 'power_supply').source == 'defined'
+
+
+async def test_driver_type_counts_only_when_the_quote_names_it():
+    """A brushed DC driver was chosen for stepper joints in real build b2 (2026-11-21): the type now needs a quote."""
+    page = 'Pololu G2 High-Power Motor Driver 24v21. This discrete MOSFET H-bridge drives a single brushed DC motor.'
+
+    class OnePage:
+        async def get(self, url):
+            return page, 'ok'
+    shops = so.shop_map()
+    url = 'https://www.pololu.com/product/2995'
+    claimed = [{'key': 'driver_type', 'value': 'stepper', 'quote': 'drives a single brushed DC motor'}]
+    assert await so._verified_values(claimed, url, OnePage(), shops) == []
+    honest = [{'key': 'driver_type', 'value': 'dc', 'quote': 'drives a single brushed DC motor'}]
+    got = await so._verified_values(honest, url, OnePage(), shops)
+    assert [(v.key, v.text, v.status) for v in got] == [('driver_type', 'dc', 'verified')]

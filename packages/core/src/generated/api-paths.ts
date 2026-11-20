@@ -403,6 +403,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{pid}/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the time-saved inputs
+         * @description Stores the manual baseline and the working pattern used by the time-saved estimate (any subset of the fields; `null` removes `manual_cycle_s` or `operators`, or restores another field's default). Stored values override `spec.baseline` and the defaults. Allowed while a design or revise job runs. The estimate itself is computed from these inputs and the robot's simulated cycle (`savings` in `@robode/studio-core`); it is not a time study.
+         */
+        put: operations["putBaseline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{pid}/fleet": {
         parameters: {
             query?: never;
@@ -604,7 +627,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the decision */
+        /**
+         * Record the decision
+         * @description Either choose an analysed catalog candidate, or choose your own design (the approved Robot studio build). Choosing again overwrites the decision. `self` returns 409 when no build is approved (or the given build is not approved) and 404 for an unknown build.
+         */
         post: operations["setDecision"];
         delete?: never;
         options?: never;
@@ -870,6 +896,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask a question about the project on screen
+         * @description Starts an `ask` job (role `ask`). The server builds the facts to answer from for the ids in `context` (project, version, build, candidate, the moment `t`) from stored data: numbers are never taken from the client. The model answers from those facts and may propose at most two actions of a fixed list (`revise`, `design`, `search`, `analyse`, `studio_build`, `update_brief`, `set_baseline`, `cancel_job`). The server validates each proposal exactly as the matching route validates its body, executes it (a job it starts appears in the project's job list and can be cancelled) and reports it in `actions_taken`; a refused one has `ok: false` and an `error` (`not allowed` for anything else, such as delete, keys, settings, profiles, approve or decision; `limit: 2 actions per question` for extras). An approval, a build approval or a decision is never executed: it comes back in `confirm` as a chip whose `request` is the body of the existing route (`approve_build` also carries `build`, which goes into the path). Each action is logged in the project's activity. `navigate` only tells the client where to look. 404 when a referenced project, version, build or candidate does not exist; 422 for an invalid body.
+         */
+        post: operations["ask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs": {
         parameters: {
             query?: never;
@@ -1125,6 +1171,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the preferred vendors
+         * @description The shops the user wants searched first for robots, motors and electronics. A global setting, not part of a project.
+         */
+        get: operations["getPreferredVendors"];
+        /**
+         * Replace the preferred vendors
+         * @description Replaces the whole list (at most 50). Each domain is a bare host such as `robu.in` (lower case, no scheme or path);
+         *     domains must be unique. Catalog searches and studio builds started afterwards use the new list.
+         */
+        put: operations["setPreferredVendors"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1205,11 +1276,17 @@ export interface components {
             /** @description The member used for robot search and analysis. */
             member?: string | null;
         };
-        DecisionRecord: {
+        /** @description The recorded decision: a catalog candidate (`approve`, or the legacy `robot_studio`) or your own design (`self`, with the build number); null before a decision. */
+        DecisionRecord: null | {
             candidate_id: string;
             /** @enum {string} */
             action: "approve" | "robot_studio";
-        } | null;
+        } | {
+            /** @enum {string} */
+            action: "self";
+            /** @description The approved Robot studio build. */
+            build: number;
+        };
         /** @description The project view. */
         Project: {
             id: string;
@@ -1227,6 +1304,7 @@ export interface components {
             versions: number[];
             approved_version: number | null;
             fleet?: components["schemas"]["FleetState"];
+            savings_inputs?: components["schemas"]["SavingsInputsState"];
             studio?: components["schemas"]["StudioState"];
             /** @description Only when comments exist. */
             answer_comments?: {
@@ -1289,6 +1367,25 @@ export interface components {
         ApproveRequest: {
             version: number;
         };
+        /** @description Present on a project only once the time-saved inputs were set (`PUT /projects/{pid}/baseline`). */
+        SavingsInputsState: {
+            /** @description Seconds one person needs per item by hand. */
+            manual_cycle_s?: number;
+            operators?: number;
+            hours_per_shift: number;
+            days_per_week: number;
+            days_per_year: number;
+            supervision_min_per_shift: number;
+        };
+        /** @description Any subset of the fields; send at least one. */
+        BaselineUpdate: {
+            manual_cycle_s?: number | null;
+            operators?: number | null;
+            hours_per_shift?: number | null;
+            days_per_week?: number | null;
+            days_per_year?: number | null;
+            supervision_min_per_shift?: number | null;
+        };
         FleetUpdate: {
             enabled?: boolean | null;
             /** @description max_robots 2 to 3, max_reach_m up to 10, max_payload_kg up to 2000, budget_usd 0 or more. */
@@ -1343,6 +1440,10 @@ export interface components {
             candidate_id: string;
             /** @enum {string} */
             action: "approve" | "robot_studio";
+        } | {
+            /** @enum {string} */
+            action: "self";
+            build?: number;
         };
         /** @description The parsed URDF the server attaches to versions and analyses (not part of the stored model). */
         ParsedUrdf: {
@@ -1471,15 +1572,15 @@ export interface components {
         Job: {
             id: string;
             /** @enum {string} */
-            kind: "design" | "revise" | "fleet_design" | "search" | "analyse" | "llm_test" | "studio_build" | "studio_pdf";
-            /** @description The project id; null for `llm_test`. */
+            kind: "design" | "revise" | "fleet_design" | "search" | "analyse" | "llm_test" | "studio_build" | "studio_pdf" | "ask";
+            /** @description The project id; null for `llm_test` and for an `ask` without a project. */
             robot_id: string | null;
             /** @enum {string} */
             status: "running" | "done" | "error" | "cancelled";
             /** @description Progress lines so far. */
             progress: string[];
             /** @description The job's result when `status` is `done`, otherwise null. The shape depends on `kind`. */
-            result: null | components["schemas"]["QuestionsResult"] | components["schemas"]["DesignedResult"] | components["schemas"]["VersionResult"] | components["schemas"]["SearchResult"] | components["schemas"]["AnalysisView"] | components["schemas"]["LlmTestResult"] | components["schemas"]["StudioBuildResult"];
+            result: null | components["schemas"]["QuestionsResult"] | components["schemas"]["DesignedResult"] | components["schemas"]["VersionResult"] | components["schemas"]["SearchResult"] | components["schemas"]["AnalysisView"] | components["schemas"]["LlmTestResult"] | components["schemas"]["StudioBuildResult"] | components["schemas"]["AskResponse"];
             /** @description The failure message when `status` is `error` or `cancelled`. */
             error: string | null;
             /** @description Machine-readable cause, for example `datasheet_download`; `cancelled` for a cancelled job. */
@@ -1568,6 +1669,16 @@ export interface components {
         };
         SaveKeyRequest: {
             key: string;
+        };
+        PreferredVendor: {
+            name: string;
+            /** @description Bare lower-case host, for example robu.in. */
+            domain: string;
+            categories: ("robots" | "motors" | "electronics")[];
+            note: string;
+        };
+        PreferredVendors: {
+            vendors: components["schemas"]["PreferredVendor"][];
         };
         UsageBucket: {
             calls: number;
@@ -1944,6 +2055,12 @@ export interface components {
             detail: string;
             /** @default null */
             calc: components["schemas"]["Calc"] | null;
+            /**
+             * Source
+             * @default sim
+             * @enum {string}
+             */
+            source: "sim" | "planned";
         };
         /** Candidate */
         Candidate: {
@@ -1993,6 +2110,11 @@ export interface components {
              * @default []
              */
             screen: components["schemas"]["Check"][];
+            /**
+             * Preferred
+             * @default false
+             */
+            preferred: boolean;
             $defs: {
                 /**
                  * Calc
@@ -2036,6 +2158,12 @@ export interface components {
                     detail: string;
                     /** @default null */
                     calc: components["schemas"]["Calc"] | null;
+                    /**
+                     * Source
+                     * @default sim
+                     * @enum {string}
+                     */
+                    source: "sim" | "planned";
                 };
                 /** PriceEstimate */
                 PriceEstimate: {
@@ -2380,6 +2508,12 @@ export interface components {
                     detail: string;
                     /** @default null */
                     calc: components["schemas"]["Calc"] | null;
+                    /**
+                     * Source
+                     * @default sim
+                     * @enum {string}
+                     */
+                    source: "sim" | "planned";
                 };
                 /** Difference */
                 Difference: {
@@ -2559,6 +2693,174 @@ export interface components {
                 };
             };
         };
+        /** AskCitation */
+        AskCitation: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "version" | "check" | "requirement" | "build" | "motor" | "candidate" | "brief" | "spec";
+            /** Ref */
+            ref: string;
+            /** Label */
+            label: string;
+        };
+        /** AskActionTaken */
+        AskActionTaken: {
+            /** Kind */
+            kind: string;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Job Id
+             * @default null
+             */
+            job_id: string | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Error
+             * @default null
+             */
+            error: string | null;
+        };
+        /** AskConfirm */
+        AskConfirm: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "approve" | "approve_build" | "decision";
+            /** Label */
+            label: string;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
+        };
+        /** AskNavigate */
+        AskNavigate: {
+            /** Stage */
+            stage: string;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+            /**
+             * Build
+             * @default null
+             */
+            build: number | null;
+            /**
+             * Candidate
+             * @default null
+             */
+            candidate: string | null;
+        };
+        /** AskResponse */
+        AskResponse: {
+            /** Answer */
+            answer: string;
+            /**
+             * Citations
+             * @default []
+             */
+            citations: components["schemas"]["AskCitation"][];
+            /**
+             * Actions Taken
+             * @default []
+             */
+            actions_taken: components["schemas"]["AskActionTaken"][];
+            /**
+             * Confirm
+             * @default []
+             */
+            confirm: components["schemas"]["AskConfirm"][];
+            /** @default null */
+            navigate: components["schemas"]["AskNavigate"] | null;
+            $defs: {
+                /** AskActionTaken */
+                AskActionTaken: {
+                    /** Kind */
+                    kind: string;
+                    /** Ok */
+                    ok: boolean;
+                    /**
+                     * Job Id
+                     * @default null
+                     */
+                    job_id: string | null;
+                    /** Summary */
+                    summary: string;
+                    /**
+                     * Error
+                     * @default null
+                     */
+                    error: string | null;
+                };
+                /** AskCitation */
+                AskCitation: {
+                    /**
+                     * Kind
+                     * @enum {string}
+                     */
+                    kind: "version" | "check" | "requirement" | "build" | "motor" | "candidate" | "brief" | "spec";
+                    /** Ref */
+                    ref: string;
+                    /** Label */
+                    label: string;
+                };
+                /** AskConfirm */
+                AskConfirm: {
+                    /**
+                     * Kind
+                     * @enum {string}
+                     */
+                    kind: "approve" | "approve_build" | "decision";
+                    /** Label */
+                    label: string;
+                    /** Request */
+                    request: {
+                        [key: string]: unknown;
+                    };
+                };
+                /** AskNavigate */
+                AskNavigate: {
+                    /** Stage */
+                    stage: string;
+                    /**
+                     * Version
+                     * @default null
+                     */
+                    version: number | null;
+                    /**
+                     * Build
+                     * @default null
+                     */
+                    build: number | null;
+                    /**
+                     * Candidate
+                     * @default null
+                     */
+                    candidate: string | null;
+                };
+            };
+        };
+        /**
+         * PlanConstant
+         * @description A number the checks agent declares for one planned check, with the reason for it.
+         */
+        PlanConstant: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Unit */
+            unit: string;
+            /** Justification */
+            justification: string;
+        };
         /**
          * TaskAction
          * @description One step of the task, in order. `target` is a Marker id.
@@ -2568,7 +2870,7 @@ export interface components {
              * Verb
              * @enum {string}
              */
-            verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home";
+            verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home" | "rotate";
             /**
              * Object
              * @default
@@ -2589,6 +2891,26 @@ export interface components {
              * @default
              */
             description: string;
+            /**
+             * Turns
+             * @default 0
+             */
+            turns: number;
+            /**
+             * Rpm
+             * @default 0
+             */
+            rpm: number;
+            /**
+             * Ramp S
+             * @default 0
+             */
+            ramp_s: number;
+            /**
+             * Axis
+             * @default tool_yaw
+             */
+            axis: string;
         };
         /** TaskObject */
         TaskObject: {
@@ -2626,6 +2948,11 @@ export interface components {
              * @default
              */
             start_marker: string;
+            /**
+             * Attached
+             * @default false
+             */
+            attached: boolean;
         };
         /**
          * Marker
@@ -2737,6 +3064,16 @@ export interface components {
              */
             peak_acceleration_m_s2: number | null;
             /**
+             * Max Accel M S2
+             * @default null
+             */
+            max_accel_m_s2: number | null;
+            /**
+             * Max Jerk M S3
+             * @default null
+             */
+            max_jerk_m_s3: number | null;
+            /**
              * Travel Distance M
              * @default 0
              */
@@ -2776,6 +3113,26 @@ export interface components {
              * @default null
              */
             cycles_per_hour: number | null;
+        };
+        /**
+         * Baseline
+         * @description The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).
+         */
+        Baseline: {
+            /** Manual Cycle S */
+            manual_cycle_s: number;
+            /** Operators */
+            operators: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "user" | "estimate";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /** TechnicalSpec */
         TechnicalSpec: {
@@ -2842,6 +3199,8 @@ export interface components {
              * @default
              */
             reference: string;
+            /** @default null */
+            baseline: components["schemas"]["Baseline"] | null;
         };
         /** Requirement */
         Requirement: {
@@ -3218,6 +3577,50 @@ export interface components {
              */
             planner_log: string[];
         };
+        /**
+         * CheckPlan
+         * @description A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and
+         *     its own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.
+         */
+        CheckPlan: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Why
+             * @default
+             */
+            why: string;
+            /** Expression */
+            expression: string;
+            /** Unit */
+            unit: string;
+            /**
+             * Comparator
+             * @enum {string}
+             */
+            comparator: ">=" | "<=";
+            /** Limit */
+            limit: string;
+            /** Unit Limit */
+            unit_limit: string;
+            /**
+             * Constants
+             * @default []
+             */
+            constants: components["schemas"]["PlanConstant"][];
+        };
+        /** RejectedPlan */
+        RejectedPlan: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /** Reason */
+            reason: string;
+        };
         /** DesignVersion */
         DesignVersion: {
             /** Version */
@@ -3256,6 +3659,16 @@ export interface components {
             repair: components["schemas"]["RepairLog"] | null;
             /** @default null */
             fleet: components["schemas"]["FleetPlan"] | null;
+            /**
+             * Check Plan
+             * @default []
+             */
+            check_plan: components["schemas"]["CheckPlan"][];
+            /**
+             * Check Plan Rejected
+             * @default []
+             */
+            check_plan_rejected: components["schemas"]["RejectedPlan"][];
             $defs: {
                 /** BasePose */
                 BasePose: {
@@ -3277,6 +3690,26 @@ export interface components {
                      * @default 0
                      */
                     yaw: number;
+                };
+                /**
+                 * Baseline
+                 * @description The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).
+                 */
+                Baseline: {
+                    /** Manual Cycle S */
+                    manual_cycle_s: number;
+                    /** Operators */
+                    operators: number;
+                    /**
+                     * Source
+                     * @enum {string}
+                     */
+                    source: "user" | "estimate";
+                    /**
+                     * Note
+                     * @default
+                     */
+                    note: string;
                 };
                 /**
                  * Calc
@@ -3320,6 +3753,46 @@ export interface components {
                     detail: string;
                     /** @default null */
                     calc: components["schemas"]["Calc"] | null;
+                    /**
+                     * Source
+                     * @default sim
+                     * @enum {string}
+                     */
+                    source: "sim" | "planned";
+                };
+                /**
+                 * CheckPlan
+                 * @description A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and
+                 *     its own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.
+                 */
+                CheckPlan: {
+                    /** Id */
+                    id: string;
+                    /** Name */
+                    name: string;
+                    /**
+                     * Why
+                     * @default
+                     */
+                    why: string;
+                    /** Expression */
+                    expression: string;
+                    /** Unit */
+                    unit: string;
+                    /**
+                     * Comparator
+                     * @enum {string}
+                     */
+                    comparator: ">=" | "<=";
+                    /** Limit */
+                    limit: string;
+                    /** Unit Limit */
+                    unit_limit: string;
+                    /**
+                     * Constants
+                     * @default []
+                     */
+                    constants: components["schemas"]["PlanConstant"][];
                 };
                 /** FleetAssignment */
                 FleetAssignment: {
@@ -3741,6 +4214,16 @@ export interface components {
                      */
                     peak_acceleration_m_s2: number | null;
                     /**
+                     * Max Accel M S2
+                     * @default null
+                     */
+                    max_accel_m_s2: number | null;
+                    /**
+                     * Max Jerk M S3
+                     * @default null
+                     */
+                    max_jerk_m_s3: number | null;
+                    /**
                      * Travel Distance M
                      * @default 0
                      */
@@ -3781,6 +4264,20 @@ export interface components {
                      */
                     cycles_per_hour: number | null;
                 };
+                /**
+                 * PlanConstant
+                 * @description A number the checks agent declares for one planned check, with the reason for it.
+                 */
+                PlanConstant: {
+                    /** Name */
+                    name: string;
+                    /** Value */
+                    value: number;
+                    /** Unit */
+                    unit: string;
+                    /** Justification */
+                    justification: string;
+                };
                 /** Quantity */
                 Quantity: {
                     /** Value */
@@ -3790,6 +4287,16 @@ export interface components {
                      * @default
                      */
                     unit: string;
+                };
+                /** RejectedPlan */
+                RejectedPlan: {
+                    /**
+                     * Id
+                     * @default
+                     */
+                    id: string;
+                    /** Reason */
+                    reason: string;
                 };
                 /** RepairAttempt */
                 RepairAttempt: {
@@ -4076,7 +4583,7 @@ export interface components {
                      * Verb
                      * @enum {string}
                      */
-                    verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home";
+                    verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home" | "rotate";
                     /**
                      * Object
                      * @default
@@ -4097,6 +4604,26 @@ export interface components {
                      * @default
                      */
                     description: string;
+                    /**
+                     * Turns
+                     * @default 0
+                     */
+                    turns: number;
+                    /**
+                     * Rpm
+                     * @default 0
+                     */
+                    rpm: number;
+                    /**
+                     * Ramp S
+                     * @default 0
+                     */
+                    ramp_s: number;
+                    /**
+                     * Axis
+                     * @default tool_yaw
+                     */
+                    axis: string;
                 };
                 /** TaskObject */
                 TaskObject: {
@@ -4134,6 +4661,11 @@ export interface components {
                      * @default
                      */
                     start_marker: string;
+                    /**
+                     * Attached
+                     * @default false
+                     */
+                    attached: boolean;
                 };
                 /** TechnicalSpec */
                 TechnicalSpec: {
@@ -4200,6 +4732,8 @@ export interface components {
                      * @default
                      */
                     reference: string;
+                    /** @default null */
+                    baseline: components["schemas"]["Baseline"] | null;
                 };
             };
         };
@@ -4249,6 +4783,12 @@ export interface components {
              * @default
              */
             quote: string;
+            /**
+             * Status
+             * @default verified
+             * @enum {string}
+             */
+            status: "verified" | "unverified";
         };
         /**
          * SpecValue
@@ -4294,6 +4834,28 @@ export interface components {
              * @default
              */
             note: string;
+        };
+        /**
+         * Rejected
+         * @description A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).
+         */
+        Rejected: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Shop
+             * @default
+             */
+            shop: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+            /** Reason */
+            reason: string;
         };
         /**
          * Drive
@@ -4362,6 +4924,16 @@ export interface components {
              * @default
              */
             reason: string;
+            /**
+             * Preferred
+             * @default false
+             */
+            preferred: boolean;
+            /**
+             * Price Issue
+             * @default
+             */
+            price_issue: string;
         };
         /** TwinJointLimit */
         TwinJointLimit: {
@@ -4498,6 +5070,21 @@ export interface components {
              * @default false
              */
             pinned: boolean;
+            /**
+             * Preferred
+             * @default false
+             */
+            preferred: boolean;
+            /**
+             * Rejected
+             * @default []
+             */
+            rejected: components["schemas"]["Rejected"][];
+            /**
+             * Calcs
+             * @default []
+             */
+            calcs: components["schemas"]["Calc"][];
         };
         /** ElectronicsItem */
         ElectronicsItem: {
@@ -4547,6 +5134,16 @@ export interface components {
              * @default []
              */
             checks: components["schemas"]["Check"][];
+            /**
+             * Preferred
+             * @default false
+             */
+            preferred: boolean;
+            /**
+             * Rejected
+             * @default []
+             */
+            rejected: components["schemas"]["Rejected"][];
         };
         /** StructureStyle */
         StructureStyle: {
@@ -4720,6 +5317,11 @@ export interface components {
              * @default null
              */
             approved_at: string | null;
+            /**
+             * Sourcing Notes
+             * @default []
+             */
+            sourcing_notes: string[];
             $defs: {
                 /** BuildFile */
                 BuildFile: {
@@ -4840,6 +5442,12 @@ export interface components {
                     detail: string;
                     /** @default null */
                     calc: components["schemas"]["Calc"] | null;
+                    /**
+                     * Source
+                     * @default sim
+                     * @enum {string}
+                     */
+                    source: "sim" | "planned";
                 };
                 /**
                  * Drive
@@ -4915,6 +5523,16 @@ export interface components {
                      * @default []
                      */
                     checks: components["schemas"]["Check"][];
+                    /**
+                     * Preferred
+                     * @default false
+                     */
+                    preferred: boolean;
+                    /**
+                     * Rejected
+                     * @default []
+                     */
+                    rejected: components["schemas"]["Rejected"][];
                 };
                 /**
                  * JointSizing
@@ -4996,6 +5614,16 @@ export interface components {
                      * @default
                      */
                     reason: string;
+                    /**
+                     * Preferred
+                     * @default false
+                     */
+                    preferred: boolean;
+                    /**
+                     * Price Issue
+                     * @default
+                     */
+                    price_issue: string;
                 };
                 /** MotorChoice */
                 MotorChoice: {
@@ -5073,6 +5701,21 @@ export interface components {
                      * @default false
                      */
                     pinned: boolean;
+                    /**
+                     * Preferred
+                     * @default false
+                     */
+                    preferred: boolean;
+                    /**
+                     * Rejected
+                     * @default []
+                     */
+                    rejected: components["schemas"]["Rejected"][];
+                    /**
+                     * Calcs
+                     * @default []
+                     */
+                    calcs: components["schemas"]["Calc"][];
                 };
                 /** Quantity */
                 Quantity: {
@@ -5083,6 +5726,28 @@ export interface components {
                      * @default
                      */
                     unit: string;
+                };
+                /**
+                 * Rejected
+                 * @description A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).
+                 */
+                Rejected: {
+                    /** Id */
+                    id: string;
+                    /** Name */
+                    name: string;
+                    /**
+                     * Shop
+                     * @default
+                     */
+                    shop: string;
+                    /**
+                     * Url
+                     * @default
+                     */
+                    url: string;
+                    /** Reason */
+                    reason: string;
                 };
                 /**
                  * ShopPrice
@@ -5110,6 +5775,12 @@ export interface components {
                      * @default
                      */
                     quote: string;
+                    /**
+                     * Status
+                     * @default verified
+                     * @enum {string}
+                     */
+                    status: "verified" | "unverified";
                 };
                 /**
                  * SpecValue
@@ -5385,6 +6056,121 @@ export interface components {
                 };
             };
         };
+        /** AskTurn */
+        AskTurn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
+        };
+        /**
+         * AskContext
+         * @description What the client is looking at. Only ids and the moment: every number is read from storage by the server.
+         */
+        AskContext: {
+            /**
+             * Project Id
+             * @default null
+             */
+            project_id: string | null;
+            /**
+             * Stage
+             * @default null
+             */
+            stage: string | null;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+            /**
+             * T
+             * @default null
+             */
+            t: number | null;
+            /**
+             * Candidate
+             * @default null
+             */
+            candidate: string | null;
+            /**
+             * Build
+             * @default null
+             */
+            build: number | null;
+            /**
+             * Selection
+             * @default null
+             */
+            selection: string | null;
+        };
+        /** AskRequest */
+        AskRequest: {
+            /** Question */
+            question: string;
+            /**
+             * History
+             * @default []
+             */
+            history: components["schemas"]["AskTurn"][];
+            context?: components["schemas"]["AskContext"];
+            $defs: {
+                /**
+                 * AskContext
+                 * @description What the client is looking at. Only ids and the moment: every number is read from storage by the server.
+                 */
+                AskContext: {
+                    /**
+                     * Project Id
+                     * @default null
+                     */
+                    project_id: string | null;
+                    /**
+                     * Stage
+                     * @default null
+                     */
+                    stage: string | null;
+                    /**
+                     * Version
+                     * @default null
+                     */
+                    version: number | null;
+                    /**
+                     * T
+                     * @default null
+                     */
+                    t: number | null;
+                    /**
+                     * Candidate
+                     * @default null
+                     */
+                    candidate: string | null;
+                    /**
+                     * Build
+                     * @default null
+                     */
+                    build: number | null;
+                    /**
+                     * Selection
+                     * @default null
+                     */
+                    selection: string | null;
+                };
+                /** AskTurn */
+                AskTurn: {
+                    /**
+                     * Role
+                     * @enum {string}
+                     */
+                    role: "user" | "assistant";
+                    /** Text */
+                    text: string;
+                };
+            };
+        };
     };
     responses: {
         /** @description The job did not end within `wait`. The running record; poll `Location` or wait again. */
@@ -5549,7 +6335,9 @@ export interface operations {
                      *         "search": "claude_sonnet",
                      *         "extract": "claude_sonnet",
                      *         "analysis": "claude_sonnet",
-                     *         "objects": "claude_haiku"
+                     *         "objects": "claude_haiku",
+                     *         "ask": "claude_sonnet",
+                     *         "checks": "claude_opus"
                      *       }
                      *     }
                      */
@@ -6303,6 +7091,43 @@ export interface operations {
             422: components["responses"]["Unprocessable"];
         };
     };
+    putBaseline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "manual_cycle_s": 12,
+                 *       "operators": 2,
+                 *       "days_per_week": 6
+                 *     }
+                 */
+                "application/json": components["schemas"]["BaselineUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated project (with `savings_inputs`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
     putFleet: {
         parameters: {
             query?: never;
@@ -6678,12 +7503,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "candidate_id": "acme_ra_6",
-                 *       "action": "approve"
-                 *     }
-                 */
                 "application/json": components["schemas"]["DecisionRequest"];
             };
         };
@@ -6699,6 +7518,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
         };
     };
@@ -7108,6 +7928,70 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    ask: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Whole seconds to wait for the job to end (0 to 600; outside that range is a 422). 0 returns at once. If the job ends within the wait the answer
+                 *     is 200 with the final record, otherwise 202 with the running record.
+                 */
+                wait?: components["parameters"]["Wait"];
+                /** @description `resource` (the only value; others are a 422) adds the job's result as a full resource in `resource` once the job is finished (see `Job.resource`). */
+                expand?: components["parameters"]["Expand"];
+            };
+            header?: {
+                /**
+                 * @description 1 to 200 characters. The same key with the same body replays the first response; with a different body it is a
+                 *     422 (as is an empty or longer key). A replay returns the stored status, body and headers; 500 and above are not stored. Kept in
+                 *     memory for 24 hours per key, method and path.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+                /**
+                 * @description http(s) URL that receives the final job record (expanded) as a POST when the job ends (done, error or
+                 *     cancelled), with `X-Studio-Job`, `X-Studio-Event: job.finished` and, when `STUDIO_CALLBACK_SECRET` is set,
+                 *     `X-Studio-Signature: sha256=<hex HMAC of the body>`. Up to four attempts (at once, then after 1, 5 and 25 seconds; `callback.attempts` counts them all); a failed
+                 *     delivery never changes the job. A search or analysis that joins a running job keeps the first callback URL. The host must be in `STUDIO_CALLBACK_HOSTS` (default `localhost,127.0.0.1,::1`),
+                 *     otherwise the start is a 422.
+                 */
+                "X-Studio-Callback"?: components["parameters"]["Callback"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "question": "Why does the reach check pass?",
+                 *       "history": [],
+                 *       "context": {
+                 *         "project_id": "p_0123456789",
+                 *         "stage": "design",
+                 *         "version": 2
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description The job record; `result` is an `AskResponse` once `status` is `done`. */
+            200: {
+                headers: {
+                    Location: components["headers"]["JobLocation"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            202: components["responses"]["JobRunning"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -7537,6 +8421,69 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getPreferredVendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The saved vendors (an empty list when none were saved). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferredVendors"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setPreferredVendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "vendors": [
+                 *         {
+                 *           "name": "Robu",
+                 *           "domain": "robu.in",
+                 *           "categories": [
+                 *             "motors",
+                 *             "electronics"
+                 *           ],
+                 *           "note": "India"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreferredVendors"];
+            };
+        };
+        responses: {
+            /** @description The saved list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferredVendors"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["TooLarge"];
+            422: components["responses"]["Unprocessable"];
         };
     };
 }

@@ -41,15 +41,35 @@ class TaskObject(Model):
     grip: Literal['parallel', 'vacuum', 'magnetic', 'hook', 'fork', 'none'] = 'parallel'
     fragile: bool = False
     start_marker: str = ''                           # Marker id where the object starts
+    attached: bool = Field(default=False, json_schema_extra={'x-optional': True})   # held by the tool from t=0 (a cabin bolted to the tool, a fixture): its mass counts in every load; dropped from JSON when false
+
+    @model_serializer(mode='wrap')
+    def _drop_attached_false(self, handler):
+        out = handler(self)
+        if not out.get('attached'):
+            out.pop('attached', None)
+        return out
 
 
 class TaskAction(Model):
     """One step of the task, in order. `target` is a Marker id."""
-    verb: Literal['pick', 'place', 'move', 'drive', 'wait', 'inspect', 'push', 'press', 'home']
+    verb: Literal['pick', 'place', 'move', 'drive', 'wait', 'inspect', 'push', 'press', 'home', 'rotate']
     object: str = ''                                 # TaskObject id, when the step handles an object
-    target: str = ''                                 # Marker id
-    duration_s: float = Field(default=0.0, ge=0)     # dwell in seconds, ONLY for wait/inspect/press; 0 for other verbs (their time comes from the cycle time)
+    target: str = ''                                 # Marker id (none for rotate)
+    duration_s: float = Field(default=0.0, ge=0)     # dwell for wait/inspect/press; for move and rotate an optional UPPER time for that motion (0 = none); 0 for pick/place/drive/home/push
     description: str = Field(default='', max_length=400)
+    turns: float = Field(default=0.0, json_schema_extra={'x-optional': True})    # rotate: signed number of turns (may be fractional); dropped from JSON when 0
+    rpm: float = Field(default=0.0, ge=0, json_schema_extra={'x-optional': True})     # rotate: peak speed in turns per minute (> 0 for rotate); dropped when 0
+    ramp_s: float = Field(default=0.0, ge=0, json_schema_extra={'x-optional': True})  # rotate: time to reach (and leave) that speed; 0 = the joint's own acceleration; dropped when 0
+    axis: str = Field(default='tool_yaw', json_schema_extra={'x-optional': True})     # rotate: 'tool_yaw' or a joint name; dropped when 'tool_yaw'
+
+    @model_serializer(mode='wrap')
+    def _drop_rotate_defaults(self, handler):
+        out = handler(self)
+        for key, default in (('turns', 0.0), ('rpm', 0.0), ('ramp_s', 0.0), ('axis', 'tool_yaw')):
+            if out.get(key) == default:
+                out.pop(key, None)
+        return out
 
 
 class Locomotion(Model):
@@ -72,7 +92,9 @@ class PhysicsInputs(Model):
     safety_factor: float = Field(default=1.5, ge=1, le=5)
     clearance_m: float = Field(default=0.05, ge=0, le=2)     # extra reach margin around waypoints
     approach_height_m: float = Field(default=0.10, ge=0, le=2)  # above pick/place points
-    peak_acceleration_m_s2: float | None = Field(default=None, gt=0)  # None = from the cycle time
+    peak_acceleration_m_s2: float | None = Field(default=None, gt=0)  # None = from the cycle time; the capability the robot needs (>=)
+    max_accel_m_s2: float | None = Field(default=None, gt=0, json_schema_extra={'x-optional': True})  # comfort / fragile limit, at most (<=); dropped from JSON when None
+    max_jerk_m_s3: float | None = Field(default=None, gt=0, json_schema_extra={'x-optional': True})   # comfort / fragile limit, at most (<=); dropped from JSON when None
     # Locomotion (used only when TechnicalSpec.locomotion.required)
     travel_distance_m: float = Field(default=0.0, ge=0)
     travel_speed_m_s: float | None = Field(default=None, gt=0)
@@ -83,6 +105,14 @@ class PhysicsInputs(Model):
     shifts_per_day: float = Field(default=1.0, ge=0, le=3)
     cycles_per_hour: float | None = Field(default=None, ge=0)
 
+    @model_serializer(mode='wrap')
+    def _drop_limits_none(self, handler):
+        out = handler(self)
+        for key in ('max_accel_m_s2', 'max_jerk_m_s3'):
+            if out.get(key) is None:
+                out.pop(key, None)
+        return out
+
 
 class Question(Model):
     id: str = Field(pattern=r'^[a-z][a-z0-9_]{0,40}$')
@@ -92,6 +122,14 @@ class Question(Model):
     unit: str = ''
     default: Any = None
     why: str = Field(default='', max_length=300)
+
+
+class Baseline(Model):
+    """The manual way of doing the task, for the time-saved estimate (not for any pass/fail check)."""
+    manual_cycle_s: float = Field(gt=0, le=86400)      # seconds one person needs per item
+    operators: int = Field(ge=1, le=100)                # people doing the task by hand today
+    source: Literal['user', 'estimate']                 # user = given in an answer or in the Time saved editor
+    note: str = Field(default='', max_length=400)
 
 
 class TechnicalSpec(Model):
@@ -110,6 +148,14 @@ class TechnicalSpec(Model):
     physics_inputs: PhysicsInputs
     assumptions: list[str] = []
     reference: str = Field(default='', max_length=4000)     # what the reference robot (if any) contributed
+    baseline: Baseline | None = Field(default=None, json_schema_extra={'x-optional': True})   # dropped from JSON when None
+
+    @model_serializer(mode='wrap')
+    def _drop_baseline_none(self, handler):
+        out = handler(self)
+        if out.get('baseline') is None:
+            out.pop('baseline', None)
+        return out
 
     def marker(self, marker_id: str) -> Marker:
         for m in self.markers:
@@ -208,6 +254,31 @@ class Calc(Model):
     note: str = ''
 
 
+class SavingsInputs(Model):
+    """Inputs of the time-saved formulas (physics/savings.py and packages/core/src/savings.ts)."""
+    robot_cycle_s: float = Field(gt=0)
+    manual_cycle_s: float = Field(gt=0)
+    operators: float = Field(ge=1)
+    shifts_per_day: float = Field(default=1.0, ge=0)
+    hours_per_shift: float = Field(default=8.0, ge=0)
+    days_per_week: float = Field(default=5.0, ge=0)
+    days_per_year: float = Field(default=250.0, ge=0)
+    supervision_min_per_shift: float = Field(default=15.0, ge=0)
+
+
+class Savings(Model):
+    """Every output of the time-saved estimate as a traceable calculation (`result` is the value)."""
+    robot_items_per_hour: Calc
+    manual_items_per_hour: Calc
+    items_per_day: Calc
+    manual_hours_per_day: Calc
+    supervision_hours_per_day: Calc
+    hours_freed_per_day: Calc
+    hours_freed_per_week: Calc
+    hours_freed_per_year: Calc
+    throughput_change: Calc
+
+
 class Requirement(Model):
     id: str                                           # e.g. reach_max, payload, grip_force, joint_torque_j2
     name: str
@@ -228,6 +299,41 @@ class Check(Model):
     passed: bool | None                               # None = could not be checked (missing or unverified value)
     detail: str = ''
     calc: Calc | None = None                          # how `actual` was obtained
+    source: Literal['sim', 'planned'] = Field(default='sim', json_schema_extra={'x-optional': True})   # 'planned' = AI-planned, code-computed (checks agent); dropped from JSON when 'sim'
+
+    @model_serializer(mode='wrap')
+    def _drop_sim_source(self, handler):
+        out = handler(self)
+        if out.get('source') == 'sim':
+            out.pop('source', None)
+        return out
+
+
+class PlanConstant(Model):
+    """A number the checks agent declares for one planned check, with the reason for it."""
+    name: str = Field(max_length=40)
+    value: float
+    unit: str = Field(max_length=40)
+    justification: str = Field(max_length=400)
+
+
+class CheckPlan(Model):
+    """A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and
+    its own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result."""
+    id: str = Field(max_length=60)                    # ^[a-z][a-z0-9_]{0,40}$, checked in code
+    name: str = Field(max_length=120)
+    why: str = Field(default='', max_length=500)
+    expression: str = Field(max_length=400)
+    unit: str = Field(max_length=40)                  # the expression's unit
+    comparator: Literal['>=', '<=']                   # the expression must be >= / <= the limit
+    limit: str = Field(max_length=400)                # an expression too
+    unit_limit: str = Field(max_length=40)
+    constants: list[PlanConstant] = []
+
+
+class RejectedPlan(Model):
+    id: str = Field(default='', max_length=60)
+    reason: str = Field(max_length=600)
 
 
 # --- Simulation result ---------------------------------------------------------------------------------------------
@@ -363,6 +469,16 @@ class DesignVersion(Model):
     approved: bool = False
     repair: RepairLog | None = Field(default=None, json_schema_extra={'x-optional': True})
     fleet: FleetPlan | None = Field(default=None, json_schema_extra={'x-optional': True})
+    check_plan: list[CheckPlan] = Field(default=[], json_schema_extra={'x-optional': True})    # accepted plans of the checks agent, re-evaluated in code on every re-simulation; dropped from JSON when empty
+    check_plan_rejected: list[RejectedPlan] = Field(default=[], json_schema_extra={'x-optional': True})   # plans code rejected, with the reason; dropped when empty
+
+    @model_serializer(mode='wrap')
+    def _drop_empty_plans(self, handler):
+        out = handler(self)
+        for key in ('check_plan', 'check_plan_rejected'):
+            if not out.get(key):
+                out.pop(key, None)
+        return out
 
 
 # --- Catalog (search, extract, analysis) ---------------------------------------------------------------------------
@@ -407,6 +523,14 @@ class Candidate(Model):
     key_specs: list[SourcedValue] = []
     confidence: Literal['high', 'medium', 'low'] = 'medium'
     screen: list[Check] = []                          # quick payload/reach screen, filled by code
+    preferred: bool = Field(default=False, json_schema_extra={'x-optional': True})   # sold by a preferred vendor; dropped from JSON when false
+
+    @model_serializer(mode='wrap')
+    def _drop_preferred_false(self, handler):
+        out = handler(self)
+        if not out.get('preferred'):
+            out.pop('preferred', None)
+        return out
 
 
 class ManufacturerValue(Model):
@@ -464,6 +588,16 @@ class ShopPrice(Model):
     shop: str = Field(max_length=80)
     source_url: str = Field(max_length=800)
     quote: str = Field(default='', max_length=600)    # verbatim price text from the page
+    # unverified = the server's own fetch of the page was blocked (401/403/429 or a bot-challenge page) and the figure is
+    # only the model's quote: shown, never used for ranking or sums. Dropped from JSON when verified (the default).
+    status: Literal['verified', 'unverified'] = Field(default='verified', json_schema_extra={'x-optional': True})
+
+    @model_serializer(mode='wrap')
+    def _drop_verified(self, handler):
+        out = handler(self)
+        if out.get('status') == 'verified':
+            out.pop('status', None)
+        return out
 
     @field_validator('source_url')
     @classmethod
@@ -512,6 +646,23 @@ class Drive(Model):
     name: str = Field(default='', max_length=200)     # gearbox product or standard description
 
 
+class Rejected(Model):
+    """A shop candidate that was not used for a motor or electronics row, and why (code decides the reason)."""
+    id: str = Field(max_length=80)
+    name: str = Field(max_length=200)
+    shop: str = Field(default='', max_length=80)
+    url: str = Field(default='', max_length=800)
+    reason: str = Field(max_length=400)               # no_price | page_blocked | quote_not_found | price_not_in_quote |
+                                                      # missing_values | fails_margin: <detail>
+
+
+def _drop_empty_keys(out, keys):
+    for key in keys:
+        if not out.get(key):
+            out.pop(key, None)
+    return out
+
+
 class MotorAlternative(Model):
     id: str = Field(pattern=ID_PATTERN)               # stable within a build; used to pin it in a rebuild
     name: str = Field(max_length=200)
@@ -523,6 +674,12 @@ class MotorAlternative(Model):
     drive: Drive | None = None                        # the gearing code would pair it with
     passes: bool = False                              # code: verified critical values and margins pass
     reason: str = Field(default='', max_length=400)   # why it passes or fails (code)
+    preferred: bool = Field(default=False, json_schema_extra={'x-optional': True})    # sold by a preferred vendor
+    price_issue: str = Field(default='', max_length=40, json_schema_extra={'x-optional': True})   # why it has no verified price: no_price | page_blocked | quote_not_found | price_not_in_quote
+
+    @model_serializer(mode='wrap')
+    def _drop_empty(self, handler):
+        return _drop_empty_keys(handler(self), ('preferred', 'price_issue'))
 
 
 class MotorChoice(Model):
@@ -542,6 +699,13 @@ class MotorChoice(Model):
     checks: list[Check] = []
     alternatives: list[MotorAlternative] = []
     pinned: bool = False                              # the user chose it ("Use this one")
+    preferred: bool = Field(default=False, json_schema_extra={'x-optional': True})    # sold by a preferred vendor
+    rejected: list[Rejected] = Field(default=[], json_schema_extra={'x-optional': True})   # candidates not used, with reasons
+    calcs: list[Calc] = Field(default=[], json_schema_extra={'x-optional': True})     # motor-side torque and speed after the ratio
+
+    @model_serializer(mode='wrap')
+    def _drop_empty(self, handler):
+        return _drop_empty_keys(handler(self), ('preferred', 'rejected', 'calcs'))
 
 
 class ElectronicsItem(Model):
@@ -556,6 +720,12 @@ class ElectronicsItem(Model):
     price: ShopPrice | None = None
     values: list[SpecValue] = []
     checks: list[Check] = []                          # e.g. driver current >= 1.2 x motor current
+    preferred: bool = Field(default=False, json_schema_extra={'x-optional': True})    # sold by a preferred vendor
+    rejected: list[Rejected] = Field(default=[], json_schema_extra={'x-optional': True})   # candidates not used, with reasons
+
+    @model_serializer(mode='wrap')
+    def _drop_empty(self, handler):
+        return _drop_empty_keys(handler(self), ('preferred', 'rejected'))
 
 
 class StructureStyle(Model):
@@ -626,6 +796,11 @@ class StudioBuild(Model):
     files: list[BuildFile] = []                       # assembly.step, urdf/robot.urdf, urdf/meshes/*.stl, ...
     approved: bool = False
     approved_at: str | None = None
+    sourcing_notes: list[str] = Field(default=[], json_schema_extra={'x-optional': True})   # what the shop search found and why
+
+    @model_serializer(mode='wrap')
+    def _drop_empty(self, handler):
+        return _drop_empty_keys(handler(self), ('sourcing_notes',))
 
 
 # --- Digital twin API (stateless, deterministic, no LLM) ---
@@ -656,3 +831,65 @@ class TwinMoveResult(Model):
     limits: list[TwinLimitHit] = []                   # which limits bound, first instants
     torque_use: dict[str, float] = {}                 # peak required / available torque per joint (1.0 = at limit)
     ik_error_m: float | None = None                   # for a cartesian target
+
+
+# --- Ask bar ---
+
+_OPT = {'x-optional': True}
+
+
+class AskTurn(Model):
+    role: Literal['user', 'assistant']
+    text: str = Field(max_length=4000)
+
+
+class AskContext(Model):
+    """What the client is looking at. Only ids and the moment: every number is read from storage by the server."""
+    project_id: str | None = Field(default=None, max_length=40, json_schema_extra=_OPT)
+    stage: str | None = Field(default=None, max_length=40, json_schema_extra=_OPT)
+    version: int | None = Field(default=None, ge=1, json_schema_extra=_OPT)
+    t: float | None = Field(default=None, ge=0, json_schema_extra=_OPT)
+    candidate: str | None = Field(default=None, max_length=120, json_schema_extra=_OPT)
+    build: int | None = Field(default=None, ge=1, json_schema_extra=_OPT)
+    selection: str | None = Field(default=None, max_length=200, json_schema_extra=_OPT)
+
+
+class AskRequest(Model):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[AskTurn] = Field(default=[], max_length=6, json_schema_extra=_OPT)   # older turns are dropped by the server
+    context: AskContext = Field(default_factory=AskContext, json_schema_extra=_OPT)
+
+
+class AskCitation(Model):
+    kind: Literal['version', 'check', 'requirement', 'build', 'motor', 'candidate', 'brief', 'spec']
+    ref: str = Field(max_length=200)
+    label: str = Field(max_length=200)
+
+
+class AskActionTaken(Model):
+    kind: str = Field(max_length=40)
+    ok: bool
+    job_id: str | None = Field(default=None, json_schema_extra=_OPT)
+    summary: str = Field(max_length=400)
+    error: str | None = Field(default=None, json_schema_extra=_OPT)
+
+
+class AskConfirm(Model):
+    kind: Literal['approve', 'approve_build', 'decision']
+    label: str = Field(max_length=200)
+    request: dict[str, Any]                            # the body of the existing route (see docs/API_DESIGN.md section 11)
+
+
+class AskNavigate(Model):
+    stage: str = Field(max_length=40)
+    version: int | None = Field(default=None, ge=1, json_schema_extra=_OPT)
+    build: int | None = Field(default=None, ge=1, json_schema_extra=_OPT)
+    candidate: str | None = Field(default=None, max_length=120, json_schema_extra=_OPT)
+
+
+class AskResponse(Model):
+    answer: str                                        # markdown
+    citations: list[AskCitation] = []
+    actions_taken: list[AskActionTaken] = []           # filled by Java after it executed or refused the proposals
+    confirm: list[AskConfirm] = []
+    navigate: AskNavigate | None = None

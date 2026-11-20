@@ -35,7 +35,7 @@ class Gantry:
                Joint('y_axis', 'prismatic', -p.y_stroke_m / 2, p.y_stroke_m / 2, v[1], f[1]),
                Joint('z_axis', 'prismatic', 0.0, p.z_stroke_m, v[2], f[2])]
         if p.tool_yaw:
-            out.append(Joint('tool_yaw', 'revolute', -math.pi, math.pi, 3.0, 5.0))
+            out.append(Joint('tool_yaw', 'continuous' if p.tool_yaw_continuous else 'revolute', -math.pi, math.pi, 3.0, 5.0))
         return out
 
     def joint_accels(self, p):
@@ -197,7 +197,7 @@ class Gantry:
         if p.tool_yaw:
             u.link('tool_head', [U.vcyl(0.035, -0.04, 0.0, color=DARK)])
             j = js['tool_yaw']
-            u.joint('tool_yaw', 'revolute', last, 'tool_head', axis=(0, 0, 1), lower=j.lower, upper=j.upper,
+            u.joint('tool_yaw', j.type, last, 'tool_head', axis=(0, 0, 1), lower=j.lower, upper=j.upper,
                     velocity=j.max_velocity, effort=j.max_effort)
             last = 'tool_head'
         Lt = p.tool_length_m

@@ -99,6 +99,16 @@
             }
           ],
           "default": null
+        },
+        "source": {
+          "default": "sim",
+          "enum": [
+            "sim",
+            "planned"
+          ],
+          "title": "Source",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [

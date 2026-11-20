@@ -6,6 +6,7 @@ import dev.robode.studio.jobs.JobService;
 import dev.robode.studio.jobs.TaskResult;
 import dev.robode.studio.jobs.TaskRunner;
 import dev.robode.studio.llm.LlmSettings;
+import dev.robode.studio.settings.PreferredVendors;
 import dev.robode.studio.store.ProjectStore;
 import dev.robode.studio.store.StudioStore;
 import java.nio.file.Path;
@@ -24,13 +25,15 @@ public class StudioService {
     private final TaskRunner runner;
     private final JobService jobs;
     private final LlmSettings llm;
+    private final PreferredVendors vendors;
 
-    public StudioService(ProjectStore store, StudioStore studio, TaskRunner runner, JobService jobs, LlmSettings llm) {
+    public StudioService(ProjectStore store, StudioStore studio, TaskRunner runner, JobService jobs, LlmSettings llm, PreferredVendors vendors) {
         this.store = store;
         this.studio = studio;
         this.runner = runner;
         this.jobs = jobs;
         this.llm = llm;
+        this.vendors = vendors;
     }
 
     private static String taskId(String prefix) { return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10); }
@@ -60,6 +63,7 @@ public class StudioService {
             input.set("base_build", baseBuild == null ? Json.MAPPER.nullNode() : studio.build(pid, baseBuild));
             input.put("request", text);
             input.set("pinned", pinned == null || pinned.isNull() ? Json.obj() : pinned);
+            input.set("preferred_vendors", vendors.list());
             input.put("build", studio.nextBuild(pid));
             int n = input.get("build").asInt();
             try (TaskResult r = runner.run(job.id(), "studio_build", input, llm.resolveRoles(), pid, "studio_build", job.listener())) {
@@ -154,6 +158,7 @@ public class StudioService {
             project.put("id", pid);
             project.set("title", meta.hasNonNull("title") ? meta.get("title") : Json.MAPPER.nullNode());
             project.set("brief", meta.hasNonNull("brief") ? meta.get("brief") : Json.MAPPER.nullNode());
+            if (meta.get("savings_inputs") instanceof ObjectNode savingsInputs) project.set("savings_inputs", savingsInputs);
             ArrayNode snapshots = Json.arr();
             for (JsonNode view : studio.views(pid, n))
                 snapshots.add(Json.obj().put("view", view.asString())

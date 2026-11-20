@@ -15,6 +15,8 @@
     "search": "claude_sonnet",
     "extract": "claude_sonnet",
     "analysis": "claude_sonnet",
-    "objects": "claude_haiku"
+    "objects": "claude_haiku",
+    "ask": "claude_sonnet",
+      "checks": "claude_opus"
   }
 }

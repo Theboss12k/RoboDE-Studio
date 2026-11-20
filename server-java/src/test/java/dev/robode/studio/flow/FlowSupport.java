@@ -63,7 +63,7 @@ final class FlowSupport {
                 .put("fixture", RESOURCES.resolve("scripted/" + rulesFile).toString()).put("effort", "").put("timeout_s", 240).put("cli_path", ""));
         data.set("profiles", profiles);
         ObjectNode roles = Json.obj();
-        for (String r : new String[] {"spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects"}) roles.put(r, "fx");
+        for (String r : new String[] {"spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects", "ask", "checks"}) roles.put(r, "fx");
         data.set("roles", roles);
         Json.write(runtime.resolve("llm/profiles.json"), data);
     }

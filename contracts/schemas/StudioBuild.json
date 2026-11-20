@@ -242,6 +242,16 @@
             }
           ],
           "default": null
+        },
+        "source": {
+          "default": "sim",
+          "enum": [
+            "sim",
+            "planned"
+          ],
+          "title": "Source",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -392,6 +402,21 @@
           },
           "title": "Checks",
           "type": "array"
+        },
+        "preferred": {
+          "default": false,
+          "title": "Preferred",
+          "type": "boolean",
+          "x-optional": true
+        },
+        "rejected": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Rejected"
+          },
+          "title": "Rejected",
+          "type": "array",
+          "x-optional": true
         }
       },
       "required": [
@@ -546,6 +571,19 @@
           "maxLength": 400,
           "title": "Reason",
           "type": "string"
+        },
+        "preferred": {
+          "default": false,
+          "title": "Preferred",
+          "type": "boolean",
+          "x-optional": true
+        },
+        "price_issue": {
+          "default": "",
+          "maxLength": 40,
+          "title": "Price Issue",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -676,6 +714,30 @@
           "default": false,
           "title": "Pinned",
           "type": "boolean"
+        },
+        "preferred": {
+          "default": false,
+          "title": "Preferred",
+          "type": "boolean",
+          "x-optional": true
+        },
+        "rejected": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Rejected"
+          },
+          "title": "Rejected",
+          "type": "array",
+          "x-optional": true
+        },
+        "calcs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Calc"
+          },
+          "title": "Calcs",
+          "type": "array",
+          "x-optional": true
         }
       },
       "required": [
@@ -703,6 +765,45 @@
         "value"
       ],
       "title": "Quantity",
+      "type": "object"
+    },
+    "Rejected": {
+      "description": "A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "shop": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Shop",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 800,
+          "title": "Url",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 400,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "reason"
+      ],
+      "title": "Rejected",
       "type": "object"
     },
     "ShopPrice": {
@@ -746,6 +847,16 @@
           "maxLength": 600,
           "title": "Quote",
           "type": "string"
+        },
+        "status": {
+          "default": "verified",
+          "enum": [
+            "verified",
+            "unverified"
+          ],
+          "title": "Status",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -1085,6 +1196,15 @@
       ],
       "default": null,
       "title": "Approved At"
+    },
+    "sourcing_notes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Sourcing Notes",
+      "type": "array",
+      "x-optional": true
     }
   },
   "required": [

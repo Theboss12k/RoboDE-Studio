@@ -9,6 +9,8 @@ Roles:
 - extract:  reads a manufacturer datasheet
 - analysis: explains differences
 - objects:  makes simple 3D models of the task objects (a small model)
+- checks:   plans task-specific checks (formulas over named quantities); code evaluates them
+- ask:      answers the Ask bar's questions and proposes actions (it never performs them; Java does)
 
 Providers are plugged in through PROVIDERS (kind -> factory(profile)). Adding a provider means adding one adapter
 module with `invoke(input, system_prompt)` and one entry here; nothing else in the studio changes.
@@ -25,8 +27,8 @@ from .claude_cli import MODELS, ClaudeCLI
 from .keys import KeyStore
 from .usage import UsageLedger
 
-ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects')
-DEFAULT_ROLES = {'spec': 'claude_opus', 'scene': 'claude_sonnet', 'robot': 'claude_opus', 'revise': 'claude_opus', 'search': 'claude_sonnet', 'extract': 'claude_sonnet', 'analysis': 'claude_sonnet', 'objects': 'claude_haiku'}
+ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects', 'ask', 'checks')
+DEFAULT_ROLES = {'spec': 'claude_opus', 'scene': 'claude_sonnet', 'robot': 'claude_opus', 'revise': 'claude_opus', 'search': 'claude_sonnet', 'extract': 'claude_sonnet', 'analysis': 'claude_sonnet', 'objects': 'claude_haiku', 'ask': 'claude_sonnet', 'checks': 'claude_opus'}
 
 
 def claude_cli(profile):

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { JobStatus, StageHead, fmt, screenChips } from "../components/common";
 import { useProjectJob } from "../jobs";
-import { RobotPlaceholder } from "../components/icons";
+import { PreferredVendor, RobotPlaceholder } from "../components/icons";
 import FleetMemberNote from "../components/fleet/FleetMemberNote";
 import type { Candidate, PriceEstimate, Project, SourcedValue } from "../types";
 
@@ -34,7 +34,7 @@ function Card({ c, onAnalyse, analysed, supported }: { c: Candidate; onAnalyse: 
       <Image url={c.image_url} />
       <div>
         <h3>{c.manufacturer} {c.model}</h3>
-        <div className="row"><span className="tag">{c.family.replace("_", " ")}</span><span className={`tag ${c.confidence === "high" ? "ok" : c.confidence === "low" ? "warn" : ""}`}>confidence: {c.confidence}</span></div>
+        <div className="row">{c.preferred && <span className="tag ok" title="Sold by one of your preferred vendors (Settings)"><PreferredVendor size={12} aria-hidden="true" />Preferred vendor</span>}<span className="tag">{c.family.replace("_", " ")}</span><span className={`tag ${c.confidence === "high" ? "ok" : c.confidence === "low" ? "warn" : ""}`}>confidence: {c.confidence}</span></div>
       </div>
       <div className="small"><Price price={c.price} /></div>
       <ul className="plain small">

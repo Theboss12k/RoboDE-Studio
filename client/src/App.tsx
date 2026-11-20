@@ -7,6 +7,7 @@ import {
 } from "./components/icons";
 import { api } from "./api";
 import { UsageCounter } from "./Usage";
+import { AskBar, AskProvider, type AskNavigate } from "./components/AskBar";
 import Analysis from "./stages/Analysis";
 import Brief from "./stages/Brief";
 import Decision from "./stages/Decision";
@@ -37,7 +38,7 @@ function stageState(p: Project | null, cid: string | null) {
   const approved = p?.approved_version != null;
   const analysed = (p?.analyses?.length ?? 0) > 0;
   const open: Record<string, boolean> = {
-    brief: true, reference: !!p, questions: !!p, design: designed, studio: approved, options: approved, analysis: approved && (analysed || !!cid), decision: analysed,
+    brief: true, reference: !!p, questions: !!p, design: designed, studio: approved, options: approved, analysis: approved && (analysed || !!cid), decision: analysed || p?.studio?.approved_build != null,
   };
   const done: Record<string, boolean> = {
     brief: !!p, reference: !!(p?.reference?.text || p?.reference?.files?.length), questions: designed, design: approved, studio: p?.studio?.approved_build != null, options: (p?.candidates_count ?? 0) > 0,
@@ -76,7 +77,7 @@ function toastText(job: TrackedJob) {
 type Toast = { text: string; pid: string; stage: StageId; subject: string | null };
 
 export default function App() {
-  return <JobsProvider><Studio /></JobsProvider>;
+  return <JobsProvider><AskProvider><Studio /></AskProvider></JobsProvider>;
 }
 
 function Studio() {
@@ -161,6 +162,14 @@ function Studio() {
   const projectTitle = (id: string | null) => { const p = projects.find((x) => x.id === id); return p ? p.title || p.id : id ?? ""; };
   const analyse = (id: string) => { setCid(id); setStage("analysis"); };
 
+  const askNavigate = (n: AskNavigate) => {
+    const s = n.stage as StageId;
+    if (!STAGES.some((x) => x.id === s) && s !== "settings") return;
+    if (s !== "settings" && !unlocked[s]) return;
+    if (n.candidate) setCid(n.candidate);
+    go(s);
+  };
+
   let content;
   if (stage === "settings") content = <Settings />;
   else if (stage === "brief" || !project) content = <Brief project={project} onCreated={created} reload={reload} notice={briefNotice} next={() => go("reference")} />;
@@ -170,7 +179,7 @@ function Studio() {
   else if (stage === "studio") content = <RobotStudio project={project} reload={reload} />;
   else if (stage === "options") content = <Options project={project} reload={reload} analyse={analyse} />;
   else if (stage === "analysis") content = <Analysis project={project} reload={reload} cid={cid} setCid={setCid} decide={() => go("decision")} />;
-  else content = <Decision project={project} reload={reload} cid={cid} openStudio={() => go("studio")} />;
+  else content = <Decision project={project} reload={reload} cid={cid} openStudio={() => go("studio")} openOptions={() => go("options")} />;
 
   return (
     <div className="shell">
@@ -256,6 +265,7 @@ function Studio() {
           <Fragment key={project?.id ?? "new"}>{content}</Fragment>
         </main>
       </div>
+      <AskBar projectId={project?.id ?? null} stage={stage} candidate={cid} reload={reload} navigate={askNavigate} />
     </div>
   );
 }

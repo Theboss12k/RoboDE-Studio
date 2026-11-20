@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import families
+from ..agents import ask as ask_agent
+from ..catalog import vendors as vendors_mod
 from ..catalog.fetch import safe_download
 from ..ingest import images as image_intake
 from ..ingest import urdf as urdf_intake
@@ -14,6 +16,7 @@ from ..ingest.docs import extract_text
 from ..llm import gemini as gemini_module
 from ..llm.base import Image, supports_images
 from ..llm.claude_cli import MODELS
+from ..llm.usage import set_context
 from ..llm.registry import DEFAULT_ROLES, PROVIDERS, ROLES, default_profiles
 from ..pipeline import catalog as catalog_pipeline
 from ..pipeline import design as design_pipeline
@@ -112,7 +115,9 @@ def _answer_extras(inp):
     """Input `comments`, `notes`, `answer_images`, `brief_images` -> extras for the spec round (only non-empty parts) or None."""
     extras = {'comments': inp.get('comments') or None, 'notes': inp.get('notes') or None,
               'answer_images': answer_images(inp.get('answer_images')) or None,
-              'brief_images': brief_images(inp.get('brief_images')) or None}
+              'brief_images': brief_images(inp.get('brief_images')) or None,
+              'question_defaults': {q['id']: q['default'] for q in inp.get('questions') or []
+                                    if isinstance(q, dict) and q.get('id') and q.get('default') is not None} or None}
     return {k: v for k, v in extras.items() if v} or None
 
 
@@ -172,6 +177,27 @@ async def revise(inp, ctx):
     return out
 
 
+async def ask(inp, ctx):
+    """The Ask bar: a grounded answer plus PROPOSED actions (`proposals`), which Java validates and runs. Python performs
+    nothing: the tools only record. Input {question, history, context, grounding}."""
+    question = inp.get('question')
+    if not isinstance(question, str) or not question.strip():
+        raise ValueError('input.question is required')
+    for key in ('history',):
+        if inp.get(key) is not None and not isinstance(inp[key], list):
+            raise ValueError(f'input.{key} must be a list')
+    grounding = inp.get('grounding')
+    if grounding is not None and not isinstance(grounding, dict):
+        raise ValueError('input.grounding must be an object')
+    set_context(task='ask')
+    ctx.progress('Reading the stored data and answering')
+    out = await ask_agent.run(ctx.llms.for_role('ask'), question.strip(), inp.get('history') or [], inp.get('context') or {},
+                              grounding or {})
+    if out['proposals']:
+        ctx.progress(f'{len(out["proposals"])} action{"s" if len(out["proposals"]) != 1 else ""} proposed')
+    return out
+
+
 async def fleet_assign(inp, ctx):
     """No LLM: the automatic or the user's (validated) assignment of a version's task to several robots, with a
     layout preview. An assignment that does not fit the task is a value error."""
@@ -192,7 +218,7 @@ async def fleet_design(inp, ctx):
 async def find(inp, ctx):
     version = _version(inp.get('version'))
     result = await catalog_pipeline.find(ctx.llms, version, ctx.progress, ctx.download, limit=int(inp.get('limit') or 6),
-                                         member=inp.get('member'))
+                                         member=inp.get('member'), vendors=vendors_mod.normalize(inp.get('preferred_vendors')))
     return {'candidates': [c.model_dump(mode='json') for c in result['candidates']], 'dropped': result['dropped']}
 
 
@@ -291,7 +317,8 @@ async def studio_build(inp, ctx):
     if not isinstance(pinned, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in pinned.items()):
         raise ValueError('input.pinned must be an object {joint: alternative_id}')
     result = await studio_pipeline.build(ctx.llms, version, inp.get('member'), base, str(inp.get('request') or ''), pinned,
-                                         number, ctx.out_dir, ctx.progress, download=ctx.download)
+                                         number, ctx.out_dir, ctx.progress, download=ctx.download,
+                                         vendors=vendors_mod.normalize(inp.get('preferred_vendors')))
     return {'build': result.model_dump(mode='json'), 'parsed': _parsed(result.urdf)}
 
 
@@ -358,4 +385,5 @@ async def studio_pdf(inp, ctx):
 HANDLERS = {'meta': meta, 'design': design, 'revise': revise, 'find': find, 'analyse': analyse,
             'inspect_upload': inspect_upload, 'export_assets': export_assets, 'llm_test': llm_test,
             'fleet_assign': fleet_assign, 'fleet_design': fleet_design, 'studio_build': studio_build,
-            'studio_twin_move': studio_twin_move, 'studio_run_task': studio_run_task, 'studio_pdf': studio_pdf}
+            'studio_twin_move': studio_twin_move, 'studio_run_task': studio_run_task, 'studio_pdf': studio_pdf,
+            'ask': ask}

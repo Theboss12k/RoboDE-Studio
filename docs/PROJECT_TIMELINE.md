@@ -286,3 +286,99 @@ Dated record of changes to this repository. Newest entries are added at the bott
   - Real design run (Opus, Sonnet and Haiku): "Object models: 1 made". In the browser the 4-part bottle stands upright at point A at the right size and travels with the gripper during the carry.
 - The dev server was rebuilt and restarted with Robot studio and the objects agent (studio routes answer 200).
 - The other agent's procedural bottle was too small to judge at the default camera. The generated model now takes precedence wherever the agent succeeds.
+
+## 2026-11-21 — Decision between own design and catalog robot; time saved; preferred vendors; realistic motor sizing and sourcing
+
+- **Decision stage.** The user chooses "Our own design" (the approved Robot studio build) or "Buy a robot" (an analysed candidate).
+  - `POST /decision {action: "self", build?}` needs an approved build (409 otherwise) and records `{action: "self", build}`; the candidate path is unchanged.
+  - The own-design card shows build facts, an estimated cost per currency (web estimates; "defined spec" items counted separately) and checks, with "Download manufacturer PDF" and "Download build package".
+  - The Decision stage unlocks with an approved build or an analysed candidate.
+- **Time saved.**
+  - `TechnicalSpec.baseline` (manual time per item, operators): the spec agent asks for it with estimated defaults. It is absent unless the user answered or the agent produced it, and agent values are always marked as estimates.
+  - `PUT /projects/{pid}/baseline` stores overrides and assumptions (hours per shift, days per week and year, supervision minutes per shift).
+  - One savings function in Python (`physics/savings.py`) and TS (`packages/core/src/savings.ts`), checked by parity vectors in `contracts:check`.
+  - Shown in a "Time saved" panel on the Design stage (labour hours freed per day, week and year; items per hour; throughput; the working), as a line on each Decision card, and as a manufacturer-PDF section.
+- **Preferred vendors.**
+  - A global list in Settings: `GET/PUT /api/v1/settings/vendors`, stored in `runtime/settings/vendors.json` (Java writes it).
+  - Catalog search and motor/electronics sourcing search preferred vendors first and rank them higher, with a "Preferred vendor" badge; other vendors still appear.
+- **Sizing (`robot/sizing.py`).**
+  - Acceleration torque uses the simulated trajectory's per-frame acceleration (smoothed) at the same frame as the static load, instead of ω / 0.2 s. `ACCEL_RAMP_S` is no longer used for joints.
+  - The stretched-pose hold (rated payload) is static only and carries the continuous factor 1.25. Task-frame demand carries the peak factor 1.5.
+  - Gear ratio: the smallest standard ratio that fits both torque and speed. The row names the binding constraint when none fits.
+  - Bottle-arm peaks (design v1), fixture calculation, before → after (without / with motor-mass feedback):
+
+    | Joint | Before | After, without motor masses | After, with motor masses |
+    |---|---|---|---|
+    | j1 | 112 N·m | 3.5 N·m | 4.7 N·m |
+    | j2 | 165 N·m | 84 N·m | 107 N·m |
+    | j3 | 45 N·m | 29.5 N·m | 34 N·m |
+    | j4 | 5.0 N·m | 3.7 N·m | 3.7 N·m |
+
+    j2 is governed by the stretched hold of this old, oversized arm (1.6 m reach for a 0.95 m task).
+- **Sourcing (`robot/sourcing.py`).**
+  - Indian shops first, plus preferred vendors; at least 2 candidates per joint class.
+  - A rejection reason per alternative: `no_price`, `page_blocked`, `quote_not_found`, `price_not_in_quote`, `missing_values: …`, `fails_margin: …`. The build also gets `sourcing_notes`.
+  - Prices from shop pages that block the server's own check are kept as "unverified": shown, but never ranked or summed.
+  - New electronics search: drivers and power supplies can be shop items.
+  - Shown in the studio motor table and the PDF.
+- **Checks (fixture tests only).** pytest 321 passed, 4 skipped; `./mvnw test` 52, 0 failures (goldens unchanged); `contracts:check` (types, OpenAPI, twin and savings parity), typecheck and build pass.
+- **Real model runs.** Before this work, real build b1 of the bottle arm (Sonnet search with web, CAD) gave all defined specs and Pololu-only candidates with no prices; that motivated the sizing and sourcing fixes. Approving it produced a 15-page PDF (BOM, motor specs, file hashes, assumptions).
+- **Not yet verified with real models** (paused at 89 % of the 5-hour usage window): a rebuild (b2) with the new sizing and sourcing, the baseline questions on a new brief, a preferred-vendor search, and the Decision page in the browser.
+
+## 2026-11-21 (night) — Real verification of the Decision/time-saved/vendor/sourcing round; three fixes from it
+
+Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`), tests. No Java, client or contract change.
+
+- **Browser checks (dev server 8800/5190, project p_4775b16f5c).**
+  - Decision: the own-design and FANUC CRX-5iA choices are recorded and shown, and the PDF answers 200 (see the handoff).
+  - Design stage "Time saved" panel, with the working open: v2 (simulated cycle 4.603 s) shows 20.61 h/day, 103 h/week and 5151 h/year, 782.1 against 300 items/h, +160.7 %. Every line was hand-checked against the formulas.
+  - The Decision cards (78.75 h/week) use build b1, which is built on v1 (6 s cycle). The difference is the version, not an error.
+- **Settings: preferred vendors** Robu (robu.in; robots, motors, electronics) and StepperOnline (omc-stepperonline.com; motors, electronics) were added in the UI. `GET /settings/vendors` returns both.
+- **Real model inference, Claude Opus 5.5 (spec role), 2026-11-21.** Vague brief "VERIFY (Claude test): … small boxes of tea into a carton …" (p_9a798e817e).
+  - The first run failed: the Claude CLI's strict `--json-schema` rejected the `x-optional` marker on `TechnicalSpec.baseline`, so every real spec call failed. **Fix:** `portable_schema` drops `x-` keywords and keeps field names (test added).
+  - After the fix, six questions were asked, including `manual_cycle_s` (default 4 s) and `operators` (default 2), each with "the default is an estimate" in `why`.
+- **Real build b2 of p_4775b16f5c (Claude Sonnet 5.5 search with web, CAD), 2026-11-21, search date 2026-11-20.** Not approved.
+  - Peaks (design v1): j1 4.6, j2 101, j3 31.6, j4 3.7 N·m. j2 is still governed by the stretched hold of the oversized v1 arm.
+  - j4 is a shop item: robokits NEMA17 7 kgcm (RMCS-1020), INR 801, price verified.
+  - j1–j3 stayed defined specs. The rejection reasons were `missing_values: verified voltage` (Nema23 28 kgcm) and `fails_margin` (torque/speed ratio conflicts).
+  - No candidates came from the preferred vendors. Sonnet proposed only robokits motors, although the vendor block was in the prompt.
+  - No unverified prices.
+- **Two engineering errors found in b2, fixed (fixture tests only; not yet re-run with a real model).**
+  - A NEMA17 with a 2.5 V coil got its own "2.5 V" stepper driver and a 2.5 V power supply. Steppers run from a chopper bus: `electronics_for` now uses `STEPPER_BUS_V` (24 V) when the coil is rated lower, and notes the coil voltage.
+  - A brushed DC driver (Pololu G2 24v21) was chosen for the stepper joints j1–j3, because the driver type was never checked. Driver needs now carry `driver_type` (stepper, dc or bldc), and the search prompt asks for it. A candidate's type counts only with a verified page quote containing the type's words, and code decides (`DRIVER_TYPE_WORDS`). A missing type is `missing_values: verified driver type`; a wrong type is `fails_margin: driver type dc cannot drive stepper motors`.
+- **Checks.** pytest 324 passed, 4 skipped; `./mvnw test` 52, 0 failures; `contracts:check` passes. Typecheck and build were not re-run (no client change).
+- **Not done.** Real build b3, to confirm the electronics fixes, was refused by the Claude CLI: the 5-hour usage limit was reached (resets 06:20 IST).
+
+## 2026-11-21 — Ask bar, client panel (W6b)
+- **Applications:** web client only (`client/src/components/AskBar.tsx`, App, Design, Studio, Decision, Settings, styles, icons).
+- **Behavior.** A floating Ask button at the bottom right of every screen, and Cmd/Ctrl-K, open a non-modal panel (Escape closes; focus moves to the input and back to the button). The conversation lives in React state for the session only. Enter sends, Shift+Enter adds a line. The last 6 turns are sent as history, with a context of project id, stage, and the viewed version, build or candidate (ids only, no numbers from the screen). The player time is not sent yet.
+- **Answers.** Markdown (paragraphs, lists, bold, code, line breaks) is rendered by a small local renderer, with no raw HTML. Under an answer: citation chips (version, build and candidate citations jump to that item), "Actions taken" lines with done or failed state, and confirm chips (approve, approve build, decision) that ask "Confirm / Cancel" before calling the existing route, then reload the project. A `navigate` result switches stage when that stage is open.
+- **Selection.** Design, Robot studio and Decision publish what they show through `useAskSelection`; Design and Robot studio take a requested version or build through `useAskRequest`.
+- **Settings.** The hard-coded role list gained `ask` and `checks` entries.
+- **Checks.** `npm run typecheck` and `npm run build` pass. Not tried against the real server (`POST /api/v1/ask` is being built separately); no browser check yet. The panel uses local interfaces for the ask request and response, to be replaced by generated types when they exist.
+
+## 2026-11-21 — Ask bar, server side (W6a)
+- **Applications:** Java server (`AskController`, `AskService`, `AskGrounding`, `ProjectStore.appendActivity`, `LlmSettings`), Python engine (`agents/ask.py`, task `ask`, schemas, role `ask`), contracts, docs.
+- **Behavior.** `POST /api/v1/ask` starts an `ask` job. Java builds the grounding from stored data for the ids in the request (project, version, moment, build, candidate; no frames, at most about 60 KB) and the Python `ask` task answers from it with citations. Python never performs an action (it cannot call back): its tools only record up to two proposals, and Java validates and runs them through the same service methods the REST routes use (revise, design, search, analyse, studio_build, update_brief, set_baseline, cancel_job). Anything else is refused ("not allowed"), a third action is refused, approvals and decisions come back as confirm chips and are never executed. Each executed or refused action is appended to the project's `meta.activity` (last 200). Citations that are not in the grounding are dropped.
+- **Roles.** New role `ask` (default profile `claude_sonnet`), added to the Python registry, the Java `LlmSettings`, their tests and the golden files that list roles. The client's role list was already extended by W6b.
+- **Contracts.** `/ask` path, `AskRequest` and `AskResponse` schemas, job kind `ask`; generated types and the bundle were regenerated.
+- **Checks (fixture tests only, no model call).** Scripted-LLM Python tests (two actions recorded and a third rejected, unknown citations dropped, confirm chips passed through, malformed confirm sent back to the model, the `ask` task through the subprocess entry point) and Java `AskApiTest` against the fake engine (revise proposal executed with a real job and an activity entry, `delete_project` refused, cap at 2, approve becomes a chip, 404 and 422 cases, grounding without frames and within 60 KB, moment taken from the stored frame). pytest 340 passed, 4 skipped; `./mvnw -q test` 59 tests, 0 failures; `contracts:check` passes.
+- **Limitations.** No real model was asked anything, so answer quality, citation behavior and prompt-injection resistance of the real `ask` role are not evaluated. The client was not run against this server in this step.
+
+## 2026-11-21 — Generic motions: rotate, attached loads, at-most limits, timed moves (W4)
+
+- Applications: Studio server (schemas, spec agent, robot agent prompt, gantry family, physics requirements, task simulator), generated contracts and types. Part A of `docs/CHECKS_AND_ASK_DESIGN.md`.
+- Behaviour: `TaskAction` gains verb `rotate` (`turns`, `rpm`, `ramp_s`, `axis`) played on `tool_yaw` (or the named joint) with a trapezoid profile, not scaled by the cycle stretch; `duration_s` of `move`/`rotate` is an optional upper time (a faster move is stretched to it, a slower one fails `move_time_<n>`). `TaskObject.attached` holds an object from t=0 so its mass is in every load (the spin-mill lift load now includes the 5,000 kg cabin). `PhysicsInputs.max_accel_m_s2` / `max_jerk_m_s3` add requirements `max_accel` (peak of the TCP acceleration and the rim acceleration of a rotated object, from code) and `max_jerk` (no verdict: trapezoid profiles do not bound jerk). Gantry param `tool_yaw_continuous` gives a continuous yaw joint; limited joints fail `rotate_range_<joint>` when the swept range does not fit; joints moved by a rotate are excluded from `joint_limits` and are not unwound by later IK or home. New fields are x-optional and dropped from JSON when default, so stored versions and existing outputs are unchanged. The spec agent prompt and validator document and check the new fields (rpm > 0, turns != 0, no target; dwells plus move/rotate times must fit the cycle); the robot agent prompt mentions `tool_yaw_continuous`.
+- Checked (fixture tests only, scripted/numeric; no real model inference, no hardware, no dynamics simulation): new `tests/test_motions.py` (spin-mill fixture: 5 turns swept, 30 s lift, cabin in the z load, `max_accel` fails with the rim acceleration, continuous vs limited range, too-short timed move, missing joint, serialization, URDF); full Python suite and `./mvnw -q test` pass; `contracts:check` and `typecheck` pass. The golden `02_families.json` gained the new gantry param in its `params_schema`.
+- Limitations: the real spin-mill project was not re-run; the `tcp_speed` requirement still uses the whole cycle minus dwell (rotate and timed-move time is not subtracted); the studio twin still models `tool_yaw` as limited.
+
+
+## 2026-11-21 — Task-specific checks agent (W5)
+
+- Applications: Studio server (`physics/quantities.py`, `physics/formulas.py`, `agents/checks.py`, `pipeline/checks.py`, `pipeline/design.py`, `robot/sizing.py`, `robot/report.py`, `physics/requirements.py`, schemas, LLM registry), Java server (role list), web client (`Requirements.tsx`), generated contracts and types. Part B of `docs/CHECKS_AND_ASK_DESIGN.md`.
+- Behavior: a new role `checks` (default profile `claude_opus`) plans up to 12 task-specific checks after the simulation, in `design` and `revise`, before the collision repair. The model proposes formulas over a code-built catalogue of named quantities with units (object masses, sizes and inertias, rotate turns/rpm/ramp/omega/alpha, joint ratings and strokes, simulated peak speeds and accelerations, static loads, `g`, `pi`) plus constants it declares with a unit and a justification. Code parses each formula with `ast` (whitelist only; no eval, exec or compile of the text), evaluates it with pint units, and requires matching dimensions, finite values, known names and at most 6 constants per check. A plan that fails goes back to the model once; what still fails is dropped and listed in `version.check_plan_rejected`. Accepted plans become `Check`s with `source: "planned"` and a `Calc`, count toward `sim.ok`, and are stored in `version.check_plan` so repair rounds (and a revise whose agent call fails) re-evaluate them in code without a model call. A revise passes the previous plan to the agent as a hint. A failed agent call adds nothing and writes no progress line; success writes `Task-specific checks: <n> planned`. The client and the robot-studio PDF label these checks "AI-planned, code-computed".
+- Robot studio sizing: for each rotate action that turns a held or attached object on a joint, the inertial torque `I_obj_z * alpha_rotate` (from the stored spec, in code, not from a plan) is added to that joint's peak demand with a `Calc`. On the spin-mill fixture the 5,000 kg, 30 m cylinder at 4 rpm in a 10 s ramp needs about 23.6 kN*m on the yaw joint (the fixture's yaw is rated 5 N*m, so the planned check fails there).
+- Requirements: the `tcp_speed`/`tcp_accel` time budget now also excludes the time of rotate actions and of timed moves (only when such actions exist; at least 5 % of the cycle is kept).
+- Role plumbing: `checks` added to the Python registry, Java `LlmSettings` (default `claude_opus`), their tests and the four golden files that list roles. `pint==0.24.4` is pinned in `requirements.txt` (pyproject.toml has no dependency list).
+- Tests: scripted-LLM fixtures with real formula, simulator and sizing code (`tests/test_checks.py`): the whitelist rejects attribute access, indexing, lambdas, unknown and dunder names, dimension mismatches are rejected, kN/N conversion, `pi` and `sqrt`; box, cylinder and sphere inertia; one bad plan repaired and one still bad dropped into `check_plan_rejected`; a planned yaw spin-up check on the spin-mill fixture changes `sim.ok`; the studio yaw peak includes the same torque. `tests/conftest.py` now blocks real providers in every test (a role without a scripted adapter fails like an unreachable model). `npm run contracts:check`, `typecheck` and `build` pass; Java `./mvnw -q test` passes (59 tests, 0 failures); Python 388 passed, 4 skipped (the real-model and web tests).
+- Limitations: these are fixture tests of the verification code, not model evaluations: no real model proposed a plan, so the quality of plans from the real `checks` role, and the prompt's resistance to injected text, are not evaluated. The spin-mill project was not re-run. The checks are kinematic and static-load calculations in code (plus the inertial torque), not dynamics simulation and not hardware tests. The client change was type-checked and built but not viewed in a browser. A full Python test run made before the conftest guard may have started the Claude CLI for the `checks` role in tests that lacked a scripted adapter.

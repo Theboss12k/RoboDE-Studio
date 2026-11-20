@@ -33,6 +33,44 @@
       "title": "BasePose",
       "type": "object"
     },
+    "Baseline": {
+      "description": "The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).",
+      "properties": {
+        "manual_cycle_s": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Manual Cycle S",
+          "type": "number"
+        },
+        "operators": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Operators",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "user",
+            "estimate"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 400,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manual_cycle_s",
+        "operators",
+        "source"
+      ],
+      "title": "Baseline",
+      "type": "object"
+    },
     "Calc": {
       "description": "A traceable calculation: what was computed, how, from what.",
       "properties": {
@@ -132,6 +170,16 @@
             }
           ],
           "default": null
+        },
+        "source": {
+          "default": "sim",
+          "enum": [
+            "sim",
+            "planned"
+          ],
+          "title": "Source",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -766,6 +814,34 @@
           "default": null,
           "title": "Peak Acceleration M S2"
         },
+        "max_accel_m_s2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Accel M S2",
+          "x-optional": true
+        },
+        "max_jerk_m_s3": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Jerk M S3",
+          "x-optional": true
+        },
         "travel_distance_m": {
           "default": 0.0,
           "minimum": 0,
@@ -1059,7 +1135,8 @@
             "inspect",
             "push",
             "press",
-            "home"
+            "home",
+            "rotate"
           ],
           "title": "Verb",
           "type": "string"
@@ -1085,6 +1162,32 @@
           "maxLength": 400,
           "title": "Description",
           "type": "string"
+        },
+        "turns": {
+          "default": 0.0,
+          "title": "Turns",
+          "type": "number",
+          "x-optional": true
+        },
+        "rpm": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Rpm",
+          "type": "number",
+          "x-optional": true
+        },
+        "ramp_s": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Ramp S",
+          "type": "number",
+          "x-optional": true
+        },
+        "axis": {
+          "default": "tool_yaw",
+          "title": "Axis",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -1160,6 +1263,12 @@
           "default": "",
           "title": "Start Marker",
           "type": "string"
+        },
+        "attached": {
+          "default": false,
+          "title": "Attached",
+          "type": "boolean",
+          "x-optional": true
         }
       },
       "required": [
@@ -1268,6 +1377,18 @@
           "maxLength": 4000,
           "title": "Reference",
           "type": "string"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Baseline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "x-optional": true
         }
       },
       "required": [

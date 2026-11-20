@@ -3,6 +3,9 @@
 
 export interface Contracts {
   Analysis?: Analysis;
+  AskRequest?: AskRequest;
+  AskResponse?: AskResponse;
+  Baseline?: Baseline;
   Candidate?: Candidate;
   Check?: Check;
   DesignVersion?: DesignVersion;
@@ -17,6 +20,8 @@ export interface Contracts {
   RepairLog?: RepairLog;
   Requirement?: Requirement;
   RobotConcept?: RobotConcept;
+  Savings?: Savings;
+  SavingsInputs?: SavingsInputs;
   SceneSpec?: SceneSpec;
   SimResult?: SimResult;
   StudioBuild?: StudioBuild;
@@ -137,6 +142,7 @@ export interface Check {
   passed: boolean | null;
   detail: string;
   calc: Calc | null;
+  source?: "sim" | "planned";
 }
 /**
  * A traceable calculation: what was computed, how, from what.
@@ -174,6 +180,112 @@ export interface Difference {
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskRequest".
+ */
+export interface AskRequest {
+  question: string;
+  /**
+   * @maxItems 6
+   */
+  history?:
+    | []
+    | [AskTurn]
+    | [AskTurn, AskTurn]
+    | [AskTurn, AskTurn, AskTurn]
+    | [AskTurn, AskTurn, AskTurn, AskTurn]
+    | [AskTurn, AskTurn, AskTurn, AskTurn, AskTurn]
+    | [AskTurn, AskTurn, AskTurn, AskTurn, AskTurn, AskTurn];
+  context?: AskContext;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskTurn".
+ */
+export interface AskTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+/**
+ * What the client is looking at. Only ids and the moment: every number is read from storage by the server.
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskContext".
+ */
+export interface AskContext {
+  project_id?: string | null;
+  stage?: string | null;
+  version?: number | null;
+  t?: number | null;
+  candidate?: string | null;
+  build?: number | null;
+  selection?: string | null;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskResponse".
+ */
+export interface AskResponse {
+  answer: string;
+  citations: AskCitation[];
+  actions_taken: AskActionTaken[];
+  confirm: AskConfirm[];
+  navigate: AskNavigate | null;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskCitation".
+ */
+export interface AskCitation {
+  kind: "version" | "check" | "requirement" | "build" | "motor" | "candidate" | "brief" | "spec";
+  ref: string;
+  label: string;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskActionTaken".
+ */
+export interface AskActionTaken {
+  kind: string;
+  ok: boolean;
+  job_id?: string | null;
+  summary: string;
+  error?: string | null;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskConfirm".
+ */
+export interface AskConfirm {
+  kind: "approve" | "approve_build" | "decision";
+  label: string;
+  request: {
+    [k: string]: unknown;
+  };
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "AskNavigate".
+ */
+export interface AskNavigate {
+  stage: string;
+  version?: number | null;
+  build?: number | null;
+  candidate?: string | null;
+}
+/**
+ * The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "Baseline".
+ */
+export interface Baseline {
+  manual_cycle_s: number;
+  operators: number;
+  source: "user" | "estimate";
+  note: string;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
  * via the `definition` "Candidate".
  */
 export interface Candidate {
@@ -192,6 +304,7 @@ export interface Candidate {
   key_specs: SourcedValue[];
   confidence: "high" | "medium" | "low";
   screen: Check[];
+  preferred?: boolean;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -235,6 +348,8 @@ export interface DesignVersion {
   approved: boolean;
   repair?: RepairLog | null;
   fleet?: FleetPlan | null;
+  check_plan?: CheckPlan[];
+  check_plan_rejected?: RejectedPlan[];
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -262,6 +377,7 @@ export interface TechnicalSpec {
   physics_inputs: PhysicsInputs;
   assumptions: string[];
   reference: string;
+  baseline?: Baseline | null;
 }
 /**
  * One step of the task, in order. `target` is a Marker id.
@@ -270,11 +386,15 @@ export interface TechnicalSpec {
  * via the `definition` "TaskAction".
  */
 export interface TaskAction {
-  verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home";
+  verb: "pick" | "place" | "move" | "drive" | "wait" | "inspect" | "push" | "press" | "home" | "rotate";
   object: string;
   target: string;
   duration_s: number;
   description: string;
+  turns?: number;
+  rpm?: number;
+  ramp_s?: number;
+  axis?: string;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -293,6 +413,7 @@ export interface TaskObject {
   grip: "parallel" | "vacuum" | "magnetic" | "hook" | "fork" | "none";
   fragile: boolean;
   start_marker: string;
+  attached?: boolean;
 }
 /**
  * A named point in the world frame: pick-up and drop-off points, waypoints, docking stations.
@@ -343,6 +464,8 @@ export interface PhysicsInputs {
   clearance_m: number;
   approach_height_m: number;
   peak_acceleration_m_s2: number | null;
+  max_accel_m_s2?: number | null;
+  max_jerk_m_s3?: number | null;
   travel_distance_m: number;
   travel_speed_m_s: number | null;
   slope_deg: number;
@@ -586,6 +709,44 @@ export interface FleetMember {
   limit_checks: Check[];
 }
 /**
+ * A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and
+ * its own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "CheckPlan".
+ */
+export interface CheckPlan {
+  id: string;
+  name: string;
+  why: string;
+  expression: string;
+  unit: string;
+  comparator: ">=" | "<=";
+  limit: string;
+  unit_limit: string;
+  constants: PlanConstant[];
+}
+/**
+ * A number the checks agent declares for one planned check, with the reason for it.
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "PlanConstant".
+ */
+export interface PlanConstant {
+  name: string;
+  value: number;
+  unit: string;
+  justification: string;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "RejectedPlan".
+ */
+export interface RejectedPlan {
+  id: string;
+  reason: string;
+}
+/**
  * This interface was referenced by `Contracts`'s JSON-Schema
  * via the `definition` "FleetHint".
  */
@@ -605,6 +766,39 @@ export interface Question {
   unit: string;
   default: unknown;
   why: string;
+}
+/**
+ * Every output of the time-saved estimate as a traceable calculation (`result` is the value).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "Savings".
+ */
+export interface Savings {
+  robot_items_per_hour: Calc;
+  manual_items_per_hour: Calc;
+  items_per_day: Calc;
+  manual_hours_per_day: Calc;
+  supervision_hours_per_day: Calc;
+  hours_freed_per_day: Calc;
+  hours_freed_per_week: Calc;
+  hours_freed_per_year: Calc;
+  throughput_change: Calc;
+}
+/**
+ * Inputs of the time-saved formulas (physics/savings.py and packages/core/src/savings.ts).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "SavingsInputs".
+ */
+export interface SavingsInputs {
+  robot_cycle_s: number;
+  manual_cycle_s: number;
+  operators: number;
+  shifts_per_day: number;
+  hours_per_shift: number;
+  days_per_week: number;
+  days_per_year: number;
+  supervision_min_per_shift: number;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -631,6 +825,7 @@ export interface StudioBuild {
   files: BuildFile[];
   approved: boolean;
   approved_at: string | null;
+  sourcing_notes?: string[];
 }
 /**
  * What a joint needs, computed in code from the design (gravity_torques over the task frames and a stretched pose,
@@ -678,6 +873,9 @@ export interface MotorChoice {
   checks: Check[];
   alternatives: MotorAlternative[];
   pinned: boolean;
+  preferred?: boolean;
+  rejected?: Rejected[];
+  calcs?: Calc[];
 }
 /**
  * A price as a shop listed it on a date: an estimate for planning, never a quote.
@@ -692,6 +890,7 @@ export interface ShopPrice {
   shop: string;
   source_url: string;
   quote: string;
+  status?: "verified" | "unverified";
 }
 /**
  * One value of a motor or part. verified = quoted on the shop/datasheet page and the quote contains the number
@@ -740,6 +939,21 @@ export interface MotorAlternative {
   drive: Drive | null;
   passes: boolean;
   reason: string;
+  preferred?: boolean;
+  price_issue?: string;
+}
+/**
+ * A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "Rejected".
+ */
+export interface Rejected {
+  id: string;
+  name: string;
+  shop: string;
+  url: string;
+  reason: string;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -757,6 +971,8 @@ export interface ElectronicsItem {
   price: ShopPrice | null;
   values: SpecValue[];
   checks: Check[];
+  preferred?: boolean;
+  rejected?: Rejected[];
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema

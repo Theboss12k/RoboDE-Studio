@@ -2,12 +2,74 @@
 // verified / assumed / defined values, margins), the alternatives found, and the driver, controller and supply rows.
 import { useState } from "react";
 import { fmt } from "../common";
-import { Collapse, Expand, ShopLink } from "../icons";
+import { Collapse, Expand, PreferredVendor, ShopLink } from "../icons";
 import type { ElectronicsItem, JointSizing, MotorAlternative, MotorChoice, ShopPrice, SpecValue } from "../../types";
+
+// Fields the sourcing step adds to rows and prices. Older stored builds do not have them, so every read tolerates absence.
+export type Rejected = { id?: string; name?: string; shop?: string; url?: string; reason?: string };
+export const rejectedOf = (row: unknown): Rejected[] => { const r = (row as { rejected?: unknown } | null)?.rejected; return Array.isArray(r) ? (r as Rejected[]) : []; };
+export const isPreferred = (row: unknown) => (row as { preferred?: boolean } | null)?.preferred === true;
+export const isUnverified = (price: unknown) => (price as { status?: string } | null)?.status === "unverified";
+/** The build's own notes about the search (for example shops that blocked the server); empty for older builds. */
+export const sourcingNotes = (build: unknown): string[] => { const n = (build as { sourcing_notes?: unknown } | null)?.sourcing_notes; return Array.isArray(n) ? n.filter((x): x is string => typeof x === "string" && !!x) : []; };
 
 export function Price({ price }: { price: ShopPrice | null }) {
   if (!price || price.amount == null) return <span className="muted small">no price listed</span>;
-  return <span>{price.currency} {fmt(price.amount)} <span className="small muted">as listed, seen {price.seen}{price.shop ? ` on ${price.shop}` : ""}</span></span>;
+  const unverified = isUnverified(price);
+  return (
+    <span>{price.currency} {fmt(price.amount)}{" "}
+      {unverified && <span className="tag warn" title="The server could not open this shop page itself, so the figure is the model's quote and was not checked. It is not counted in totals or used to rank the product.">unverified</span>}{" "}
+      <span className="small muted">as listed, seen {price.seen}{price.shop ? ` on ${price.shop}` : ""}{unverified ? ". Not counted in totals" : ""}</span></span>
+  );
+}
+
+export function PreferredBadge({ row }: { row: unknown }) {
+  if (!isPreferred(row)) return null;
+  return <span className="tag ok" title="Sold by one of your preferred vendors (Settings)"><PreferredVendor size={12} aria-hidden="true" />Preferred vendor</span>;
+}
+
+const REASONS: Record<string, string> = {
+  no_price: "No price on the shop page",
+  page_blocked: "The shop page could not be opened (blocked)",
+  quote_not_found: "The model's quote was not found on the page",
+  price_not_in_quote: "The price is not in the quote",
+  missing_values: "Required values are missing",
+};
+export function rejectReason(reason: string | undefined): string {
+  const r = (reason ?? "").trim();
+  if (!r) return "No reason recorded";
+  if (REASONS[r]) return REASONS[r];
+  const m = /^fails_margin:?\s*(.*)$/.exec(r);
+  if (m) return `Does not meet the margin${m[1] ? `: ${m[1]}` : ""}`;
+  const v = /^missing_values:?\s*(.*)$/.exec(r);
+  return v ? `Required values are missing${v[1] ? `: ${v[1]}` : ""}` : r;
+}
+
+/** "Why other products were not used": the products found for this row that were set aside, each with its reason. */
+export function RejectedList({ row }: { row: unknown }) {
+  const [open, setOpen] = useState(false);
+  const items = rejectedOf(row);
+  if (!items.length) return null;
+  return (
+    <div className="small">
+      <button type="button" className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? <Collapse size={16} aria-hidden="true" /> : <Expand size={16} aria-hidden="true" />} Why other products were not used ({items.length})</button>
+      {open && (
+        <ul className="plain alt-list">
+          {items.map((x, i) => (
+            <li key={x.id ?? `${x.name}-${i}`} className="alt">
+              <b>{x.name ? <Shop name={x.name} url={x.url ?? ""} /> : "Unnamed product"}</b>{x.shop ? <span className="muted"> · {x.shop}</span> : null}
+              <div className="muted" title={x.reason}>{rejectReason(x.reason)}</div>
+            </li>))}
+        </ul>)}
+    </div>
+  );
+}
+
+export function SourcingNotes({ build }: { build: unknown }) {
+  const notes = sourcingNotes(build);
+  if (!notes.length) return null;
+  return <div className="notice small" role="note"><b>Sourcing notes</b><ul className="plain">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>;
 }
 
 const MARK = { verified: "ok", assumed: "warn", defined: "" } as const;
@@ -36,7 +98,7 @@ function Shop({ name, url }: { name: string; url: string }) {
 function Alternative({ alt, chosen, disabled, onUse }: { alt: MotorAlternative; chosen: boolean; disabled: boolean; onUse: () => void }) {
   return (
     <li className="alt">
-      <div className="row"><b><Shop name={alt.name} url={alt.url} /></b> <span className={`tag ${alt.passes ? "ok" : "bad"}`}>{alt.passes ? "passes" : "fails"}</span>
+      <div className="row"><b><Shop name={alt.name} url={alt.url} /></b> <PreferredBadge row={alt} /> <span className={`tag ${alt.passes ? "ok" : "bad"}`}>{alt.passes ? "passes" : "fails"}</span>
         {chosen ? <span className="tag">in use</span> : <button type="button" disabled={disabled} onClick={onUse}>Use this one</button>}</div>
       <div className="small"><Price price={alt.price} /> {alt.drive && <span className="muted"> · {alt.drive.name || alt.drive.type}, ratio {fmt(alt.drive.ratio)}</span>}</div>
       {alt.reason && <div className="small muted">{alt.reason}</div>}
@@ -56,9 +118,10 @@ function MotorRow({ m, need, frozen, onPin }: { m: MotorChoice; need: JointSizin
         <td>
           {defined
             ? <><span className="tag warn">Defined spec (not found in shops)</span><div className="small">{m.name}</div><div className="small muted">Procure to this spec.</div></>
-            : <><Shop name={m.name} url={m.url} /><div className="small"><Price price={m.price} /></div></>}
+            : <><Shop name={m.name} url={m.url} /> <PreferredBadge row={m} /><div className="small"><Price price={m.price} /></div></>}
           <div className="small muted">{m.motor_type.replace("_", " ")} · {m.drive.name || m.drive.type}, gear ratio {fmt(m.drive.ratio)}, efficiency {fmt(m.drive.efficiency)}</div>
           <ValueMarks values={m.values} />
+          <RejectedList row={m} />
         </td>
         <td>{Object.keys(m.margins).length ? <Margins margins={m.margins} /> : <span className="muted small">–</span>}
           {m.checks.some((c) => c.passed === false) && <div className="small warn-text">{m.checks.filter((c) => c.passed === false).map((c) => c.name).join(", ")} fails</div>}</td>
@@ -96,8 +159,9 @@ export function ElectronicsTable({ items }: { items: ElectronicsItem[] }) {
               <td><b>{e.role.replace("_", " ")}</b>{e.qty > 1 && <span className="muted"> × {e.qty}</span>}</td>
               <td className="small">{e.for_joints.join(", ") || "all"}</td>
               <td>{e.source === "defined" ? <><span className="tag warn">Defined spec (not found in shops)</span><div className="small">{e.name}</div><div className="small muted">Procure to this spec.</div></>
-                : <><Shop name={e.name} url={e.url} /><div className="small"><Price price={e.price} /></div></>}
-                <ValueMarks values={e.values} /></td>
+                : <><Shop name={e.name} url={e.url} /> <PreferredBadge row={e} /><div className="small"><Price price={e.price} /></div></>}
+                <ValueMarks values={e.values} />
+                <RejectedList row={e} /></td>
               <td className="small">{e.checks.length ? e.checks.map((c) => <div key={c.requirement_id}><span className={`tag ${c.passed === true ? "ok" : c.passed === false ? "bad" : ""}`}>{c.passed === true ? "pass" : c.passed === false ? "fail" : "n/a"}</span> {c.name}{c.detail ? <span className="muted"> – {c.detail}</span> : null}</div>) : "–"}</td>
             </tr>))}
         </tbody>

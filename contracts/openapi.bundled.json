@@ -56,12 +56,20 @@
       "description": "Robot studio for an approved design. Builds (CAD, motors, electronics), the digital twin, snapshots and the manufacturer package."
     },
     {
+      "name": "Ask",
+      "description": "The Ask bar. Questions answered from stored project data, and at most two actions the server performs for the user."
+    },
+    {
       "name": "Jobs",
       "description": "Read, list and cancel background jobs."
     },
     {
       "name": "LLM settings",
       "description": "Global model profiles, role assignment, API keys and token usage."
+    },
+    {
+      "name": "Settings",
+      "description": "Global settings that are not LLM settings, such as preferred vendors."
     },
     {
       "name": "Meta",
@@ -95,7 +103,9 @@
                     "search": "claude_sonnet",
                     "extract": "claude_sonnet",
                     "analysis": "claude_sonnet",
-                    "objects": "claude_haiku"
+                    "objects": "claude_haiku",
+                    "ask": "claude_sonnet",
+                    "checks": "claude_opus"
                   }
                 }
               }
@@ -1168,6 +1178,57 @@
         }
       }
     },
+    "/projects/{pid}/baseline": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "put": {
+        "operationId": "putBaseline",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Set the time-saved inputs",
+        "description": "Stores the manual baseline and the working pattern used by the time-saved estimate (any subset of the fields; `null` removes `manual_cycle_s` or `operators`, or restores another field's default). Stored values override `spec.baseline` and the defaults. Allowed while a design or revise job runs. The estimate itself is computed from these inputs and the robot's simulated cycle (`savings` in `@robode/studio-core`); it is not a time study.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaselineUpdate"
+              },
+              "example": {
+                "manual_cycle_s": 12,
+                "operators": 2,
+                "days_per_week": 6
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated project (with `savings_inputs`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    },
     "/projects/{pid}/fleet": {
       "parameters": [
         {
@@ -1653,6 +1714,7 @@
           "Decision & export"
         ],
         "summary": "Record the decision",
+        "description": "Either choose an analysed catalog candidate, or choose your own design (the approved Robot studio build). Choosing again overwrites the decision. `self` returns 409 when no build is approved (or the given build is not approved) and 404 for an unknown build.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1660,9 +1722,20 @@
               "schema": {
                 "$ref": "#/components/schemas/DecisionRequest"
               },
-              "example": {
-                "candidate_id": "acme_ra_6",
-                "action": "approve"
+              "examples": {
+                "candidate": {
+                  "summary": "Buy an analysed catalog robot",
+                  "value": {
+                    "candidate_id": "acme_ra_6",
+                    "action": "approve"
+                  }
+                },
+                "self": {
+                  "summary": "Build our own design (the approved Robot studio build)",
+                  "value": {
+                    "action": "self"
+                  }
+                }
               }
             }
           }
@@ -1683,6 +1756,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           },
           "422": {
             "$ref": "#/components/responses/Unprocessable"
@@ -2332,6 +2408,81 @@
         }
       }
     },
+    "/ask": {
+      "post": {
+        "operationId": "ask",
+        "tags": [
+          "Ask"
+        ],
+        "summary": "Ask a question about the project on screen",
+        "description": "Starts an `ask` job (role `ask`). The server builds the facts to answer from for the ids in `context` (project, version, build, candidate, the moment `t`) from stored data: numbers are never taken from the client. The model answers from those facts and may propose at most two actions of a fixed list (`revise`, `design`, `search`, `analyse`, `studio_build`, `update_brief`, `set_baseline`, `cancel_job`). The server validates each proposal exactly as the matching route validates its body, executes it (a job it starts appears in the project's job list and can be cancelled) and reports it in `actions_taken`; a refused one has `ok: false` and an `error` (`not allowed` for anything else, such as delete, keys, settings, profiles, approve or decision; `limit: 2 actions per question` for extras). An approval, a build approval or a decision is never executed: it comes back in `confirm` as a chip whose `request` is the body of the existing route (`approve_build` also carries `build`, which goes into the path). Each action is logged in the project's activity. `navigate` only tells the client where to look. 404 when a referenced project, version, build or candidate does not exist; 422 for an invalid body.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Wait"
+          },
+          {
+            "$ref": "#/components/parameters/Expand"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/Callback"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              },
+              "example": {
+                "question": "Why does the reach check pass?",
+                "history": [],
+                "context": {
+                  "project_id": "p_0123456789",
+                  "stage": "design",
+                  "version": 2
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The job record; `result` is an `AskResponse` once `status` is `done`.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/JobLocation"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "202": {
+            "$ref": "#/components/responses/JobRunning"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/jobs": {
       "get": {
         "operationId": "listRunningJobs",
@@ -2957,6 +3108,83 @@
           }
         }
       }
+    },
+    "/settings/vendors": {
+      "get": {
+        "operationId": "getPreferredVendors",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Read the preferred vendors",
+        "description": "The shops the user wants searched first for robots, motors and electronics. A global setting, not part of a project.",
+        "responses": {
+          "200": {
+            "description": "The saved vendors (an empty list when none were saved).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredVendors"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setPreferredVendors",
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Replace the preferred vendors",
+        "description": "Replaces the whole list (at most 50). Each domain is a bare host such as `robu.in` (lower case, no scheme or path);\ndomains must be unique. Catalog searches and studio builds started afterwards use the new list.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferredVendors"
+              },
+              "example": {
+                "vendors": [
+                  {
+                    "name": "Robu",
+                    "domain": "robu.in",
+                    "categories": [
+                      "motors",
+                      "electronics"
+                    ],
+                    "note": "India"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferredVendors"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3475,25 +3703,50 @@
         }
       },
       "DecisionRecord": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "candidate_id": {
-            "type": "string"
+        "description": "The recorded decision: a catalog candidate (`approve`, or the legacy `robot_studio`) or your own design (`self`, with the build number); null before a decision.",
+        "oneOf": [
+          {
+            "type": "null"
           },
-          "action": {
-            "type": "string",
-            "enum": [
-              "approve",
-              "robot_studio"
+          {
+            "type": "object",
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "robot_studio"
+                ]
+              }
+            },
+            "required": [
+              "candidate_id",
+              "action"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "self"
+                ]
+              },
+              "build": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The approved Robot studio build."
+              }
+            },
+            "required": [
+              "action",
+              "build"
             ]
           }
-        },
-        "required": [
-          "candidate_id",
-          "action"
         ]
       },
       "Project": {
@@ -3548,6 +3801,9 @@
           },
           "fleet": {
             "$ref": "#/components/schemas/FleetState"
+          },
+          "savings_inputs": {
+            "$ref": "#/components/schemas/SavingsInputsState"
           },
           "studio": {
             "$ref": "#/components/schemas/StudioState"
@@ -3760,6 +4016,103 @@
           "version"
         ]
       },
+      "SavingsInputsState": {
+        "type": "object",
+        "description": "Present on a project only once the time-saved inputs were set (`PUT /projects/{pid}/baseline`).",
+        "properties": {
+          "manual_cycle_s": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 86400,
+            "description": "Seconds one person needs per item by hand."
+          },
+          "operators": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "hours_per_shift": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 24
+          },
+          "days_per_week": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 7
+          },
+          "days_per_year": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 366
+          },
+          "supervision_min_per_shift": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1440
+          }
+        },
+        "required": [
+          "hours_per_shift",
+          "days_per_week",
+          "days_per_year",
+          "supervision_min_per_shift"
+        ]
+      },
+      "BaselineUpdate": {
+        "type": "object",
+        "description": "Any subset of the fields; send at least one.",
+        "properties": {
+          "manual_cycle_s": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 86400
+          },
+          "operators": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 100
+          },
+          "hours_per_shift": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 24
+          },
+          "days_per_week": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 7
+          },
+          "days_per_year": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 366
+          },
+          "supervision_min_per_shift": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1440
+          }
+        }
+      },
       "FleetUpdate": {
         "type": "object",
         "properties": {
@@ -3934,22 +4287,46 @@
         ]
       },
       "DecisionRequest": {
-        "type": "object",
-        "properties": {
-          "candidate_id": {
-            "type": "string"
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Choose an analysed catalog candidate.",
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "approve",
+                  "robot_studio"
+                ]
+              }
+            },
+            "required": [
+              "candidate_id",
+              "action"
+            ]
           },
-          "action": {
-            "type": "string",
-            "enum": [
-              "approve",
-              "robot_studio"
+          {
+            "type": "object",
+            "description": "Choose your own design. `build` defaults to the project's approved build.",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "self"
+                ]
+              },
+              "build": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "action"
             ]
           }
-        },
-        "required": [
-          "candidate_id",
-          "action"
         ]
       },
       "ParsedUrdf": {
@@ -4428,7 +4805,8 @@
               "analyse",
               "llm_test",
               "studio_build",
-              "studio_pdf"
+              "studio_pdf",
+              "ask"
             ]
           },
           "robot_id": {
@@ -4436,7 +4814,7 @@
               "string",
               "null"
             ],
-            "description": "The project id; null for `llm_test`."
+            "description": "The project id; null for `llm_test` and for an `ask` without a project."
           },
           "status": {
             "type": "string",
@@ -4480,6 +4858,9 @@
               },
               {
                 "$ref": "#/components/schemas/StudioBuildResult"
+              },
+              {
+                "$ref": "#/components/schemas/AskResponse"
               }
             ]
           },
@@ -4776,6 +5157,60 @@
         },
         "required": [
           "key"
+        ]
+      },
+      "PreferredVendor": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 253,
+            "description": "Bare lower-case host, for example robu.in."
+          },
+          "categories": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "robots",
+                "motors",
+                "electronics"
+              ]
+            }
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "name",
+          "domain",
+          "categories",
+          "note"
+        ]
+      },
+      "PreferredVendors": {
+        "type": "object",
+        "properties": {
+          "vendors": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/PreferredVendor"
+            }
+          }
+        },
+        "required": [
+          "vendors"
         ]
       },
       "UsageBucket": {
@@ -5618,6 +6053,16 @@
               }
             ],
             "default": null
+          },
+          "source": {
+            "default": "sim",
+            "enum": [
+              "sim",
+              "planned"
+            ],
+            "title": "Source",
+            "type": "string",
+            "x-optional": true
           }
         },
         "required": [
@@ -5732,6 +6177,16 @@
                   }
                 ],
                 "default": null
+              },
+              "source": {
+                "default": "sim",
+                "enum": [
+                  "sim",
+                  "planned"
+                ],
+                "title": "Source",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -5975,6 +6430,12 @@
             },
             "title": "Screen",
             "type": "array"
+          },
+          "preferred": {
+            "default": false,
+            "title": "Preferred",
+            "type": "boolean",
+            "x-optional": true
           }
         },
         "required": [
@@ -6470,6 +6931,16 @@
                   }
                 ],
                 "default": null
+              },
+              "source": {
+                "default": "sim",
+                "enum": [
+                  "sim",
+                  "planned"
+                ],
+                "title": "Source",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -6876,6 +7347,432 @@
         "title": "Analysis",
         "type": "object"
       },
+      "AskCitation": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "version",
+              "check",
+              "requirement",
+              "build",
+              "motor",
+              "candidate",
+              "brief",
+              "spec"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 200,
+            "title": "Ref",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref",
+          "label"
+        ],
+        "title": "AskCitation",
+        "type": "object"
+      },
+      "AskActionTaken": {
+        "properties": {
+          "kind": {
+            "maxLength": 40,
+            "title": "Kind",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Job Id",
+            "x-optional": true
+          },
+          "summary": {
+            "maxLength": 400,
+            "title": "Summary",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error",
+            "x-optional": true
+          }
+        },
+        "required": [
+          "kind",
+          "ok",
+          "summary"
+        ],
+        "title": "AskActionTaken",
+        "type": "object"
+      },
+      "AskConfirm": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "approve",
+              "approve_build",
+              "decision"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "request"
+        ],
+        "title": "AskConfirm",
+        "type": "object"
+      },
+      "AskNavigate": {
+        "properties": {
+          "stage": {
+            "maxLength": 40,
+            "title": "Stage",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version",
+            "x-optional": true
+          },
+          "build": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Build",
+            "x-optional": true
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Candidate",
+            "x-optional": true
+          }
+        },
+        "required": [
+          "stage"
+        ],
+        "title": "AskNavigate",
+        "type": "object"
+      },
+      "AskResponse": {
+        "$defs": {
+          "AskActionTaken": {
+            "properties": {
+              "kind": {
+                "maxLength": 40,
+                "title": "Kind",
+                "type": "string"
+              },
+              "ok": {
+                "title": "Ok",
+                "type": "boolean"
+              },
+              "job_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Job Id",
+                "x-optional": true
+              },
+              "summary": {
+                "maxLength": 400,
+                "title": "Summary",
+                "type": "string"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Error",
+                "x-optional": true
+              }
+            },
+            "required": [
+              "kind",
+              "ok",
+              "summary"
+            ],
+            "title": "AskActionTaken",
+            "type": "object"
+          },
+          "AskCitation": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "version",
+                  "check",
+                  "requirement",
+                  "build",
+                  "motor",
+                  "candidate",
+                  "brief",
+                  "spec"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "ref": {
+                "maxLength": 200,
+                "title": "Ref",
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 200,
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref",
+              "label"
+            ],
+            "title": "AskCitation",
+            "type": "object"
+          },
+          "AskConfirm": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "approve",
+                  "approve_build",
+                  "decision"
+                ],
+                "title": "Kind",
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 200,
+                "title": "Label",
+                "type": "string"
+              },
+              "request": {
+                "additionalProperties": true,
+                "title": "Request",
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "label",
+              "request"
+            ],
+            "title": "AskConfirm",
+            "type": "object"
+          },
+          "AskNavigate": {
+            "properties": {
+              "stage": {
+                "maxLength": 40,
+                "title": "Stage",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version",
+                "x-optional": true
+              },
+              "build": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Build",
+                "x-optional": true
+              },
+              "candidate": {
+                "anyOf": [
+                  {
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Candidate",
+                "x-optional": true
+              }
+            },
+            "required": [
+              "stage"
+            ],
+            "title": "AskNavigate",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AskCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "actions_taken": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AskActionTaken"
+            },
+            "title": "Actions Taken",
+            "type": "array"
+          },
+          "confirm": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AskConfirm"
+            },
+            "title": "Confirm",
+            "type": "array"
+          },
+          "navigate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskNavigate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "title": "AskResponse",
+        "type": "object"
+      },
+      "PlanConstant": {
+        "description": "A number the checks agent declares for one planned check, with the reason for it.",
+        "properties": {
+          "name": {
+            "maxLength": 40,
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "unit": {
+            "maxLength": 40,
+            "title": "Unit",
+            "type": "string"
+          },
+          "justification": {
+            "maxLength": 400,
+            "title": "Justification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit",
+          "justification"
+        ],
+        "title": "PlanConstant",
+        "type": "object"
+      },
       "TaskAction": {
         "description": "One step of the task, in order. `target` is a Marker id.",
         "properties": {
@@ -6889,7 +7786,8 @@
               "inspect",
               "push",
               "press",
-              "home"
+              "home",
+              "rotate"
             ],
             "title": "Verb",
             "type": "string"
@@ -6915,6 +7813,32 @@
             "maxLength": 400,
             "title": "Description",
             "type": "string"
+          },
+          "turns": {
+            "default": 0,
+            "title": "Turns",
+            "type": "number",
+            "x-optional": true
+          },
+          "rpm": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Rpm",
+            "type": "number",
+            "x-optional": true
+          },
+          "ramp_s": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Ramp S",
+            "type": "number",
+            "x-optional": true
+          },
+          "axis": {
+            "default": "tool_yaw",
+            "title": "Axis",
+            "type": "string",
+            "x-optional": true
           }
         },
         "required": [
@@ -6990,6 +7914,12 @@
             "default": "",
             "title": "Start Marker",
             "type": "string"
+          },
+          "attached": {
+            "default": false,
+            "title": "Attached",
+            "type": "boolean",
+            "x-optional": true
           }
         },
         "required": [
@@ -7204,6 +8134,34 @@
             "default": null,
             "title": "Peak Acceleration M S2"
           },
+          "max_accel_m_s2": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Accel M S2",
+            "x-optional": true
+          },
+          "max_jerk_m_s3": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Jerk M S3",
+            "x-optional": true
+          },
           "travel_distance_m": {
             "default": 0,
             "minimum": 0,
@@ -7290,6 +8248,44 @@
           "cycle_time_s"
         ],
         "title": "PhysicsInputs",
+        "type": "object"
+      },
+      "Baseline": {
+        "description": "The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).",
+        "properties": {
+          "manual_cycle_s": {
+            "exclusiveMinimum": 0,
+            "maximum": 86400,
+            "title": "Manual Cycle S",
+            "type": "number"
+          },
+          "operators": {
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Operators",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "user",
+              "estimate"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 400,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "manual_cycle_s",
+          "operators",
+          "source"
+        ],
+        "title": "Baseline",
         "type": "object"
       },
       "TechnicalSpec": {
@@ -7389,6 +8385,18 @@
             "maxLength": 4000,
             "title": "Reference",
             "type": "string"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Baseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "x-optional": true
           }
         },
         "required": [
@@ -8124,6 +9132,94 @@
         "title": "FleetPlan",
         "type": "object"
       },
+      "CheckPlan": {
+        "description": "A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and\nits own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.",
+        "properties": {
+          "id": {
+            "maxLength": 60,
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          },
+          "why": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Why",
+            "type": "string"
+          },
+          "expression": {
+            "maxLength": 400,
+            "title": "Expression",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 40,
+            "title": "Unit",
+            "type": "string"
+          },
+          "comparator": {
+            "enum": [
+              ">=",
+              "<="
+            ],
+            "title": "Comparator",
+            "type": "string"
+          },
+          "limit": {
+            "maxLength": 400,
+            "title": "Limit",
+            "type": "string"
+          },
+          "unit_limit": {
+            "maxLength": 40,
+            "title": "Unit Limit",
+            "type": "string"
+          },
+          "constants": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PlanConstant"
+            },
+            "title": "Constants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "expression",
+          "unit",
+          "comparator",
+          "limit",
+          "unit_limit"
+        ],
+        "title": "CheckPlan",
+        "type": "object"
+      },
+      "RejectedPlan": {
+        "properties": {
+          "id": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 600,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RejectedPlan",
+        "type": "object"
+      },
       "DesignVersion": {
         "$defs": {
           "BasePose": {
@@ -8157,6 +9253,44 @@
               }
             },
             "title": "BasePose",
+            "type": "object"
+          },
+          "Baseline": {
+            "description": "The manual way of doing the task, for the time-saved estimate (not for any pass/fail check).",
+            "properties": {
+              "manual_cycle_s": {
+                "exclusiveMinimum": 0,
+                "maximum": 86400,
+                "title": "Manual Cycle S",
+                "type": "number"
+              },
+              "operators": {
+                "maximum": 100,
+                "minimum": 1,
+                "title": "Operators",
+                "type": "integer"
+              },
+              "source": {
+                "enum": [
+                  "user",
+                  "estimate"
+                ],
+                "title": "Source",
+                "type": "string"
+              },
+              "note": {
+                "default": "",
+                "maxLength": 400,
+                "title": "Note",
+                "type": "string"
+              }
+            },
+            "required": [
+              "manual_cycle_s",
+              "operators",
+              "source"
+            ],
+            "title": "Baseline",
             "type": "object"
           },
           "Calc": {
@@ -8258,6 +9392,16 @@
                   }
                 ],
                 "default": null
+              },
+              "source": {
+                "default": "sim",
+                "enum": [
+                  "sim",
+                  "planned"
+                ],
+                "title": "Source",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -8269,6 +9413,74 @@
               "passed"
             ],
             "title": "Check",
+            "type": "object"
+          },
+          "CheckPlan": {
+            "description": "A task-specific check the checks agent proposes: expressions over catalogue names (physics/quantities.py) and\nits own constants. Code verifies and evaluates it (physics/formulas.py); the model never supplies a result.",
+            "properties": {
+              "id": {
+                "maxLength": 60,
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 120,
+                "title": "Name",
+                "type": "string"
+              },
+              "why": {
+                "default": "",
+                "maxLength": 500,
+                "title": "Why",
+                "type": "string"
+              },
+              "expression": {
+                "maxLength": 400,
+                "title": "Expression",
+                "type": "string"
+              },
+              "unit": {
+                "maxLength": 40,
+                "title": "Unit",
+                "type": "string"
+              },
+              "comparator": {
+                "enum": [
+                  ">=",
+                  "<="
+                ],
+                "title": "Comparator",
+                "type": "string"
+              },
+              "limit": {
+                "maxLength": 400,
+                "title": "Limit",
+                "type": "string"
+              },
+              "unit_limit": {
+                "maxLength": 40,
+                "title": "Unit Limit",
+                "type": "string"
+              },
+              "constants": {
+                "default": [],
+                "items": {
+                  "$ref": "#/components/schemas/PlanConstant"
+                },
+                "title": "Constants",
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "expression",
+              "unit",
+              "comparator",
+              "limit",
+              "unit_limit"
+            ],
+            "title": "CheckPlan",
             "type": "object"
           },
           "FleetAssignment": {
@@ -9115,6 +10327,34 @@
                 "default": null,
                 "title": "Peak Acceleration M S2"
               },
+              "max_accel_m_s2": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Max Accel M S2",
+                "x-optional": true
+              },
+              "max_jerk_m_s3": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Max Jerk M S3",
+                "x-optional": true
+              },
               "travel_distance_m": {
                 "default": 0,
                 "minimum": 0,
@@ -9203,6 +10443,38 @@
             "title": "PhysicsInputs",
             "type": "object"
           },
+          "PlanConstant": {
+            "description": "A number the checks agent declares for one planned check, with the reason for it.",
+            "properties": {
+              "name": {
+                "maxLength": 40,
+                "title": "Name",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "number"
+              },
+              "unit": {
+                "maxLength": 40,
+                "title": "Unit",
+                "type": "string"
+              },
+              "justification": {
+                "maxLength": 400,
+                "title": "Justification",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value",
+              "unit",
+              "justification"
+            ],
+            "title": "PlanConstant",
+            "type": "object"
+          },
           "Quantity": {
             "properties": {
               "value": {
@@ -9219,6 +10491,26 @@
               "value"
             ],
             "title": "Quantity",
+            "type": "object"
+          },
+          "RejectedPlan": {
+            "properties": {
+              "id": {
+                "default": "",
+                "maxLength": 60,
+                "title": "Id",
+                "type": "string"
+              },
+              "reason": {
+                "maxLength": 600,
+                "title": "Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "title": "RejectedPlan",
             "type": "object"
           },
           "RepairAttempt": {
@@ -9754,7 +11046,8 @@
                   "inspect",
                   "push",
                   "press",
-                  "home"
+                  "home",
+                  "rotate"
                 ],
                 "title": "Verb",
                 "type": "string"
@@ -9780,6 +11073,32 @@
                 "maxLength": 400,
                 "title": "Description",
                 "type": "string"
+              },
+              "turns": {
+                "default": 0,
+                "title": "Turns",
+                "type": "number",
+                "x-optional": true
+              },
+              "rpm": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Rpm",
+                "type": "number",
+                "x-optional": true
+              },
+              "ramp_s": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Ramp S",
+                "type": "number",
+                "x-optional": true
+              },
+              "axis": {
+                "default": "tool_yaw",
+                "title": "Axis",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -9855,6 +11174,12 @@
                 "default": "",
                 "title": "Start Marker",
                 "type": "string"
+              },
+              "attached": {
+                "default": false,
+                "title": "Attached",
+                "type": "boolean",
+                "x-optional": true
               }
             },
             "required": [
@@ -9963,6 +11288,18 @@
                 "maxLength": 4000,
                 "title": "Reference",
                 "type": "string"
+              },
+              "baseline": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Baseline"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "x-optional": true
               }
             },
             "required": [
@@ -10057,6 +11394,24 @@
               }
             ],
             "default": null,
+            "x-optional": true
+          },
+          "check_plan": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CheckPlan"
+            },
+            "title": "Check Plan",
+            "type": "array",
+            "x-optional": true
+          },
+          "check_plan_rejected": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RejectedPlan"
+            },
+            "title": "Check Plan Rejected",
+            "type": "array",
             "x-optional": true
           }
         },
@@ -10154,6 +11509,16 @@
             "maxLength": 600,
             "title": "Quote",
             "type": "string"
+          },
+          "status": {
+            "default": "verified",
+            "enum": [
+              "verified",
+              "unverified"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-optional": true
           }
         },
         "required": [
@@ -10229,6 +11594,45 @@
           "status"
         ],
         "title": "SpecValue",
+        "type": "object"
+      },
+      "Rejected": {
+        "description": "A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).",
+        "properties": {
+          "id": {
+            "maxLength": 80,
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "shop": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Shop",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "maxLength": 800,
+            "title": "Url",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 400,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "reason"
+        ],
+        "title": "Rejected",
         "type": "object"
       },
       "Drive": {
@@ -10361,6 +11765,19 @@
             "maxLength": 400,
             "title": "Reason",
             "type": "string"
+          },
+          "preferred": {
+            "default": false,
+            "title": "Preferred",
+            "type": "boolean",
+            "x-optional": true
+          },
+          "price_issue": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Price Issue",
+            "type": "string",
+            "x-optional": true
           }
         },
         "required": [
@@ -10606,6 +12023,30 @@
             "default": false,
             "title": "Pinned",
             "type": "boolean"
+          },
+          "preferred": {
+            "default": false,
+            "title": "Preferred",
+            "type": "boolean",
+            "x-optional": true
+          },
+          "rejected": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Rejected"
+            },
+            "title": "Rejected",
+            "type": "array",
+            "x-optional": true
+          },
+          "calcs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Calc"
+            },
+            "title": "Calcs",
+            "type": "array",
+            "x-optional": true
           }
         },
         "required": [
@@ -10700,6 +12141,21 @@
             },
             "title": "Checks",
             "type": "array"
+          },
+          "preferred": {
+            "default": false,
+            "title": "Preferred",
+            "type": "boolean",
+            "x-optional": true
+          },
+          "rejected": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Rejected"
+            },
+            "title": "Rejected",
+            "type": "array",
+            "x-optional": true
           }
         },
         "required": [
@@ -11142,6 +12598,16 @@
                   }
                 ],
                 "default": null
+              },
+              "source": {
+                "default": "sim",
+                "enum": [
+                  "sim",
+                  "planned"
+                ],
+                "title": "Source",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -11292,6 +12758,21 @@
                 },
                 "title": "Checks",
                 "type": "array"
+              },
+              "preferred": {
+                "default": false,
+                "title": "Preferred",
+                "type": "boolean",
+                "x-optional": true
+              },
+              "rejected": {
+                "default": [],
+                "items": {
+                  "$ref": "#/components/schemas/Rejected"
+                },
+                "title": "Rejected",
+                "type": "array",
+                "x-optional": true
               }
             },
             "required": [
@@ -11446,6 +12927,19 @@
                 "maxLength": 400,
                 "title": "Reason",
                 "type": "string"
+              },
+              "preferred": {
+                "default": false,
+                "title": "Preferred",
+                "type": "boolean",
+                "x-optional": true
+              },
+              "price_issue": {
+                "default": "",
+                "maxLength": 40,
+                "title": "Price Issue",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -11576,6 +13070,30 @@
                 "default": false,
                 "title": "Pinned",
                 "type": "boolean"
+              },
+              "preferred": {
+                "default": false,
+                "title": "Preferred",
+                "type": "boolean",
+                "x-optional": true
+              },
+              "rejected": {
+                "default": [],
+                "items": {
+                  "$ref": "#/components/schemas/Rejected"
+                },
+                "title": "Rejected",
+                "type": "array",
+                "x-optional": true
+              },
+              "calcs": {
+                "default": [],
+                "items": {
+                  "$ref": "#/components/schemas/Calc"
+                },
+                "title": "Calcs",
+                "type": "array",
+                "x-optional": true
               }
             },
             "required": [
@@ -11603,6 +13121,45 @@
               "value"
             ],
             "title": "Quantity",
+            "type": "object"
+          },
+          "Rejected": {
+            "description": "A shop candidate that was not used for a motor or electronics row, and why (code decides the reason).",
+            "properties": {
+              "id": {
+                "maxLength": 80,
+                "title": "Id",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "title": "Name",
+                "type": "string"
+              },
+              "shop": {
+                "default": "",
+                "maxLength": 80,
+                "title": "Shop",
+                "type": "string"
+              },
+              "url": {
+                "default": "",
+                "maxLength": 800,
+                "title": "Url",
+                "type": "string"
+              },
+              "reason": {
+                "maxLength": 400,
+                "title": "Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "reason"
+            ],
+            "title": "Rejected",
             "type": "object"
           },
           "ShopPrice": {
@@ -11646,6 +13203,16 @@
                 "maxLength": 600,
                 "title": "Quote",
                 "type": "string"
+              },
+              "status": {
+                "default": "verified",
+                "enum": [
+                  "verified",
+                  "unverified"
+                ],
+                "title": "Status",
+                "type": "string",
+                "x-optional": true
               }
             },
             "required": [
@@ -11985,6 +13552,15 @@
             ],
             "default": null,
             "title": "Approved At"
+          },
+          "sourcing_notes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sourcing Notes",
+            "type": "array",
+            "x-optional": true
           }
         },
         "required": [
@@ -12354,6 +13930,293 @@
           "duration_s"
         ],
         "title": "TwinMoveResult",
+        "type": "object"
+      },
+      "AskTurn": {
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AskTurn",
+        "type": "object"
+      },
+      "AskContext": {
+        "description": "What the client is looking at. Only ids and the moment: every number is read from storage by the server.",
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id",
+            "x-optional": true
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stage",
+            "x-optional": true
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version",
+            "x-optional": true
+          },
+          "t": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "T",
+            "x-optional": true
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Candidate",
+            "x-optional": true
+          },
+          "build": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Build",
+            "x-optional": true
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Selection",
+            "x-optional": true
+          }
+        },
+        "title": "AskContext",
+        "type": "object"
+      },
+      "AskRequest": {
+        "$defs": {
+          "AskContext": {
+            "description": "What the client is looking at. Only ids and the moment: every number is read from storage by the server.",
+            "properties": {
+              "project_id": {
+                "anyOf": [
+                  {
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Project Id",
+                "x-optional": true
+              },
+              "stage": {
+                "anyOf": [
+                  {
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Stage",
+                "x-optional": true
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version",
+                "x-optional": true
+              },
+              "t": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "T",
+                "x-optional": true
+              },
+              "candidate": {
+                "anyOf": [
+                  {
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Candidate",
+                "x-optional": true
+              },
+              "build": {
+                "anyOf": [
+                  {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Build",
+                "x-optional": true
+              },
+              "selection": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Selection",
+                "x-optional": true
+              }
+            },
+            "title": "AskContext",
+            "type": "object"
+          },
+          "AskTurn": {
+            "properties": {
+              "role": {
+                "enum": [
+                  "user",
+                  "assistant"
+                ],
+                "title": "Role",
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 4000,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "text"
+            ],
+            "title": "AskTurn",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "history": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AskTurn"
+            },
+            "maxItems": 6,
+            "title": "History",
+            "type": "array",
+            "x-optional": true
+          },
+          "context": {
+            "$ref": "#/components/schemas/AskContext",
+            "x-optional": true
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AskRequest",
         "type": "object"
       }
     }

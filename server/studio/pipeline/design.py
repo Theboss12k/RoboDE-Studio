@@ -23,7 +23,8 @@ from ..llm.usage import set_context
 from ..fleet.assign import auto_assign
 from ..fleet.feasibility import single_robot_shortfall
 from ..physics import derive, place_base
-from ..schemas import DesignVersion, FleetLimits, RepairAttempt, RepairLog
+from ..schemas import DesignVersion, FleetLimits, RepairAttempt, RepairLog, RejectedPlan
+from . import checks as checks_pipeline
 from ..sim.report import episodes_from
 from ..sim.task import simulate
 from ..util import now, slug
@@ -188,9 +189,29 @@ async def design(llms, spec, progress, auto_repair=True):
     progress(f'Sizing the {concept.family.replace("_", " ")} from the requirements')
     concept, urdf, sim = await asyncio.to_thread(size_and_simulate, spec, requirements, scene, concept, base)
     progress(f'Task simulated: {sum(c.passed is True for c in sim.checks)} of {len(sim.checks)} checks pass')
+    sim, plan, rejected = await _planned_checks(llms, spec, requirements, scene, concept, sim, progress)
     version = DesignVersion(version=0, created=now(), spec=spec, requirements=requirements, scene=scene, robot=concept,
-                            urdf=urdf, sim=sim)
+                            urdf=urdf, sim=sim, check_plan=plan, check_plan_rejected=rejected)
     return await repair_collisions(llms, version, progress) if auto_repair else version
+
+
+async def _planned_checks(llms, spec, requirements, scene, concept, sim, progress, previous=None):
+    """(sim, check_plan, check_plan_rejected) after the checks agent planned task-specific checks and code evaluated them
+    (they count toward sim.ok). When the agent cannot be used nothing changes: with `previous` (the plan of the version
+    this one is revised from) that plan is re-evaluated in code against the new simulation instead."""
+    done = await checks_pipeline.plan_and_apply(llms, spec, requirements, scene, concept, sim, progress, previous)
+    if done is not None:
+        sim, plan, rejected = done
+        return sim, plan, [RejectedPlan(**r) for r in rejected]
+    if previous:
+        return _reevaluated(spec, requirements, scene, concept, sim, previous)
+    return sim, [], []
+
+
+def _reevaluated(spec, requirements, scene, concept, sim, plan):
+    """(sim, check_plan, check_plan_rejected) with the stored plan evaluated in code against `sim`; no model call."""
+    sim, accepted, rejected = checks_pipeline.reevaluate(spec, requirements, scene, concept, sim, plan)
+    return sim, accepted, [RejectedPlan(**r) for r in rejected]
 
 
 FLEET_ROBOT_ESTIMATE_MAX = 3
@@ -270,8 +291,9 @@ async def revise(llms, base_version, request, t, progress, auto_repair=True):
     return await repair_collisions(llms, version, progress) if auto_repair else version
 
 
-async def _revise_core(llms, base_version, request, t, progress):
-    """One revise round without the collision repair."""
+async def _revise_core(llms, base_version, request, t, progress, plan_checks=True):
+    """One revise round without the collision repair. With `plan_checks` the checks agent plans again (the previous plan
+    goes to it as a hint); without (a repair round) the stored plan is re-evaluated in code, no model call."""
     old = base_version
     request = (request or '').strip()
     if not request:
@@ -315,9 +337,20 @@ async def _revise_core(llms, base_version, request, t, progress):
         urdf = old.urdf
         sim = await asyncio.to_thread(simulate, spec, requirements, scene, concept)
     progress(f'Task simulated: {sum(c.passed is True for c in sim.checks)} of {len(sim.checks)} checks pass')
+    if plan_checks:
+        sim, plan, rejected = await _planned_checks(llms, spec, requirements, scene, concept, sim, progress, old.check_plan)
+    elif old.check_plan:
+        sim, plan, rejected = _reevaluated(spec, requirements, scene, concept, sim, old.check_plan)
+    else:
+        plan, rejected = [], []
     return DesignVersion(version=0, parent_version=old.version, created=now(), change_request=request[:2000],
                          change_summary=f'{patch.summary} {checked_outcome(sim)}', spec=spec, requirements=requirements, scene=scene, robot=concept,
-                         urdf=urdf, sim=sim)
+                         urdf=urdf, sim=sim, check_plan=plan, check_plan_rejected=rejected)
+
+
+async def _revise_repair(llms, base_version, request, t, progress):
+    """A repair round: like _revise_core, but the stored check plan is re-evaluated in code instead of asking again."""
+    return await _revise_core(llms, base_version, request, t, progress, plan_checks=False)
 
 
 # -- collision auto-repair --------------------------------------------------------------------------------------------
@@ -463,7 +496,7 @@ async def repair_collisions(llms, version, progress, revise_fn=None):
     before = collision_episodes(version)
     if before == 0:
         return version
-    revise_fn = revise_fn or _revise_core
+    revise_fn = revise_fn or _revise_repair
     best, best_score, best_attempt = version, (before, -checks_passed(version), 0), 0
     seen, attempts = {design_fingerprint(version)}, []
     stop = 'max attempts'

@@ -9,6 +9,7 @@ Rules:
 - "family" is one of the families offered. Mobile tasks (the robot must drive) need a mobile family; use mobile_manipulator when it must also pick or place, mobile_base when it only carries.
 - Prefer the simplest family that can do the task: a gantry for straight-line pick and place over a fixed area, a serial arm for flexible reach, and so on.
 - "params" is a partial object of that family's parameters (see params_schema); omit what you do not know. Lengths in metres, angles in degrees, masses in kg. Do not copy requirement numbers into rated values you cannot justify.
+- For a gantry whose task rotates the tool (or a mounted object) more than half a turn, set tool_yaw true and tool_yaw_continuous true so the yaw joint can turn without limit.
 - "name" is a short descriptive name (for example "6-axis bottle mover"). "rationale" says in two or three plain sentences why this family fits and what its limits are.
 - Requirements are given as ids with targets and units only. Do not state whether the robot passes them."""
 

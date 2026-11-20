@@ -1,0 +1,57 @@
+{
+  "description": "Inputs of the time-saved formulas (physics/savings.py and packages/core/src/savings.ts).",
+  "properties": {
+    "robot_cycle_s": {
+      "exclusiveMinimum": 0,
+      "title": "Robot Cycle S",
+      "type": "number"
+    },
+    "manual_cycle_s": {
+      "exclusiveMinimum": 0,
+      "title": "Manual Cycle S",
+      "type": "number"
+    },
+    "operators": {
+      "minimum": 1,
+      "title": "Operators",
+      "type": "number"
+    },
+    "shifts_per_day": {
+      "default": 1.0,
+      "minimum": 0,
+      "title": "Shifts Per Day",
+      "type": "number"
+    },
+    "hours_per_shift": {
+      "default": 8.0,
+      "minimum": 0,
+      "title": "Hours Per Shift",
+      "type": "number"
+    },
+    "days_per_week": {
+      "default": 5.0,
+      "minimum": 0,
+      "title": "Days Per Week",
+      "type": "number"
+    },
+    "days_per_year": {
+      "default": 250.0,
+      "minimum": 0,
+      "title": "Days Per Year",
+      "type": "number"
+    },
+    "supervision_min_per_shift": {
+      "default": 15.0,
+      "minimum": 0,
+      "title": "Supervision Min Per Shift",
+      "type": "number"
+    }
+  },
+  "required": [
+    "robot_cycle_s",
+    "manual_cycle_s",
+    "operators"
+  ],
+  "title": "SavingsInputs",
+  "type": "object"
+}

@@ -10,6 +10,9 @@ pypdf==6.21.4             # text from PDF manuals
 trimesh==4.6.10           # STL, OBJ, glTF/GLB and DAE meshes: size, position and volume
 numpy==2.5.4
 
+# Task-specific checks (2026-11-21): units for the formulas the checks agent plans (code evaluates them)
+pint==0.24.4
+
 # Tests
 pytest==9.1.1
 pytest-asyncio==1.4.0

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAskRequest, useAskSelection } from "../components/AskBar";
 import { api } from "../api";
 import { Dictation, JobStatus, StageHead, useJob } from "../components/common";
 import { useProjectJob } from "../jobs";
@@ -12,6 +13,7 @@ import type { FleetOverlay } from "../components/SceneView";
 import RepairLog from "../components/RepairLog";
 import Requirements from "../components/Requirements";
 import { ConceptPanel, SpecSummary } from "../components/SpecPanels";
+import TimeSaved from "../components/TimeSaved";
 import type { DesignVersion, Project, ReviseRequest } from "../types";
 
 export default function Design({ project, reload, approved }: { project: Project; reload: () => Promise<void>; approved: () => void }) {
@@ -39,6 +41,8 @@ export default function Design({ project, reload, approved }: { project: Project
     }
   }, [current, project.id, versions.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const v = current !== undefined ? cache[current] : undefined;
+  useAskSelection({ version: current });
+  useAskRequest((n) => { if (n.version != null && versions.includes(n.version)) setCurrent(n.version); });
   const frozen = project.approved_version != null;
   const fleet = v?.fleet ?? null;
   const fleetOn = !!project.fleet?.enabled;
@@ -87,6 +91,7 @@ export default function Design({ project, reload, approved }: { project: Project
             </div>
             <div className="panel"><h3>{fleet ? `Requirements (primary robot ${fleet.primary})` : "Requirements"}</h3><Requirements requirements={v.requirements} checks={v.sim.checks} /></div>
           </div>
+          <TimeSaved project={project} version={v} reload={reload} />
           {fleet && <FleetPanel project={project} version={v} reload={reload} />}
           {fleet && !frozen && (
             <details className="panel"><summary>Change the assignment and plan the fleet again</summary>

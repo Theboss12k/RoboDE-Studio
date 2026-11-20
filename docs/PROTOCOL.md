@@ -16,14 +16,14 @@ and `runtime/llm/**`.
   "input": { ...task-specific, see below... },
   "llm": {
     "roles": {"spec": {"id": "claude_opus", "kind": "claude_cli", "model": "claude-opus-5-5", "effort": "",
-                       "timeout_s": 240, "cli_path": "", "api_key": null}, "...": "all 8 roles"},
+                       "timeout_s": 240, "cli_path": "", "api_key": null}, "...": "all 9 roles"},
     "profile": null
   },
   "context": {"project_id": "p_ab12cd34ef", "task": "design"},
   "out_dir": "/abs/path/runtime/tmp/jobs/<job_id>"
 }
 ```
-- `llm.roles`: every role (spec, scene, robot, revise, search, extract, analysis, objects) resolved by Java to its profile
+- `llm.roles`: every role (spec, scene, robot, revise, search, extract, analysis, objects, ask, checks) resolved by Java to its profile
   dict. `api_key` is set only for keyed providers (gemini): the saved key, else the `GEMINI_API_KEY` env fallback.
   Keys travel only on stdin: never in argv, env, logs or stdout.
 - `llm.profile`: a single profile dict (only for `llm_test`).
@@ -76,6 +76,7 @@ placeholders (`version: 0`).
 | `studio_pdf` | `{build: StudioBuild, version: DesignVersion, project: {id, title, brief}, build_dir: str, snapshots: [{view: iso\|front\|side\|top, path}]}` | `{pdf: "manufacturer.pdf", package: "package.zip", files: [BuildFile]}` written to out_dir, together with `bom.csv` (`files` lists the PDF, `bom.csv` and the package). `build_dir` is only read: its `assembly.step`, `parts/` and `urdf/` are staged with `bom.csv` in `out_dir/_stage` (removed afterwards) so that the package holds `bom.csv`. Job (no LLM). Planned. |
 | `inspect_upload` | `{path, kind: urdf\|datasheet\|image}` | `{ok, summary \| text_chars \| mime}` (validates an upload; a bad file is a value error) |
 | `export_assets` | `{urdf, want: ["parsed","glb","stl"]}` | `{parsed?}` plus files `design.glb` / `design.stl` in out_dir |
+| `ask` | `{question, history: [{role, text}] (at most 6), context: {project_id?, stage?, version?, t?, candidate?, build?, selection?}, grounding: {project, version?, build?, candidate?}}` | `{answer, citations: [{kind, ref, label}], confirm: [{kind, label, request}], navigate: {stage, version?, build?, candidate?} \| null, proposals: [{kind, args}]}`. LLM job, role `ask`. It never performs an action: the tools only record `proposals` (at most 2, kinds `revise`, `design`, `search`, `analyse`, `studio_build`, `update_brief`, `set_baseline`, `cancel_job`) and answer `{"queued": true}`. Java builds `grounding` from stored data, validates the proposals after the result arrives and runs them through its own service methods; `proposals` is removed from the job result. |
 | `llm_test` | `{}` (uses `llm.profile`) | `{ok, answer, seconds}` |
 
 Fleet additions: `design` and `revise` results may carry `fleet_advice: {robots_needed, reasons: [str], source: "spec" \| "code" \| "both"}`
@@ -89,6 +90,7 @@ Clarifications (as implemented in `server/studio/tasks/`):
 - `design.input.answers` must already be merged (Java merges new answers into the project's answers).
 - Optional `design.input.spec` skips the spec round, for retries.
 - The `objects` role (default profile `claude_haiku`) makes `scene.objects[].model` (primitives, with `name`) for each task object, concurrently with the scene and robot agents. It is never fatal: on failure the keys stay absent and no progress line is written; on success one line `Object models: <n> made`. `revise` reuses models of unchanged objects (same name, size, shape); fleet versions keep the base version's models.
+- The `checks` role (default profile `claude_opus`) plans task-specific checks after the simulation and before the collision repair, in `design` and in `revise` (a repair round re-evaluates the stored plan in code instead of asking again). Its plans are formulas over a code-built catalogue of named quantities; code evaluates them with units and appends them to `sim.checks` as `Check`s with `source: "planned"` (they count toward `sim.ok`; the client and the PDF label them "AI-planned, code-computed"). The accepted plans are stored in `version.check_plan` and the rejected ones in `version.check_plan_rejected` (`[{id, reason}]`); both keys are absent when empty, and `Check.source` is absent when `"sim"`. One progress line `Task-specific checks: <n> planned` on success; when the call itself fails (no adapter, an LLM error, a timeout) no checks, no line and no change. A revised design passes the previous plan to the agent as a hint; when the agent fails on a revise the previous plan is re-evaluated in code.
 - Optional `design.input.brief_images` (`[{path, name}]`, absolute paths of files validated by `inspect_upload`) are photos
   of the task, objects or workcell. They go to the spec call labelled `brief:<name>`, before the reference and answer
   images, and count toward the same cap of 8 (brief first); dropped with a progress line for adapters without image support.
@@ -101,6 +103,7 @@ Clarifications (as implemented in `server/studio/tasks/`):
 - `analyse` takes an optional `document_source` text (default "uploaded document"). The result's `document` is
   non-null only when the task downloaded the document itself; with `document_path` it is null.
 - `KeyError` maps to `not_found` only when its message says "not found"; otherwise `internal`.
+- `ask` (the Ask bar): the `grounding` is the only source of facts (project, the chosen version without frames, the build without geometry, a candidate and its analysis, at most about 60 KB). The agent runs `llm/tools.py run_tools` with one recording tool per action kind. `approve`, `approve_build` and `decision` are not tools: they are `confirm` entries (`approve` `{version}`, `approve_build` `{build}`, `decision` `{action: self, build?}` or `{action: approve|robot_studio, candidate_id}`). Citations that do not exist in the grounding are dropped in Python (and again by Java). A third recorded action is refused by the tool (`limit: 2 actions per question`); Java refuses extras too.
 - Scripted fixture answers are shared by all roles using the same fixture file within one process.
 - `llm_test` may add `images` and `image_seconds`; `export_assets` adds `files: [...]`.
 - `STUDIO_HEARTBEAT_S` overrides the 15 s heartbeat (tests). Error and progress text is redacted of API keys.

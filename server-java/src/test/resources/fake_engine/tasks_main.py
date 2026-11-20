@@ -111,13 +111,27 @@ def build_file(path, kind, data=b"x"):
     return {"path": path, "kind": kind, "sha256": "0" * 64, "bytes": len(data)}
 
 
+def vendor_note(inp):  # the preferred vendors the server passed, so a test can see them
+    domains = [v["domain"] for v in inp.get("preferred_vendors") or []]
+    return "; vendors " + ",".join(domains) if domains else ""
+
+
+def fake_find(inp):
+    domains = [v["domain"] for v in inp.get("preferred_vendors") or []]
+    return {"candidates": [{"id": "fake_one", "manufacturer": "Fake", "model": "vendors " + ",".join(domains), "family": "serial_arm",
+                            "product_url": "https://fake.example/p", "image_url": "", "datasheet_url": "", "price": None,
+                            "payload_kg": None, "reach_m": None, "dof": None, "repeatability_mm": None, "key_specs": [],
+                            "confidence": "medium", "screen": []}], "dropped": {}}
+
+
 def fake_studio_build(inp):
     base = inp.get("base_build")
     pinned = inp.get("pinned") or {}
     return {
         "build": inp["build"], "design_version": inp["version"]["version"], "member": inp.get("member"),
         "parent_build": base["build"] if base else None, "created": "2026-01-01T00:00:00Z",
-        "request": inp.get("request") or "", "summary": "Fake build; pinned " + ",".join(sorted(pinned)),
+        "request": inp.get("request") or "",
+        "summary": "Fake build; pinned " + ",".join(sorted(pinned)) + vendor_note(inp),
         "family": "serial_arm", "sizing": [], "motors": [],
         "electronics": [], "style": {"style": "machined_aluminium", "proposed": "machined_aluminium", "reasons": [], "forced": False, "checks": []},
         "parts": [{"id": "p1", "name": "Base plate", "qty": 1, "material": "6061", "process": "machined", "source": "custom",
@@ -140,7 +154,9 @@ def twin_result(scale=1.0):
             "duration_s": 1.0 / scale, "limits": [], "torque_use": {"j1": 0.4}, "ik_error_m": None}
 
 
-if task == "studio_build":
+if task == "find":
+    emit({"type": "result", "data": fake_find(inp)})
+elif task == "studio_build":
     wait_for_release(inp.get("request"))
     for rel in ("assembly.step", "parts/p1.step", "parts/p1.stl", "urdf/robot.urdf"):
         write_out(rel, b"fake " + rel.encode())
@@ -164,3 +180,41 @@ elif task == "studio_pdf":
     write_out("bom.csv", b"id,name\np1,Base plate\n")
     emit({"type": "result", "data": {"pdf": "manufacturer.pdf", "package": "package.zip", "snapshots_seen": [s["view"] for s in inp["snapshots"]],
                                      "files": [build_file("manufacturer.pdf", "pdf"), build_file("package.zip", "zip"), build_file("bom.csv", "csv")]}})
+
+
+# ---- Ask bar stand-in (used by AskApiTest; canned proposals by question keyword, not a model answer) ----
+def fake_ask(inp):
+    q = inp["question"]
+    g = inp.get("grounding") or {}
+    out = {"answer": "Canned answer.", "citations": [{"kind": "version", "ref": "1", "label": "v1"},
+                                                     {"kind": "weird", "ref": "x", "label": "x"}],
+           "confirm": [], "navigate": None, "proposals": []}
+    if "GROUNDING" in q:  # lets the test see what the server put into the grounding
+        text = json.dumps(g)
+        out["answer"] = json.dumps({"bytes": len(text), "keys": sorted(g), "has_frames": '"frames"' in text,
+                                    "project_keys": sorted((g.get("project") or {}).keys()),
+                                    "version_keys": sorted((g.get("version") or {}).keys()),
+                                    "context": inp.get("context"), "history": len(inp.get("history") or []),
+                                    "moment": (g.get("version") or {}).get("moment"),
+                                    "events": len((g.get("version") or {}).get("events") or []),
+                                    "sizes": {k: len(json.dumps(v)) for k, v in (g.get("version") or {}).items()}})
+    if "REVISE" in q:
+        out["proposals"] = [{"kind": "revise", "args": {"request": "make the reach 20 cm longer", "ignored": 1}}]
+    if "DELETE" in q:
+        out["proposals"] = [{"kind": "delete_project", "args": {}}]
+    if "THREE" in q:
+        out["proposals"] = [{"kind": "search", "args": {}}, {"kind": "update_brief", "args": {"text": "A brand new brief for the job"}},
+                            {"kind": "set_baseline", "args": {"operators": 2}}]
+    if "BAD" in q:
+        out["proposals"] = [{"kind": "set_baseline", "args": {"operators": 0}}, {"kind": "analyse", "args": {"candidate": "nobody"}}]
+    if "APPROVE" in q:
+        out["confirm"] = [{"kind": "approve", "label": "Approve v1", "request": {"version": 1}},
+                          {"kind": "approve", "label": "Approve v9", "request": {"version": 9}},
+                          {"kind": "decision", "label": "Build it myself", "request": {"action": "self"}},
+                          {"kind": "decision", "label": "Buy", "request": {"action": "sell"}}]
+        out["navigate"] = {"stage": "decision", "version": 1}
+    return out
+
+
+if task == "ask":
+    emit({"type": "result", "data": fake_ask(inp)})

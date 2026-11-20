@@ -99,6 +99,16 @@
             }
           ],
           "default": null
+        },
+        "source": {
+          "default": "sim",
+          "enum": [
+            "sim",
+            "planned"
+          ],
+          "title": "Source",
+          "type": "string",
+          "x-optional": true
         }
       },
       "required": [
@@ -342,6 +352,12 @@
       },
       "title": "Screen",
       "type": "array"
+    },
+    "preferred": {
+      "default": false,
+      "title": "Preferred",
+      "type": "boolean",
+      "x-optional": true
     }
   },
   "required": [

@@ -26,6 +26,7 @@ from reportlab.lib.utils import ImageReader  # noqa: E402
 from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer,  # noqa: E402
                                 Table, TableStyle)
 
+from ..physics import savings as savings_calc
 from ..schemas import BuildFile, BuildPart, DesignVersion, MotorChoice, SpecValue, StudioBuild  # noqa: E402
 
 LIMITS = [
@@ -38,6 +39,7 @@ LIMITS = [
     'rule; defined values are specified here for procurement.',
 ]
 PROCURE = 'Procure to this specification'
+UNVERIFIED = 'unverified: the shop page was blocked, so the quoted price could not be checked'
 VIEWS = ('front', 'side', 'top', 'iso')
 
 _ss = getSampleStyleSheet()
@@ -104,6 +106,23 @@ def _table(rows: list[list], widths: list[float], header: bool = True) -> Table:
 
 def _date(stamp: str) -> str:
     return (stamp or '')[:10]
+
+
+def _get(obj, key, default=None):
+    """A field of a model or a dict; tolerates fields that older builds do not have."""
+    if obj is None:
+        return default
+    return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+
+def _rejected(items) -> list:
+    """Paragraphs listing the products that were considered and rejected, with the reason."""
+    out = []
+    for r in items or []:
+        name, shop, url = _get(r, 'name') or _get(r, 'id') or '-', _get(r, 'shop') or '', _get(r, 'url') or ''
+        label = _link(url, name) if url else escape(str(name))
+        out.append(f"{label}{f' ({escape(str(shop))})' if shop else ''}: {escape(str(_get(r, 'reason') or '-'))}")
+    return out
 
 
 def _part_files(part: BuildPart) -> str:
@@ -199,6 +218,9 @@ def _cover(build: StudioBuild, version: DesignVersion, project: dict) -> list:
     return parts + [PageBreak()]
 
 
+PLANNED_LABEL = 'AI-planned, code-computed'     # shown with every check the checks agent planned (the client shows the same words)
+
+
 def _requirements(build: StudioBuild, version: DesignVersion) -> list:
     out = [Paragraph('Task and requirements met', H1), Paragraph(escape(version.spec.summary), BODY)]
     reqs = {r.id: r for r in version.requirements}
@@ -213,11 +235,50 @@ def _requirements(build: StudioBuild, version: DesignVersion) -> list:
         r = reqs.get(c.requirement_id)
         cmp = r.comparator if r else ''
         res = {True: 'pass', False: 'FAIL', None: 'not checked'}[c.passed]
+        detail = c.detail
+        if c.source == 'planned':
+            shown = ', '.join(f'{k} = {_fmt(v.value)} {v.unit}'.strip() for k, v in c.calc.inputs.items()) if c.calc else ''
+            detail = ' '.join(x for x in (PLANNED_LABEL + '.', c.detail, f'{c.calc.formula} ({shown}).' if c.calc else '') if x)
         rows.append([c.name, f'{cmp} {_fmt(c.required)} {c.unit}'.strip(), f'{_fmt(c.actual)} {c.unit}'.strip(), res,
-                     c.detail])
+                     detail])
     if len(rows) == 1:
         rows += [[r.name, f'{r.comparator} {_fmt(r.target)} {r.unit}', '-', 'not checked', ''] for r in version.requirements]
     return out + [Spacer(1, 3 * mm), _table([[escape(str(c)) for c in r] for r in rows], [4, 2.5, 2.5, 1.6, 5])]
+
+
+BASELINE_LABEL = {'user': 'your figures', 'estimate': 'estimated figures'}
+
+
+def savings_label(source: str) -> str:
+    """The caveat printed with every time-saved figure (the client shows the same words)."""
+    return f'Estimate based on {BASELINE_LABEL.get(source, source)}; kinematic simulation, not a time study.'
+
+
+def _savings(version: DesignVersion, project: dict) -> list:
+    out = [Spacer(1, 6 * mm), Paragraph('Expected time savings', H1)]
+    found = savings_calc.version_savings(version, (project or {}).get('savings_inputs'))
+    if found is None:
+        return out + [Paragraph('No time saving was estimated: it needs the robot cycle time and the manual time per item, '
+                                'and one of them is not known for this design.', BODY)]
+    sav, inp, source = found
+    r = {k: getattr(sav, k).result for k in type(sav).model_fields}
+    out.append(Paragraph(escape(savings_label(source)), BODY))
+    rows = [['Measure', 'Value', 'How it is worked out'],
+            ['Labour hours freed per day', f'{_fmt(r["hours_freed_per_day"])} h', sav.hours_freed_per_day.formula],
+            ['Labour hours freed per week', f'{_fmt(r["hours_freed_per_week"])} h', sav.hours_freed_per_week.formula],
+            ['Labour hours freed per year', f'{_fmt(r["hours_freed_per_year"])} h', sav.hours_freed_per_year.formula],
+            ['Robot items per hour', _fmt(r['robot_items_per_hour']), sav.robot_items_per_hour.formula],
+            ['Manual items per hour', _fmt(r['manual_items_per_hour']), sav.manual_items_per_hour.formula],
+            ['Throughput change', f'{r["throughput_change"] * 100:+.0f} %', sav.throughput_change.formula],
+            ['Supervision time', f'{_fmt(r["supervision_hours_per_day"])} h per day', sav.supervision_hours_per_day.formula]]
+    out += [Spacer(1, 2 * mm), _table([[escape(c) for c in row] for row in rows], [4, 2.5, 8])]
+    out.append(Paragraph(escape(
+        f'Inputs: robot cycle {_fmt(inp.robot_cycle_s)} s (simulated), manual time {_fmt(inp.manual_cycle_s)} s per item, '
+        f'{_fmt(inp.operators)} operator(s), {_fmt(inp.shifts_per_day)} shift(s) of {_fmt(inp.hours_per_shift)} h, '
+        f'{_fmt(inp.days_per_week)} days a week, {_fmt(inp.days_per_year)} days a year, {_fmt(inp.supervision_min_per_shift)} min '
+        f'of supervision per shift. Labour hours freed are the person-hours the same items would take by hand, minus '
+        f'supervision.'), BODY))
+    return out
 
 
 def _images(build, version, snapshots, build_dir):
@@ -277,7 +338,10 @@ def _price(price) -> str:
     if price is None:
         return 'no price listed'
     amt = f'{price.amount:g} {escape(price.currency)}' if price.amount is not None else 'price not read'
-    return f'{amt} (as listed by {escape(price.shop)}, seen {escape(_date(price.seen))})'
+    text = f'{amt} (as listed by {escape(price.shop)}, seen {escape(_date(price.seen))})'
+    if _get(price, 'status', 'verified') == 'unverified':
+        text += f' <b>[{escape(UNVERIFIED)}]</b>'
+    return text
 
 
 def _motor_block(m: MotorChoice) -> list:
@@ -297,14 +361,21 @@ def _motor_block(m: MotorChoice) -> list:
             ['Required (joint side)', escape(req)], ['Provided (joint side)', escape(prov)], ['Margin', escape(marg)]]
     if m.alternatives:
         rows.append(['Alternatives', escape('; '.join(f'{a.name} ({a.shop})' for a in m.alternatives))])
+    rejected = _rejected(_get(m, 'rejected'))
+    if rejected:
+        rows.append(['Rejected products', '<br/>'.join(rejected)])
     t = _table([[Paragraph(c, CELL) if isinstance(c, str) else c for c in r] for r in rows], [2, 8], header=False)
     t.setStyle(TableStyle([('SPAN', (0, 0), (-1, 0)), ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e3e8ef'))]))
     return [KeepTogether([t, Spacer(1, 3 * mm)])]
 
 
 def _drivetrain(build: StudioBuild) -> list:
-    out = [PageBreak(), Paragraph('Motors, gearboxes, drivers, controller and power supply', H1),
-           Paragraph('Motors and gearboxes', H2)]
+    out = [PageBreak(), Paragraph('Motors, gearboxes, drivers, controller and power supply', H1)]
+    notes = [n for n in (_get(build, 'sourcing_notes') or []) if n]
+    if notes:
+        out.append(Paragraph('Sourcing notes', H2))
+        out += [Paragraph('- ' + escape(str(n)), BODY) for n in notes]
+    out.append(Paragraph('Motors and gearboxes', H2))
     for m in build.motors:
         out += _motor_block(m)
     for role, label in (('driver', 'Drivers'), ('controller', 'Controller'), ('power_supply', 'Power supply'),
@@ -322,6 +393,10 @@ def _drivetrain(build: StudioBuild) -> list:
                                   for c in e.checks) or '-'
             rows.append([name, str(e.qty), shop, _spec_lines(e.values) or '-', checks])
         out.append(_table([[c if i == 0 else c for c in r] for i, r in enumerate(rows)], [3, 0.8, 3.5, 4, 4]))
+        for e in items:
+            rejected = _rejected(_get(e, 'rejected'))
+            if rejected:
+                out.append(Paragraph(f'<b>Rejected products for {escape(e.name)}:</b><br/>' + '<br/>'.join(rejected), CELL))
     return out
 
 
@@ -391,7 +466,7 @@ def write_pdf(build: StudioBuild, version: DesignVersion, project: dict, build_d
                             bottomMargin=16 * mm, invariant=1, title=f'Build b{build.build} manufacturer report',
                             author='RoboDE Studio')
     doc.build_no = build.build
-    story = (_cover(build, version, project) + _requirements(build, version) + _renders(build, version, snapshots, build_dir)
+    story = (_cover(build, version, project) + _requirements(build, version) + _savings(version, project) + _renders(build, version, snapshots, build_dir)
              + _bom(build) + _drivetrain(build) + _defined(build) + [PageBreak()] + _standard(build)
              + _files(build, build_dir) + [PageBreak()] + _limits(build))
     doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)

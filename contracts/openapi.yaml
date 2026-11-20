@@ -87,10 +87,14 @@ tags:
     description: Record the decision and export the design.
   - name: Studio
     description: Robot studio for an approved design. Builds (CAD, motors, electronics), the digital twin, snapshots and the manufacturer package.
+  - name: Ask
+    description: The Ask bar. Questions answered from stored project data, and at most two actions the server performs for the user.
   - name: Jobs
     description: Read, list and cancel background jobs.
   - name: LLM settings
     description: Global model profiles, role assignment, API keys and token usage.
+  - name: Settings
+    description: Global settings that are not LLM settings, such as preferred vendors.
   - name: Meta
     description: Health, robot families and this specification.
 
@@ -109,7 +113,7 @@ paths:
               schema: { $ref: '#/components/schemas/Health' }
               example:
                 ok: true
-                llm: { spec: claude_opus, scene: claude_sonnet, robot: claude_opus, revise: claude_opus, search: claude_sonnet, extract: claude_sonnet, analysis: claude_sonnet, objects: claude_haiku }
+                llm: { spec: claude_opus, scene: claude_sonnet, robot: claude_opus, revise: claude_opus, search: claude_sonnet, extract: claude_sonnet, analysis: claude_sonnet, objects: claude_haiku, ask: claude_sonnet, checks: claude_opus }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /families:
     get:
@@ -620,6 +624,33 @@ paths:
         '422': { $ref: '#/components/responses/Unprocessable' }
         '413': { $ref: '#/components/responses/TooLarge' }
 
+  /projects/{pid}/baseline:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    put:
+      operationId: putBaseline
+      tags: [Projects]
+      summary: Set the time-saved inputs
+      description: >-
+        Stores the manual baseline and the working pattern used by the time-saved estimate (any subset of the fields; `null`
+        removes `manual_cycle_s` or `operators`, or restores another field's default). Stored values override `spec.baseline`
+        and the defaults. Allowed while a design or revise job runs. The estimate itself is computed from these inputs and the
+        robot's simulated cycle (`savings` in `@robode/studio-core`); it is not a time study.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BaselineUpdate' }
+            example: { manual_cycle_s: 12, operators: 2, days_per_week: 6 }
+      responses:
+        '200':
+          description: The updated project (with `savings_inputs`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
   /projects/{pid}/fleet:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -855,12 +886,15 @@ paths:
       operationId: setDecision
       tags: [Decision & export]
       summary: Record the decision
+      description: 'Either choose an analysed catalog candidate, or choose your own design (the approved Robot studio build). Choosing again overwrites the decision. `self` returns 409 when no build is approved (or the given build is not approved) and 404 for an unknown build.'
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/DecisionRequest' }
-            example: { candidate_id: acme_ra_6, action: approve }
+            examples:
+              candidate: { summary: Buy an analysed catalog robot, value: { candidate_id: acme_ra_6, action: approve } }
+              self: { summary: Build our own design (the approved Robot studio build), value: { action: self } }
       responses:
         '200':
           description: The updated project (stage `decided`).
@@ -869,6 +903,7 @@ paths:
               schema: { $ref: '#/components/schemas/Project' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
   /projects/{pid}/export:
     parameters:
@@ -1147,6 +1182,47 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /ask:
+    post:
+      operationId: ask
+      tags: [Ask]
+      summary: Ask a question about the project on screen
+      description: >-
+        Starts an `ask` job (role `ask`). The server builds the facts to answer from for the ids in `context` (project,
+        version, build, candidate, the moment `t`) from stored data: numbers are never taken from the client. The model
+        answers from those facts and may propose at most two actions of a fixed list (`revise`, `design`, `search`,
+        `analyse`, `studio_build`, `update_brief`, `set_baseline`, `cancel_job`). The server validates each proposal exactly as
+        the matching route validates its body, executes it (a job it starts appears in the project's job list and can be
+        cancelled) and reports it in `actions_taken`; a refused one has `ok: false` and an `error` (`not allowed` for
+        anything else, such as delete, keys, settings, profiles, approve or decision; `limit: 2 actions per question` for
+        extras). An approval, a build approval or a decision is never executed: it comes back in `confirm` as a chip whose
+        `request` is the body of the existing route (`approve_build` also carries `build`, which goes into the path). Each
+        action is logged in the project's activity. `navigate` only tells the client where to look. 404 when a referenced
+        project, version, build or candidate does not exist; 422 for an invalid body.
+      parameters:
+        - $ref: '#/components/parameters/Wait'
+        - $ref: '#/components/parameters/Expand'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Callback'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: './schemas/AskRequest.json' }
+            example: { question: 'Why does the reach check pass?', history: [], context: { project_id: p_0123456789, stage: design, version: 2 } }
+      responses:
+        '200':
+          description: The job record; `result` is an `AskResponse` once `status` is `done`.
+          headers:
+            Location: { $ref: '#/components/headers/JobLocation' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '202': { $ref: '#/components/responses/JobRunning' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /jobs:
     get:
       operationId: listRunningJobs
@@ -1461,6 +1537,42 @@ paths:
               schema: { $ref: '#/components/schemas/UsageSummary' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /settings/vendors:
+    get:
+      operationId: getPreferredVendors
+      tags: [Settings]
+      summary: Read the preferred vendors
+      description: The shops the user wants searched first for robots, motors and electronics. A global setting, not part of a project.
+      responses:
+        '200':
+          description: The saved vendors (an empty list when none were saved).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreferredVendors' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      operationId: setPreferredVendors
+      tags: [Settings]
+      summary: Replace the preferred vendors
+      description: |
+        Replaces the whole list (at most 50). Each domain is a bare host such as `robu.in` (lower case, no scheme or path);
+        domains must be unique. Catalog searches and studio builds started afterwards use the new list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreferredVendors' }
+            example: { vendors: [{ name: Robu, domain: robu.in, categories: [motors, electronics], note: India } ] }
+      responses:
+        '200':
+          description: The saved list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreferredVendors' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1692,11 +1804,19 @@ components:
         assignment: { oneOf: [{ $ref: './schemas/FleetAssignment.json' }, { type: 'null' }] }
         member: { type: [string, 'null'], description: 'The member used for robot search and analysis.' }
     DecisionRecord:
-      type: [object, 'null']
-      properties:
-        candidate_id: { type: string }
-        action: { type: string, enum: [approve, robot_studio] }
-      required: [candidate_id, action]
+      description: 'The recorded decision: a catalog candidate (`approve`, or the legacy `robot_studio`) or your own design (`self`, with the build number); null before a decision.'
+      oneOf:
+        - type: 'null'
+        - type: object
+          properties:
+            candidate_id: { type: string }
+            action: { type: string, enum: [approve, robot_studio] }
+          required: [candidate_id, action]
+        - type: object
+          properties:
+            action: { type: string, enum: [self] }
+            build: { type: integer, minimum: 1, description: The approved Robot studio build. }
+          required: [action, build]
     Project:
       type: object
       description: The project view.
@@ -1711,6 +1831,7 @@ components:
         versions: { type: array, items: { type: integer }, description: 'Version numbers, ascending.' }
         approved_version: { type: [integer, 'null'] }
         fleet: { $ref: '#/components/schemas/FleetState' }
+        savings_inputs: { $ref: '#/components/schemas/SavingsInputsState' }
         studio: { $ref: '#/components/schemas/StudioState' }
         answer_comments: { type: object, additionalProperties: { type: string }, description: 'Only when comments exist.' }
         answer_notes:
@@ -1764,6 +1885,27 @@ components:
       properties:
         version: { type: integer }
       required: [version]
+    SavingsInputsState:
+      type: object
+      description: Present on a project only once the time-saved inputs were set (`PUT /projects/{pid}/baseline`).
+      properties:
+        manual_cycle_s: { type: number, exclusiveMinimum: 0, maximum: 86400, description: Seconds one person needs per item by hand. }
+        operators: { type: integer, minimum: 1, maximum: 100 }
+        hours_per_shift: { type: number, exclusiveMinimum: 0, maximum: 24 }
+        days_per_week: { type: number, exclusiveMinimum: 0, maximum: 7 }
+        days_per_year: { type: number, exclusiveMinimum: 0, maximum: 366 }
+        supervision_min_per_shift: { type: number, minimum: 0, maximum: 1440 }
+      required: [hours_per_shift, days_per_week, days_per_year, supervision_min_per_shift]
+    BaselineUpdate:
+      type: object
+      description: Any subset of the fields; send at least one.
+      properties:
+        manual_cycle_s: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 86400 }
+        operators: { type: [integer, 'null'], minimum: 1, maximum: 100 }
+        hours_per_shift: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 24 }
+        days_per_week: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 7 }
+        days_per_year: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 366 }
+        supervision_min_per_shift: { type: [number, 'null'], minimum: 0, maximum: 1440 }
     FleetUpdate:
       type: object
       properties:
@@ -1826,11 +1968,19 @@ components:
         characters: { type: integer, description: 'Characters of text read from the file.' }
       required: [ok, characters]
     DecisionRequest:
-      type: object
-      properties:
-        candidate_id: { type: string }
-        action: { type: string, enum: [approve, robot_studio] }
-      required: [candidate_id, action]
+      oneOf:
+        - type: object
+          description: Choose an analysed catalog candidate.
+          properties:
+            candidate_id: { type: string }
+            action: { type: string, enum: [approve, robot_studio] }
+          required: [candidate_id, action]
+        - type: object
+          description: Choose your own design. `build` defaults to the project's approved build.
+          properties:
+            action: { type: string, enum: [self] }
+            build: { type: integer, minimum: 1 }
+          required: [action]
     ParsedUrdf:
       type: object
       description: The parsed URDF the server attaches to versions and analyses (not part of the stored model).
@@ -1991,8 +2141,8 @@ components:
       description: A background job's record.
       properties:
         id: { type: string }
-        kind: { type: string, enum: [design, revise, fleet_design, search, analyse, llm_test, studio_build, studio_pdf] }
-        robot_id: { type: [string, 'null'], description: 'The project id; null for `llm_test`.' }
+        kind: { type: string, enum: [design, revise, fleet_design, search, analyse, llm_test, studio_build, studio_pdf, ask] }
+        robot_id: { type: [string, 'null'], description: 'The project id; null for `llm_test` and for an `ask` without a project.' }
         status: { type: string, enum: [running, done, error, cancelled] }
         progress: { type: array, items: { type: string }, description: 'Progress lines so far.' }
         result:
@@ -2006,6 +2156,7 @@ components:
             - { $ref: '#/components/schemas/AnalysisView' }
             - { $ref: '#/components/schemas/LlmTestResult' }
             - { $ref: '#/components/schemas/StudioBuildResult' }
+            - { $ref: './schemas/AskResponse.json' }
         error: { type: [string, 'null'], description: 'The failure message when `status` is `error` or `cancelled`.' }
         error_code: { type: [string, 'null'], description: 'Machine-readable cause, for example `datasheet_download`; `cancelled` for a cancelled job.' }
         started: { type: string, format: date-time }
@@ -2087,6 +2238,26 @@ components:
       properties:
         key: { type: string, minLength: 1, maxLength: 400 }
       required: [key]
+    PreferredVendor:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        domain: { type: string, minLength: 3, maxLength: 253, description: 'Bare lower-case host, for example robu.in.' }
+        categories:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [robots, motors, electronics] }
+        note: { type: string, maxLength: 300 }
+      required: [name, domain, categories, note]
+    PreferredVendors:
+      type: object
+      properties:
+        vendors:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/PreferredVendor' }
+      required: [vendors]
     UsageBucket:
       type: object
       properties:

@@ -11,6 +11,7 @@ from .statics import G
 TASK_VERBS = ('pick', 'place', 'move', 'press', 'inspect', 'push')
 DWELL_VERBS = ('wait', 'inspect', 'press')   # only these actions' duration_s is dwell; other verbs' moves take the rest
 MAX_DWELL_SHARE = 0.5           # dwell may use at most this share of the cycle; the rest is left for motion
+MIN_MOTION_SHARE = 0.05         # rotates and timed moves never leave the other moves less than this share of the cycle
 MOBILE_DRIVE_SHARE = 0.6        # share of the non-dwell cycle time given to driving when no speed is specified
 
 
@@ -169,7 +170,16 @@ def derive(spec: TechnicalSpec, base: BasePose) -> list[Requirement]:
     dwell_cap = MAX_DWELL_SHARE * pi.cycle_time_s
     capped = dwell > dwell_cap
     dwell = min(dwell, dwell_cap)
+    # time the run spends in rotates and in moves with a fixed time is not available for the other moves
+    fixed = 0.0
+    for a in spec.actions:
+        if a.verb == 'rotate' and a.rpm > 0 and abs(a.turns) > 0:
+            fixed += abs(a.turns) * 60.0 / a.rpm + a.ramp_s       # trapezoid: d / omega + ramp
+        elif a.verb == 'move' and a.duration_s > 0:
+            fixed += a.duration_s
     budget = pi.cycle_time_s - dwell
+    if fixed > 0:
+        budget = max(budget - fixed, MIN_MOTION_SHARE * pi.cycle_time_s)
     drive_dist = 0.0
     if mobile:
         drive_dist = _path_length(spec.locomotion.path) if len(spec.locomotion.path) > 1 else pi.travel_distance_m
@@ -219,6 +229,20 @@ def derive(spec: TechnicalSpec, base: BasePose) -> list[Requirement]:
             inputs={**base_in, 'v': _q(v_req, 'm/s')}, result=a_req, unit='m/s^2', note=anote))
     else:
         a_req = pi.peak_acceleration_m_s2 or 1.0
+
+    # --- comfort / fragile "at most" limits ---
+    if pi.max_accel_m_s2 is not None:
+        add('max_accel', 'Acceleration limit (at most)', 'acceleration', '<=', Calc(
+            formula='a_peak <= a_limit (specified)', inputs={'a_limit': _q(pi.max_accel_m_s2, 'm/s^2')},
+            result=pi.max_accel_m_s2, unit='m/s^2',
+            note='Comfort or fragile-load limit from the spec: the simulated peak acceleration (tool centre point, '
+                 'and the rim of a rotated object) must stay at or below it.'))
+    if pi.max_jerk_m_s3 is not None:
+        add('max_jerk', 'Jerk limit (at most)', 'acceleration', '<=', Calc(
+            formula='j_peak <= j_limit (specified)', inputs={'j_limit': _q(pi.max_jerk_m_s3, 'm/s^3')},
+            result=pi.max_jerk_m_s3, unit='m/s^3',
+            note='Comfort or fragile-load limit from the spec. The simulation uses trapezoid speed profiles, so '
+                 'it cannot verify jerk.'))
 
     # --- grip ---
     gcalc = grip.force(pi.grip, m_obj, a_req, pi.contact_count, pi.friction_coefficient, sf)

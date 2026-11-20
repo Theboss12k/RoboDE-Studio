@@ -1,0 +1,222 @@
+{
+  "$defs": {
+    "AskActionTaken": {
+      "properties": {
+        "kind": {
+          "maxLength": 40,
+          "title": "Kind",
+          "type": "string"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id",
+          "x-optional": true
+        },
+        "summary": {
+          "maxLength": 400,
+          "title": "Summary",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error",
+          "x-optional": true
+        }
+      },
+      "required": [
+        "kind",
+        "ok",
+        "summary"
+      ],
+      "title": "AskActionTaken",
+      "type": "object"
+    },
+    "AskCitation": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "version",
+            "check",
+            "requirement",
+            "build",
+            "motor",
+            "candidate",
+            "brief",
+            "spec"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref": {
+          "maxLength": 200,
+          "title": "Ref",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 200,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref",
+        "label"
+      ],
+      "title": "AskCitation",
+      "type": "object"
+    },
+    "AskConfirm": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "approve",
+            "approve_build",
+            "decision"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 200,
+          "title": "Label",
+          "type": "string"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "label",
+        "request"
+      ],
+      "title": "AskConfirm",
+      "type": "object"
+    },
+    "AskNavigate": {
+      "properties": {
+        "stage": {
+          "maxLength": 40,
+          "title": "Stage",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version",
+          "x-optional": true
+        },
+        "build": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build",
+          "x-optional": true
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate",
+          "x-optional": true
+        }
+      },
+      "required": [
+        "stage"
+      ],
+      "title": "AskNavigate",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "citations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AskCitation"
+      },
+      "title": "Citations",
+      "type": "array"
+    },
+    "actions_taken": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AskActionTaken"
+      },
+      "title": "Actions Taken",
+      "type": "array"
+    },
+    "confirm": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AskConfirm"
+      },
+      "title": "Confirm",
+      "type": "array"
+    },
+    "navigate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AskNavigate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "answer"
+  ],
+  "title": "AskResponse",
+  "type": "object"
+}

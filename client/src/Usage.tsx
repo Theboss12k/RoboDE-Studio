@@ -12,11 +12,11 @@ type Summary = {
 const PERIODS: [string, string][] = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all", "All time"]];
 const ROLE_NAMES: Record<string, string> = {
   spec: "Specification", scene: "Scene", robot: "Robot concept", revise: "Revisions", search: "Robot search", extract: "Datasheet extraction",
-  analysis: "Analysis", test: "Connection tests", other: "Other",
+  analysis: "Analysis", objects: "Object models", ask: "Ask bar", checks: "Task-specific checks", test: "Connection tests", other: "Other",
 };
 const TASK_NAMES: Record<string, string> = {
   spec: "Specification and questions", scene: "Scene layout", robot: "Robot concept", revise: "Change requests", search: "Web search for robots",
-  extract: "Datasheet extraction", analysis: "Impact analysis", llm_test: "Connection test", other: "Other",
+  extract: "Datasheet extraction", analysis: "Impact analysis", ask: "Ask bar questions", llm_test: "Connection test", other: "Other",
 };
 
 async function fetchUsage(period: string): Promise<Summary> {

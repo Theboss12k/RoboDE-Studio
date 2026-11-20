@@ -1,5 +1,99 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 ~03:50 IST — NEXT 1 (real verification) done except one re-run. The Claude CLI 5-hour limit was hit (resets 06:20 IST). Read this first.**
+- Done: (b) the Design "Time saved" working was hand-checked; (c) the preferred vendors robu.in and
+  omc-stepperonline.com were added in the UI, and real build b2 ran; (d) the vague brief p_9a798e817e asks the baseline
+  questions with estimates. Results are in the last PROJECT_TIMELINE entry.
+- Three bugs found and fixed (fixture tests green: pytest 324, Java 52, contracts):
+  - `portable_schema` drops `x-optional`, which had broken every real spec call;
+  - a stepper with a low-voltage coil now runs from a 24 V bus (no 2.5 V supply);
+  - the driver type must be quote-verified and match the motor (no brushed DC driver for steppers).
+- NEXT: after 06:20 IST, run real build b3 of p_4775b16f5c (`POST /projects/p_4775b16f5c/studio/builds {}`). Check:
+  - the drivers are stepper drivers, or stay defined with `verified driver type` reasons;
+  - a single psu_24v;
+  - record the result in the timeline.
+
+  Python changes are live without a jar rebuild. Test project p_9a798e817e can be deleted when the user agrees.
+- Then NEXT 2 (CHECKS_AND_ASK_DESIGN, below) is unchanged.
+- **~05:25 IST: NEXT 2 code is DONE (W4, W5, W6a, W6b), with fixture tests only.** Lead checks: pytest 388 passed,
+  4 skipped; Java 59, 0 failures; contracts:check and typecheck pass.
+  - New `tests/conftest.py` guard: real providers raise unless a test is marked `claude`.
+  - Fixture spin mill: the planned yaw spin-up check gives 23,562 N·m against a 5 N·m rating (fails); studio sizing
+    includes the same torque.
+  - Real verification still to do once the app CLI limit resets (06:20 IST): b3 (electronics fixes), the spin mill
+    p_cf07285d3b redesign, and the Ask bar on 3 screens. The jar must be rebuilt first (ask the user).
+  - Snapshot to branch `google-gemini` (worktree ../RoboDE-Studio-google) taken after this line.
+- **~05:20 IST:** W4, W6a and W6b are DONE and reviewed. Lead checks: pytest 340 passed, 4 skipped; `./mvnw test` 59,
+  0 failures; contracts:check and typecheck pass. The only golden changes are the role lists (ask) and the gantry
+  `tool_yaw_continuous` param.
+  - The client uses the generated Ask types.
+  - `pint==0.24.4` was installed in .venv (the user approved it).
+  - W5 (checks agent) is RUNNING; its brief also covers studio yaw spin-up torque from code and the
+    derive() time budget.
+  - Not yet done: the dev-server jar rebuild (ask the user) to try the Ask bar in the browser; real runs: b3, the
+    spin mill and the Ask bar.
+- **2026-11-21 ~04:40 IST: NEXT 2 STARTED.** Workers: W4 (generic motions), W6a (Ask server) and W6b (Ask client) are
+  running in parallel; W5 (checks agent) follows W4. Real build b3 is still blocked: the app's Claude CLI limit resets
+  at 06:20 IST.
+- **QUEUED by the user, after NEXT 2:** a git branch of the system with Google equivalents throughout:
+  - Gemini models for every role instead of Claude;
+  - a Gemini CLI adapter (headless `gemini -p`; not installed on this Mac yet) instead of the Claude Code CLI
+    adapter. The user said "Antigravity", but it is an IDE with no known headless CLI;
+  - Google Search grounding for the search role (`llm/gemini.py` already has it).
+
+  The user confirmed (04:45 IST): use the Gemini CLI, and branch from the current state. Plan:
+  - once W4/W6 pass, snapshot the working tree into a separate worktree on the new branch `google-gemini`, as one
+    snapshot commit there; main stays uncommitted;
+  - do the Gemini work in that worktree.
+  - The branch is for the user's Startup Buildathon India 2026 entry (Google AI + Google Cloud; city buildathon on
+    20–21 Nov, submission on day 2). Judging includes "use of Google AI" and deployment on Google Cloud.
+  - User decisions (05:00 IST):
+    - finish W5 on main FIRST, then branch;
+    - the Gemini API (AI Studio key) is the default for every role, with a Gemini CLI adapter for local runs;
+    - include Cloud Run deployment (Dockerfile and a deploy guide; keys from Secret Manager); the user runs the
+      deploy.
+
+**2026-11-21 ~22:00 IST — HANDOFF (5-hour usage at 89–95 %, resets about 00:50 IST next window). Read this first.**
+- DONE (fixture tests green: pytest 321, Java 52, contracts, typecheck, build): the Decision rework, time saved,
+  preferred vendors, realistic sizing and sourcing. Details are in the last PROJECT_TIMELINE entry. Plan:
+  `~/.claude/plans/change-the-tech-stack-smooth-hoare.md`.
+- The dev server is rebuilt and restarted at handoff time (see the next line); verify it serves `/api/v1/settings/vendors`.
+- NEXT 1, real verification (cheap first):
+  - (a) DONE in the browser after the rebuild: choosing "Our own design" on p_4775b16f5c recorded
+    `{action: self, build: 1}`, the banner shows "Decision: our own design (build b1)", and the PDF link answers 200
+    application/pdf. Then switched to the FANUC CRX-5iA candidate: recorded, and the banner reads "Decision: buy FANUC CRX-5iA";
+  - (b) PARTLY DONE: `PUT /baseline {manual_cycle_s: 12, operators: 1}` on p_4775b16f5c saved. Both Decision cards show
+    "Frees about 78.75 labour hours per week", which matches a hand check: a 6 s cycle gives 4,800 items per shift,
+    16 person-hours by hand, minus 0.25 h supervision, = 15.75 h per day, × 5. Still to do: look at the Design panel
+    and its working closely (a quick text read only showed the header);
+  - (c) Settings: add preferred vendors (robu.in plus one global), run a studio rebuild b2 of p_4775b16f5c (real
+    Sonnet web search plus CAD). Record which joints get shop products, prices verified or unverified, rejection
+    reasons, and the peaks;
+  - (d) a new vague brief: the baseline questions appear with estimates.
+
+  Record real vs fixture in the timeline.
+- NEXT 2, approved by the user and NOT STARTED: `docs/CHECKS_AND_ASK_DESIGN.md` (generic motions: rotate, attached
+  loads, max limits; the checks agent; the floating Ask bar, which can act with guardrails). Build order W4 → W5 ∥ W6.
+  Acceptance test: the spin mill p_cf07285d3b.
+- Other open items: design sizing makes oversized arms for old versions (j2 is governed by the stretched hold);
+  gripper finger symmetry; client-side local IK; Robot studio sections in the docs.
+- The user's handoff threshold: 95 %. The user wants Sonnet/Haiku workers for the code; the lead reviews.
+
+**2026-11-21 (midday) — IN FLIGHT. Read this first.**
+- Plan for the current round: `~/.claude/plans/change-the-tech-stack-smooth-hoare.md` (time saved, preferred vendors,
+  realistic sourcing). Contract: `docs/API_DESIGN.md` section 10. Workers W1 (savings), W2 (vendors) and W3 (sizing
+  and sourcing) are running or may have finished; check `git status` and run the tests.
+- The Decision rework (own design vs catalog option, with PDF export) is DONE: Java 50 tests, pytest 291, contracts,
+  typecheck and build pass. Browser check pending; it needs a jar rebuild.
+- Real build b1 on p_4775b16f5c is approved and its PDF exists (15 pages). It showed the sourcing problems W3 is
+  fixing.
+- NEXT, approved by the user: `docs/CHECKS_AND_ASK_DESIGN.md`. Covers generic motions (rotate, attached loads,
+  max limits), the checks agent (AI-planned formulas, code-computed with pint units), and the floating Ask bar
+  (can act; fixed tool list; approve/decision only through confirm chips). Start it after W1–W3. Acceptance test:
+  the spin-mill project p_cf07285d3b. Its findings: the rotation is never simulated, the lift load leaves out the
+  5,000 kg cabin, and the acceleration limit points the wrong way.
+- The user's handoff threshold is now 95 % of plan usage.
+
 **2026-11-21 (morning) — Objects agent (Haiku) DONE; the dev server was rebuilt and restarted with Robot studio and object models.**
 - Last timeline entry has the results. Checks: pytest 291 passed, 4 skipped; `./mvnw test` 49; contracts check,
   typecheck and build pass. A real Haiku run and a real design run worked, and the browser check passed (the bottle

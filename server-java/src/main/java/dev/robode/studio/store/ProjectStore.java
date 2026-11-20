@@ -157,6 +157,26 @@ public class ProjectStore {
         });
     }
 
+    /** Newest entries of `meta.activity` kept (it is a log of what the Ask bar did, not exposed in the project view). */
+    public static final int MAX_ACTIVITY = 200;
+
+    /** Appends {at, source, kind, ok, job_id?, summary} to `meta.activity` (the last MAX_ACTIVITY entries are kept). */
+    public void appendActivity(String pid, String source, String kind, boolean ok, String jobId, String summary) {
+        update(pid, meta -> {
+            ArrayNode log = meta.get("activity") instanceof ArrayNode a ? a : arr();
+            ObjectNode entry = obj();
+            entry.put("at", Time.now());
+            entry.put("source", source);
+            entry.put("kind", kind);
+            entry.put("ok", ok);
+            if (jobId != null) entry.put("job_id", jobId);
+            entry.put("summary", summary == null ? "" : summary);
+            log.add(entry);
+            while (log.size() > MAX_ACTIVITY) log.remove(0);
+            meta.set("activity", log);
+        });
+    }
+
     // -- reference ----------------------------------------------------------------------------------------------
     private Path ref(String pid) { return dir(pid).resolve("reference"); }
 
@@ -697,6 +717,28 @@ public class ProjectStore {
         });
     }
 
+    /** Records the user's own design as the decision. build null = the approved studio build; 409 when none/not approved, 404 when unknown. */
+    public void setSelfDecision(String pid, Integer build) {
+        locked(pid, () -> {
+            JsonNode approvedNode = meta(pid).path("studio").get("approved_build");
+            Integer approved = approvedNode == null || approvedNode.isNull() ? null : approvedNode.asInt();
+            int n;
+            if (build == null) {
+                if (approved == null) throw StudioException.conflict("Approve a build in Robot studio first");
+                n = approved;
+            } else {
+                if (!builds(pid).contains(build)) throw StudioException.notFound("Build not found");
+                ObjectNode stored = Json.readObject(buildDir(pid, build).resolve("build.json"));
+                if (stored == null || !stored.path("approved").asBoolean(false)) throw StudioException.conflict("Approve a build in Robot studio first");
+                n = build;
+            }
+            update(pid, meta -> {
+                meta.set("decision", obj().put("action", "self").put("build", n));
+                meta.put("stage", "decided");
+            });
+        });
+    }
+
     // -- the object the API returns -----------------------------------------------------------------------------
     public ObjectNode view(String pid) {
         ObjectNode m = meta(pid);
@@ -712,6 +754,7 @@ public class ProjectStore {
         view.set("versions", versions);
         view.set("approved_version", orNull(m, "approved_version"));
         if (m.get("fleet") instanceof ObjectNode f) view.set("fleet", f);
+        if (m.get("savings_inputs") instanceof ObjectNode si) view.set("savings_inputs", si);
         if (m.get("answer_comments") instanceof ObjectNode c && !c.isEmpty()) view.set("answer_comments", c);
         if (m.get("answer_notes") instanceof ArrayNode n && !n.isEmpty()) view.set("answer_notes", n);
         ArrayNode answerImages = answerImages(pid);

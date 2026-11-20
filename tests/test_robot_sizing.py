@@ -40,15 +40,62 @@ async def test_planar_static_is_sum_m_g_r(v1):
 
 
 async def test_planar_accel_rms_and_peak(v1):
+    # two frames 1 s apart, the arm at rest before and after: alpha = 0.5 rad/s^2 at both frames (second difference)
     q = {'j1': 0, 'j2': math.pi / 2, 'j3': 0, 'j4': 0}
     frames = [Frame(t=0, joints=q), Frame(t=1.0, joints={**q, 'j2': math.pi / 2 + 0.5})]
     s = by_joint(sz.size_joints(planar(v1, frames)))['j2']
-    inertia = 2.0 * 0.2 ** 2 + 1.0 * 0.55 ** 2 + 0.5 * 0.7 ** 2 + (2.0 * 0.4 ** 2 + 1.0 * 0.3 ** 2) / 12
-    alpha = 0.5 / sz.ACCEL_RAMP_S
+    inertia = 2.0 * 0.2 ** 2 + 1.0 * 0.55 ** 2 + (2.0 * 0.4 ** 2 + 1.0 * 0.3 ** 2) / 12      # no payload in a free frame
+    alpha = 0.5 / 1.0
     assert s.speed == pytest.approx(0.5) and s.accel_torque == pytest.approx(inertia * alpha, rel=1e-4)
-    static = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.5 * 0.7)
-    assert s.peak == pytest.approx(1.5 * (static + inertia * alpha), rel=1e-4)
-    assert s.continuous < s.peak and s.continuous > 1.25 * 0.5 * static
+    static0 = G * (2.0 * 0.2 + 1.0 * 0.55)                           # frame 0: horizontal, no payload
+    stretched = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.5 * 0.7)             # rated payload at full reach: static only
+    # the stretched hold (12.75 N*m, SF_C 1.25 = 15.9) beats the task frame (1.5 x 9.5 = 14.3) with NO acceleration term
+    assert s.peak == pytest.approx(1.25 * stretched, rel=1e-4) and 1.5 * (static0 + inertia * alpha) < 1.25 * stretched
+    assert 'stretched-pose hold' in s.calcs[5].note
+    f1 = static0 * math.cos(0.5)                                     # frame 1 is 0.5 rad past horizontal
+    rms = math.sqrt(((static0 + inertia * alpha) ** 2 + (f1 + inertia * alpha) ** 2) / 2)
+    assert s.continuous == pytest.approx(1.25 * rms, rel=1e-4)
+
+
+def triangle_frames(scale, holding='bottle'):
+    """j2 sweeps with a triangular speed profile: segment speeds 0.2..1.0..0.2 rad/s times `scale`, dt 0.1 s, at rest
+    before and after, so |alpha| = 2 * scale rad/s^2 at every frame."""
+    speeds = [0.2, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.2]
+    q, t, out = math.pi / 2, 0.0, []
+    out.append(Frame(t=0.0, joints={'j1': 0, 'j2': q, 'j3': 0, 'j4': 0}, holding=holding))
+    for v in speeds:
+        q, t = q + v * scale * 0.1, t + 0.1
+        out.append(Frame(t=t, joints={'j1': 0, 'j2': q, 'j3': 0, 'j4': 0}, holding=holding))
+    return out
+
+
+async def test_peak_adds_acceleration_at_the_same_frame(v1):
+    frames = triangle_frames(scale=5.0)                              # alpha = 10 rad/s^2 everywhere
+    al = sz.frame_alphas(frames, ['j1', 'j2', 'j3', 'j4'])
+    assert al[:, 1] == pytest.approx([10.0] * 10) and al[:, 0] == pytest.approx([0.0] * 10)
+    s = by_joint(sz.size_joints(planar(v1, frames)))['j2']
+    inertia = 2.0 * 0.2 ** 2 + 1.0 * 0.55 ** 2 + 0.3 * 0.7 ** 2 + (2.0 * 0.4 ** 2 + 1.0 * 0.3 ** 2) / 12   # bottle 0.3 kg
+    static0 = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.3 * 0.7)               # frame 0, horizontal, carrying the bottle
+    stretched = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.5 * 0.7)
+    assert 1.5 * (static0 + 10 * inertia) > 1.25 * stretched         # now the task frame dominates
+    assert 'task frame' in s.calcs[5].note
+    assert s.peak == pytest.approx(1.5 * (static0 + 10 * inertia), rel=1e-4)
+    assert s.accel_torque == pytest.approx(10 * inertia, rel=1e-4)
+    # motor-side torque after a 20:1 planetary gearbox (eta 0.85): tau / (N eta)
+    ms = sz.motor_side(s, sz.Drive(type='planetary', ratio=20, efficiency=0.85))
+    assert ms['peak_nm'] == pytest.approx(s.peak / (20 * 0.85)) and ms['speed_rpm'] == pytest.approx(5.0 * 20 * 60 / (2 * math.pi))
+    calcs = {c.formula.split(' =')[0]: c for c in sz.motor_side_calcs(s, sz.Drive(type='planetary', ratio=20, efficiency=0.85))}
+    assert calcs['tau_m_peak'].result == pytest.approx(ms['peak_nm']) and calcs['omega_m'].unit == 'rpm'
+
+
+async def test_single_frame_spike_is_not_an_acceleration(v1):
+    frames = triangle_frames(scale=1.0)
+    spiked = [f.model_copy(update={'joints': {**f.joints, 'j2': f.joints['j2'] + (0.3 if i == 5 else 0.0)}})
+              for i, f in enumerate(frames)]                         # one frame jumps 0.3 rad and comes back
+    raw = sz.frame_alphas(frames, ['j2'])[:, 0].max()
+    smooth = sz.frame_alphas(spiked, ['j2'])[:, 0].max()
+    assert raw == pytest.approx(2.0) and smooth < 100                # un-smoothed it would be 0.3 / 0.1^2 = 30 per side
+    assert smooth > raw
 
 
 async def test_planar_rms_over_frames_with_carried_payload(v1):
@@ -58,7 +105,7 @@ async def test_planar_rms_over_frames_with_carried_payload(v1):
     carried = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.3 * 0.7)               # the bottle weighs 0.3 kg
     rated = G * (2.0 * 0.2 + 1.0 * 0.55 + 0.5 * 0.7)                 # rated payload at the stretched pose
     assert s.continuous == pytest.approx(1.25 * carried, rel=1e-4)
-    assert s.peak == pytest.approx(1.5 * rated, rel=1e-4)
+    assert s.peak == pytest.approx(1.5 * carried, rel=1e-4) and 1.25 * rated < 1.5 * carried   # task frame x SF_P governs
 
 
 async def test_extra_masses_load_the_parent_joints(v1):
@@ -82,7 +129,7 @@ async def test_bottle_arm_stretched_pose(v1):
     assert s['j4'].static_torque == pytest.approx(j4, rel=1e-4)
     assert s['j1'].static_torque == pytest.approx(0, abs=1e-6)
     for x in s.values():
-        assert x.peak >= 1.5 * x.static_torque - 1e-9 and x.continuous <= x.peak + 1e-9
+        assert x.peak >= 1.25 * x.static_torque - 1e-9 and x.continuous <= x.peak + 1e-9
     assert s['j1'].speed > 0 and s['j1'].accel_torque > 0          # the base yaw moves in the task
 
 
@@ -202,6 +249,18 @@ def test_electronics_driver_controller_psu():
     assert unknown[0].checks[0].passed is None
 
 
+def test_low_voltage_stepper_coils_run_from_the_chopper_bus():
+    """Real build b2 (2026-11-21) gave a NEMA 17 with a 2.5 V coil its own 2.5 V supply and driver."""
+    items = sz.electronics_for([choice('j1', 2.8, 24.0), choice('j4', 1.7, 2.5)], 'serial_arm')
+    by = {i.id: i for i in items}
+    assert 'psu_2_5v' not in by and by['psu_24v'].for_joints == ['j1', 'j4']
+    v = next(x for x in by['driver_j4'].values if x.key == 'voltage_v')
+    assert v.value == sz.STEPPER_BUS_V and 'coil is rated 2.5 V' in v.note
+    assert by['driver_j4'].name.startswith('Stepper driver') and sz.driver_type_of(by['driver_j4']) == 'stepper'
+    dc = sz.electronics_for([choice('w', 5.0, 12.0, 'dc_gear')], 'serial_arm')
+    assert next(x for x in dc[0].values if x.key == 'voltage_v').value == 12.0 and sz.driver_type_of(dc[0]) == 'dc'
+
+
 def test_electronics_battery_for_mobile_base():
     items = sz.electronics_for([choice('wheel_left', 5.0, 24.0, 'dc_gear'), choice('wheel_right', 5.0, 24.0, 'dc_gear')],
                                'mobile_base', battery_wh=500.0)
@@ -227,7 +286,7 @@ async def test_gantry_belt_and_leadscrew(v1):
     mx, my, mz = 12 + 6 + 3 + 0.5 + 10, 6 + 3 + 0.5 + 10, 3 + 0.5 + 10
     assert s['x_axis'].static_torque == pytest.approx(0.05 * mx * G, rel=1e-6)        # guide drag only
     assert s['z_axis'].static_torque == pytest.approx(mz * G, rel=1e-6)             # Z holds its weight
-    assert s['x_axis'].accel_torque == pytest.approx(mx * 0.5 / 0.2, rel=1e-6)       # m * (v / ramp)
+    assert s['x_axis'].accel_torque == pytest.approx((mx - 10) * 0.5, rel=1e-6)   # m * alpha at the task frame (no payload carried there), alpha = 0.5 m/s^2
     belts = sz.drive_options('gantry', 0, s['x_axis'])
     assert {d.type for d in belts} == {'belt', 'rack'} and belts[0].ratio == pytest.approx(2 * math.pi / 0.04)
     screws = sz.drive_options('gantry', 2, s['z_axis'])
@@ -320,3 +379,24 @@ def test_non_stepper_without_speed_still_fails():
     vals = motor_values(rated_speed_rpm=None, rated_torque_nm=3.0)
     ok, _, checks, reason = sz.evaluate(alt(vals, 'bldc'), joint(), d, 'bldc')
     assert not ok and 'speed' in reason and checks[0].passed is False
+
+
+def test_bottle_arm_b1_inputs_before_and_after():
+    """The stored design v1 of the real bottle-arm project (b1 inputs; a stored design, not a new model result).
+    Before (acceleration = omega / 0.2 s at the worst pose, stretched pose accelerated): j1 102.2, j2 144.8, j3 42.6,
+    j4 4.99 N*m peak without motor masses (build b1, with them: 112.2, 165.0, 44.9, 4.99). After: per-frame alpha from the
+    trajectory, stretched pose static only."""
+    import json
+    from pathlib import Path
+    from studio.schemas import DesignVersion
+    v = DesignVersion.model_validate(json.loads((Path(__file__).parent / 'fixtures' / 'bottle_arm_design_v1.json').read_text()))
+    s = by_joint(sz.size_joints(v))
+    assert s['j1'].peak < 5.0 and s['j1'].peak < 102.17 / 20          # the base yaw: J at the task frames, alpha 5.5 rad/s^2
+    p = v.robot.params
+    L1, L2, Lw, Lt = p['upper_arm_m'], p['forearm_m'], p['wrist_m'], p['tool_length_m']
+    arm = [(p['upper_arm_mass_kg'], L1 / 2), (p['forearm_mass_kg'], L1 + L2 / 2), (p['wrist_mass_kg'], L1 + L2 + Lw / 2),
+           (p['tool_mass_kg'], L1 + L2 + Lw + Lt / 2), (p['payload_kg'], L1 + L2 + Lw + Lt)]
+    assert s['j2'].peak == pytest.approx(1.25 * G * sum(m * r for m, r in arm), rel=1e-3)   # the stretched hold x SF_C
+    assert s['j2'].peak < 144.75 and s['j3'].peak < 42.6 and s['j4'].peak < 4.99
+    assert (round(s['j2'].peak, 1), round(s['j3'].peak, 1), round(s['j4'].peak, 1)) == (84.0, 29.5, 3.7)
+    assert s['j1'].accel_torque < 4 and s['j1'].continuous < 5.18

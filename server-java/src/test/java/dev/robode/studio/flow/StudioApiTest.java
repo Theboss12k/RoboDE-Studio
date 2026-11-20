@@ -18,6 +18,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** The robot studio routes against the fake Python engine (fixture answers, not a model evaluation); responses are checked against the spec. */
@@ -219,5 +220,85 @@ class StudioApiTest {
         JsonNode done = api.finish(first.body());
         assertThat(done.get("status").asString()).as(done.toString()).isEqualTo("done");
         assertThat(api.job(s + "/builds", Json.obj()).get("result").get("build").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void selfDecisionNeedsAnApprovedBuild() throws Exception {
+        Api api = api();
+        String pid = designed(api, true);
+        String s = base(pid);
+        String decision = "/projects/" + pid + "/decision";
+        ObjectNode self = Json.obj().put("action", "self");
+        // no build at all
+        assertThat(api.post(decision, self).status()).isEqualTo(409);
+        assertThat(api.post(decision, Json.obj().put("action", "self").put("build", 7)).status()).isEqualTo(404);
+        assertThat(api.job(s + "/builds", Json.obj()).get("result").get("build").asInt()).isEqualTo(1);
+        // built but not approved
+        Res notApproved = api.post(decision, self);
+        assertThat(notApproved.status()).isEqualTo(409);
+        assertThat(notApproved.body().toString()).contains("Approve a build in Robot studio first");
+        assertThat(api.post(decision, Json.obj().put("action", "self").put("build", 1)).status()).isEqualTo(409);
+        assertThat(api.post(decision, Json.obj().put("action", "self").put("build", 0)).status()).isEqualTo(422);
+        assertThat(api.job(s + "/builds/1/approve", null).get("status").asString()).isEqualTo("done");
+        // approved: default build, then explicit; unknown build is 404
+        Res chosen = api.post(decision, self);
+        assertThat(chosen.status()).isEqualTo(200);
+        assertThat(chosen.body().get("decision").toString()).isEqualTo("{\"action\":\"self\",\"build\":1}");
+        assertThat(chosen.body().get("stage").asString()).isEqualTo("decided");
+        assertThat(api.post(decision, Json.obj().put("action", "self").put("build", 1)).status()).isEqualTo(200);
+        assertThat(api.post(decision, Json.obj().put("action", "self").put("build", 9)).status()).isEqualTo(404);
+        assertThat(api.get("/projects/" + pid).body().get("decision").get("action").asString()).isEqualTo("self");
+        // a candidate decision still validates its own input and the stored forms stay distinct
+        assertThat(api.post(decision, Json.obj().put("candidate_id", "nope").put("action", "approve")).status()).isEqualTo(422);
+        assertThat(api.post(decision, Json.obj().put("action", "delete")).status()).isEqualTo(422);
+    }
+
+    @Test
+    void preferredVendorsAreSavedValidatedAndPassedToFindAndBuild() throws Exception {
+        Api api = api();
+        Res none = api.get("/settings/vendors");
+        assertThat(none.status()).isEqualTo(200);
+        assertThat(none.body().get("vendors")).isEmpty();
+        ObjectNode vendor = Json.obj().put("name", " Robu ").put("domain", "Robu.IN").put("note", "India");
+        vendor.set("categories", Json.arr().add("electronics").add("motors"));
+        Res saved = api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr().add(vendor)));
+        assertThat(saved.status()).as(String.valueOf(saved.body())).isEqualTo(200);
+        assertThat(saved.body().get("vendors").get(0).toString())
+                .isEqualTo("{\"name\":\"Robu\",\"domain\":\"robu.in\",\"categories\":[\"motors\",\"electronics\"],\"note\":\"India\"}");
+        assertThat(api.get("/settings/vendors").body()).isEqualTo(saved.body());
+        Path file = RUNTIME.resolve("settings/vendors.json");
+        assertThat(Json.read(file).get("schemaVersion").asInt()).isEqualTo(1);
+
+        // invalid lists are 422 and leave the saved list alone
+        for (String bad : new String[] {"https://robu.in", "robu.in/shop", "localhost", "a b.com", "robu.in:8080", ""}) {
+            ObjectNode v = vendor.deepCopy().put("domain", bad);
+            assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr().add(v))).status()).as(bad).isEqualTo(422);
+        }
+        ObjectNode noCats = vendor.deepCopy();
+        noCats.set("categories", Json.arr());
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr().add(noCats))).status()).isEqualTo(422);
+        ObjectNode badCat = vendor.deepCopy();
+        badCat.set("categories", Json.arr().add("drones"));
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr().add(badCat))).status()).isEqualTo(422);
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr().add(vendor).add(vendor))).status()).isEqualTo(422);
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().put("vendors", "x")).status()).isEqualTo(422);
+        ArrayNode many = Json.arr();
+        for (int i = 0; i < 51; i++) many.add(vendor.deepCopy().put("domain", "shop" + i + ".com"));
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", many)).status()).isEqualTo(422);
+        assertThat(api.get("/settings/vendors").body()).isEqualTo(saved.body());
+
+        // the saved list reaches the find and studio_build task inputs
+        String pid = designed(api, true);
+        JsonNode search = api.job("/projects/" + pid + "/search", null);
+        assertThat(search.get("status").asString()).as(search.toString()).isEqualTo("done");
+        assertThat(api.get("/projects/" + pid + "/candidates").body().toString()).contains("vendors robu.in");
+        JsonNode build = api.job(base(pid) + "/builds", Json.obj());
+        assertThat(build.get("status").asString()).isEqualTo("done");
+        assertThat(api.get(base(pid) + "/builds/1").body().get("summary").asString()).endsWith("; vendors robu.in");
+
+        // an empty list clears it, and nothing is passed afterwards
+        assertThat(api.send("PUT", "/settings/vendors", Json.obj().set("vendors", Json.arr())).status()).isEqualTo(200);
+        assertThat(api.job(base(pid) + "/builds", Json.obj()).get("status").asString()).isEqualTo("done");
+        assertThat(api.get(base(pid) + "/builds/2").body().get("summary").asString()).doesNotContain("vendors");
     }
 }

@@ -7,6 +7,7 @@ import dev.robode.studio.jobs.JobService;
 import dev.robode.studio.jobs.TaskResult;
 import dev.robode.studio.jobs.TaskRunner;
 import dev.robode.studio.llm.LlmSettings;
+import dev.robode.studio.settings.PreferredVendors;
 import dev.robode.studio.store.ProjectStore;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -49,13 +50,15 @@ public class ProjectService {
     private final TaskRunner runner;
     private final JobService jobs;
     private final LlmSettings llm;
+    private final PreferredVendors vendors;
     private final Map<String, Object> flights = new ConcurrentHashMap<>();
 
-    public ProjectService(ProjectStore store, TaskRunner runner, JobService jobs, LlmSettings llm) {
+    public ProjectService(ProjectStore store, TaskRunner runner, JobService jobs, LlmSettings llm, PreferredVendors vendors) {
         this.store = store;
         this.runner = runner;
         this.jobs = jobs;
         this.llm = llm;
+        this.vendors = vendors;
     }
 
     private static String taskId(String prefix) { return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10); }
@@ -90,6 +93,7 @@ public class ProjectService {
             input.set("reference", store.referenceForTask(pid));
             input.set("answers", merged);
             input.put("round", currentRound);
+            if (meta.get("questions") instanceof ArrayNode asked && !asked.isEmpty()) input.set("questions", asked);   // their defaults tell the baseline answers from untouched defaults
             if (meta.hasNonNull("spec")) input.set("spec", meta.get("spec"));
             if (!mergedComments.isEmpty()) input.set("comments", mergedComments);
             if (!notes.isEmpty()) input.set("notes", notes);
@@ -266,6 +270,25 @@ public class ProjectService {
         return store.view(pid);
     }
 
+    private static final ObjectNode SAVINGS_DEFAULTS = Json.obj().put("hours_per_shift", 8).put("days_per_week", 5)
+            .put("days_per_year", 250).put("supervision_min_per_shift", 15);
+
+    /** Merges the validated changes into meta.savings_inputs (a null removes manual_cycle_s or operators, or restores a default). */
+    public ObjectNode setBaseline(String pid, JsonNode changes) {
+        store.require(pid);
+        store.update(pid, m -> {
+            ObjectNode inputs = m.get("savings_inputs") instanceof ObjectNode s ? s : SAVINGS_DEFAULTS.deepCopy();
+            changes.properties().forEach(e -> {
+                String k = e.getKey();
+                if (!e.getValue().isNull()) inputs.set(k, e.getValue());
+                else if (SAVINGS_DEFAULTS.has(k)) inputs.set(k, SAVINGS_DEFAULTS.get(k));
+                else inputs.remove(k);
+            });
+            m.set("savings_inputs", inputs);
+        });
+        return store.view(pid);
+    }
+
     /** Synchronous fleet_assign (no LLM): previews the assignment and stores it in meta.fleet.assignment. */
     public JsonNode fleetAssign(String pid, Integer baseVersion, JsonNode assignment) {
         store.require(pid);
@@ -363,6 +386,7 @@ public class ProjectService {
             ObjectNode input = Json.obj();
             input.set("version", Json.withoutSchemaVersion(version));
             input.put("limit", 6);
+            input.set("preferred_vendors", vendors.list());
             addMember(pid, version, input);
             try (TaskResult r = runner.run(job.id(), "find", input, llm.resolveRoles(), pid, "search", job.listener())) {
                 JsonNode candidates = r.data().get("candidates");

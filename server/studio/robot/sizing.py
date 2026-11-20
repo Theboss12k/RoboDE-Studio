@@ -3,19 +3,24 @@ is computed here and carries a `Calc` or a `Check`.
 
 Method (kinematic + static + acceleration; not dynamics simulation, not FEA, not a hardware test)
 ------------------------------------------------------------------------------------------------
-Per actuated joint i, over poses = up to MAX_SAMPLES task frames of the design's simulation (payload = the carried
-object's mass when the frame holds one) plus a stretched pose with the RATED payload:
+Per actuated joint i, over poses = up to MAX_SAMPLES evenly spaced task frames of the design's simulation plus, per
+joint, the frames of its largest accelerations (payload = the carried object's mass when the frame holds one), plus a
+stretched pose with the RATED payload:
 
 * static_i(q)   = |gravity_torques(q)_i|  (tau = -sum_k J_k^T m_k g, the family's own statics).
   Linear axes of a gantry: Z holds (m_z + m_tool + payload) g; X and Y carry FRICTION_COEFF * m * g
   (guide and belt drag allowance).
 * J_i(q)        = reflected load inertia about the joint: sum_k m_k |dp_k/dq_i|^2 + sum_k m_k L_k^2 / 12 (links that
   move with the joint, as rods). Gantry axes: the carried mass. Conservative: not reduced for orientation.
-* alpha_i       = omega_peak_i / ACCEL_RAMP_S, omega_peak_i = largest |dq/dt| of joint i in the simulated frames.
-* accel_i(q)    = J_i(q) * alpha_i.
-* demand_i(q)   = static_i(q) + accel_i(q)  (accelerating at every instant: conservative).
-* continuous_i  = SF_CONTINUOUS * sqrt(mean_f demand_i(q_f)^2)  (RMS over the task frames).
-* peak_i        = SF_PEAK * max(max_f demand_i(q_f), demand_i(q_stretched)).
+* alpha_i(f)    = |second difference of q_i(t)| at frame f (the simulated trapezoid motion, at rest at both ends),
+  smoothed (median of 3, then mean of 3 frames) so a one-frame discretisation spike is not read as an acceleration. It
+  follows the sim's own speed and acceleration limits, so it is the acceleration the robot really performs.
+* accel_i(f)    = J_i(q_f) * alpha_i(f)  (at the SAME frame as the static term).
+* demand_i(f)   = static_i(q_f) + accel_i(f).
+* continuous_i  = SF_CONTINUOUS * sqrt(mean_f demand_i(f)^2)  (RMS over the evenly sampled task frames).
+* peak_i        = max(SF_PEAK * max_f demand_i(f), SF_CONTINUOUS * static_i(q_stretched)). The stretched pose (rated
+  payload) is a sustained static hold, so it carries the continuous factor, not the peak factor, and no acceleration is
+  added there (the task never accelerates the arm in that pose).
 * Motor links: the extra masses (motor + gearbox) of a joint sit on its PARENT link, at the link's centre of mass
   (links: turret, upper_arm, forearm, wrist, tool; gantry: x_carriage, y_carriage, z_carriage; base: base_link).
 * Wheels (mobile base): m = vehicle + payload, n = drive wheels, r = wheel radius, slope = rated max slope:
@@ -23,6 +28,9 @@ object's mass when the frame holds one) plus a stretched pose with the RATED pay
   continuous = SF_C * sqrt(static^2 + 2 f accel^2) with f = WHEEL_ACCEL_FRACTION (a trapezoid of accelerate / cruise /
   decelerate phases of f, 1-2f, f of the time); peak = SF_P * (static + accel).
 
+Gearing (`choose_drive`): the smallest standard ratio N whose motor torque tau / (N eta) fits the motor (continuous and
+peak) AND whose joint speed omega N stays <= 0.8 of the motor's speed (rated, no-load derated, or the assumed stepper
+speed); a motor that no ratio fits is told which constraint binds (torque needs N >= a, speed allows N <= b).
 Gearing and the motor side (`motor_side`): tau_m = tau / (N eta); omega_m = omega N. N = motor turns per joint turn;
 for a linear axis N is motor rad per metre (2 pi / lead). Efficiencies (planning figures): planetary single stage
 (5, 10) 0.90, two stage (20, 50) 0.85; harmonic 0.80; timing-belt reduction 0.95; GT2 belt axis 0.90; rack and
@@ -50,13 +58,14 @@ from collections.abc import Callable
 import numpy as np
 
 from .. import families
-from ..physics import statics
+from ..physics import quantities, statics
 from ..schemas import (Calc, Check, DesignVersion, Drive, ElectronicsItem, JointSizing, MotorAlternative,
                        MotorChoice, Quantity, SpecValue)
 
 SF_CONTINUOUS = 1.25
 SF_PEAK = 1.5
-ACCEL_RAMP_S = 0.2
+ACCEL_RAMP_S = 0.2                # only for wheels (a / r) and as a documented fallback; joints use the trajectory
+EXTRA_ALPHA_FRAMES = 5            # per joint, the frames of the largest accelerations are always evaluated
 SPEED_USE_MAX = 0.8
 INERTIA_RATIO_MAX = {'stepper': 5, 'servo': 10, 'bldc': 10, 'dc_gear': 10, 'other': 5}
 STEPPER_TORQUE_USE = 0.7          # share of the holding torque usable while running
@@ -76,6 +85,19 @@ PSU_MARGIN = 1.3                  # PSU watts >= 1.3 x sum(V I)
 BATTERY_C_RATE = 1.0              # continuous discharge power = capacity (Wh) x this per hour
 V1_FAMILIES = ('serial_arm', 'gantry', 'mobile_base')
 DEFAULT_VOLTAGE_V = {'stepper': 24.0, 'bldc': 48.0, 'servo': 48.0, 'dc_gear': 24.0, 'other': 24.0}
+STEPPER_BUS_V = DEFAULT_VOLTAGE_V['stepper']   # chopper drives run steppers from a bus far above the coil's rated voltage
+DRIVER_TYPE = {'stepper': 'stepper', 'dc_gear': 'dc'}   # motor type -> driver type; anything else needs a BLDC / servo drive
+DRIVER_NAME = {'stepper': 'Stepper driver', 'dc': 'DC motor driver', 'bldc': 'BLDC / servo drive'}
+
+
+def driver_type(motor_type: str) -> str:
+    """The driver type a motor type needs: stepper, dc (brushed) or bldc (BLDC / servo)."""
+    return DRIVER_TYPE.get(motor_type, 'bldc')
+
+
+def driver_type_of(item) -> str | None:
+    """The driver type of a defined driver item, from the name `electronics_for` gave it."""
+    return next((t for t, name in DRIVER_NAME.items() if item.name.startswith(name)), None)
 DRIVER_RATINGS_A = (1.5, 2.5, 4.2, 6.0, 8.0, 10.0, 15.0, 20.0, 30.0, 50.0, 80.0, 120.0)
 PSU_RATINGS_W = (60, 120, 240, 350, 480, 600, 750, 1000, 1500, 2000, 3000, 5000)
 CONTROLLER_AXES = (3, 4, 5, 6, 8)
@@ -162,6 +184,37 @@ def _peak_speeds(frames, names):
     return peak
 
 
+def _smooth(a):
+    """Median of 3 then mean of 3 (edge values repeated): removes one-frame spikes, keeps a sustained plateau."""
+    if len(a) < 3:
+        return a
+    pad = np.concatenate([[a[0]], a, [a[-1]]])
+    med = np.median(np.stack([pad[:-2], pad[1:-1], pad[2:]]), axis=0)
+    pad = np.concatenate([[med[0]], med, [med[-1]]])
+    return (pad[:-2] + pad[1:-1] + pad[2:]) / 3.0
+
+
+def frame_alphas(frames, names) -> np.ndarray:
+    """|alpha| per frame and joint (rows = frames): the second difference of q(t) with the robot at rest before the first
+    and after the last frame, smoothed. Frames closer than 1 ns in time are treated as one instant."""
+    n = len(frames)
+    out = np.zeros((n, len(names)))
+    if n < 2:
+        return out
+    t = np.array([f.t for f in frames], float)
+    dt = np.diff(t)
+    for i, name in enumerate(names):
+        q = np.array([f.joints.get(name, np.nan) for f in frames], float)
+        if np.isnan(q).any():
+            continue
+        v = np.where(dt > 1e-9, np.diff(q) / np.where(dt > 1e-9, dt, 1.0), 0.0)
+        vv = np.concatenate([[0.0], v, [0.0]])                        # velocity before, between and after the frames
+        span = np.concatenate([[dt[0]], (dt[1:] + dt[:-1]) / 2, [dt[-1]]])
+        a = np.abs(np.diff(vv)) / np.where(span > 1e-9, span, 1.0)
+        out[:, i] = _smooth(a)
+    return out
+
+
 def _payload_of(version, holding):
     objs = {o.id: o for o in version.spec.objects}
     if holding in objs:
@@ -187,50 +240,99 @@ def size_joints(version: DesignVersion, extra_masses: dict[str, float] | None = 
     joints = [j for j in fam.joints(p) if j.actuated]
     names = [j.name for j in joints]
     frames = version.sim.frames
-    idx = np.unique(np.linspace(0, len(frames) - 1, min(MAX_SAMPLES, len(frames))).astype(int)) if frames else []
     omega = _peak_speeds(frames, names)
-    alpha = omega / ACCEL_RAMP_S
+    alphas = frame_alphas(frames, names)
+    uniform = set(np.unique(np.linspace(0, len(frames) - 1, min(MAX_SAMPLES, len(frames))).astype(int)).tolist()) if frames else set()
+    extra = set()
+    for i in range(len(names)):
+        if len(frames) and alphas[:, i].max() > 0:
+            extra |= set(np.argsort(alphas[:, i])[-EXTRA_ALPHA_FRAMES:].tolist())
+    idx = sorted(uniform | extra)
     stretched = fam._stretched(p) if hasattr(fam, '_stretched') else np.zeros(len(names))
     s_static, s_inertia = _loads(family, fam, p, stretched, float(p.payload_kg))
-    rows = []                                                       # (static, inertia) per sampled frame
+    rows, even = [], []                                             # (static, inertia) and alpha per sampled frame
     for i in idx:
         f = frames[int(i)]
         q = np.array([f.joints.get(n, 0.0) for n in names], float)
         rows.append(_loads(family, fam, p, q, _payload_of(version, f.holding)))
+        even.append(int(i) in uniform)
     if not rows:
-        rows = [(s_static, s_inertia)]
+        rows, even, idx = [(s_static, s_inertia)], [True], [0]
+        alphas = np.zeros((1, len(names)))
+    even = np.array(even)
     out = []
     for i, j in enumerate(joints):
         kind = _kind(j)
         stat = np.array([r[0][i] for r in rows])
         iner = np.array([r[1][i] for r in rows])
-        demand = stat + iner * alpha[i]
-        stretched_demand = s_static[i] + s_inertia[i] * alpha[i]
+        al = np.array([alphas[k, i] for k in idx])
+        accel_f = iner * al
+        demand = stat + accel_f
+        k = int(np.argmax(demand))
         static = float(max(stat.max(), s_static[i]))
         inertia = float(max(iner.max(), s_inertia[i]))
-        accel = inertia * float(alpha[i])
-        rms = float(np.sqrt(np.mean(demand ** 2)))
-        worst = float(max(demand.max(), stretched_demand))
+        accel = float(accel_f[k])
+        rms = float(np.sqrt(np.mean(demand[even] ** 2)))
+        spin = _spin_up(version, j.name, static) if kind == 'revolute' else None   # rotate actions only
+        if spin is not None:
+            accel = max(accel, spin[0])
+            demand_peak = max(float(demand[k]), spin[0] + static)
+        else:
+            demand_peak = float(demand[k])
+        task_peak, hold_peak = SF_PEAK * demand_peak, SF_CONTINUOUS * float(s_static[i])
+        peak = max(task_peak, hold_peak)
         tu, ju = ('N', 'kg') if kind == 'prismatic' else ('N*m', 'kg*m^2')
         su = 'm/s' if kind == 'prismatic' else 'rad/s'
         where = 'stretched pose' if s_static[i] >= stat.max() else 'a task frame'
+        at = (f'governed by the stretched-pose hold: SF_C x static {hold_peak:.4g} > SF_P x task-frame demand {task_peak:.4g}'
+              if hold_peak > task_peak else
+              f'governed by the task frame (static + J alpha at the same frame): SF_P x {demand[k]:.4g} >= SF_C x stretched static {hold_peak:.4g}')
         calcs = [
             _calc('tau_static = max over task frames and the stretched pose of |sum_k J_k^T m_k g| (payload carried)',
                   {'frames_used': len(rows), 'payload_rated': (p.payload_kg, 'kg')}, static, tu, f'worst at the {where}'),
             _calc('J_load = sum_k m_k |dp_k/dq|^2 + sum_k m_k L_k^2 / 12 (worst pose)', {'poses': len(rows) + 1},
                   inertia, ju),
-            _calc('alpha = omega_peak / t_ramp', {'omega_peak': (omega[i], su), 't_ramp': (ACCEL_RAMP_S, 's')},
-                  alpha[i], su + '/s'),
-            _calc('tau_accel = J_load * alpha', {'J_load': (inertia, ju), 'alpha': (alpha[i], su + '/s')}, accel, tu),
-            _calc('tau_cont = SF_C * sqrt(mean_f (tau_static_f + J_f alpha)^2)',
+            _calc('alpha_peak = max over frames of the smoothed |d2q/dt2| of the simulated trajectory',
+                  {'frames': len(frames), 'omega_peak': (omega[i], su)}, float(al.max()), su + '/s',
+                  'second difference of q(t), median-3 then mean-3 smoothed; follows the sim trapezoid limits'),
+            _calc('tau_accel = J_load(f*) * alpha(f*) at the frame f* of the largest demand',
+                  {'J_load': (float(iner[k]), ju), 'alpha': (float(al[k]), su + '/s')}, accel, tu),
+            _calc('tau_cont = SF_C * sqrt(mean_f (tau_static_f + J_f alpha_f)^2)',
                   {'SF_C': SF_CONTINUOUS, 'rms': (rms, tu)}, SF_CONTINUOUS * rms, tu),
-            _calc('tau_peak = SF_P * max(tau_static + J alpha)', {'SF_P': SF_PEAK, 'worst': (worst, tu)},
-                  SF_PEAK * worst, tu),
+            _calc('tau_peak = max(SF_P * max_f (tau_static_f + J_f alpha_f), SF_C * tau_static(stretched pose))',
+                  {'SF_P': SF_PEAK, 'SF_C': SF_CONTINUOUS, 'task_demand': (float(demand[k]), tu),
+                   'stretched_static': (float(s_static[i]), tu)}, peak, tu, at),
             _calc('omega = max |dq/dt| over the simulated frames', {'frames': len(frames)}, omega[i], su)]
+        if spin is not None:
+            calcs.insert(4, spin[1])
         out.append(JointSizing(joint=j.name, kind=kind, static_torque=static, accel_torque=accel,
-                               continuous=SF_CONTINUOUS * rms, peak=SF_PEAK * worst, speed=float(omega[i]),
+                               continuous=SF_CONTINUOUS * rms, peak=peak, speed=float(omega[i]),
                                torque_unit=tu, speed_unit=su, calcs=calcs))
     return out
+
+
+def _spin_up(version, joint, static):
+    """(torque, Calc) of the inertial torque that spins up a rotated load on `joint`: the largest of
+    tau = I_obj_z * alpha_rotate over the spec's rotate actions on this joint that turn a held or attached object
+    (physics.quantities: the object's inertia about the vertical axis from its mass, size and shape, and alpha from
+    rpm and ramp). Code-computed, never from a plan. None when no rotate action turns a load on this joint."""
+    best = None
+    for r in quantities.rotate_actions(version.spec, version.robot):
+        if r['joint'] != joint or r['object'] is None:
+            continue
+        inertia, how = quantities.inertia_z(r['object'])
+        tau = inertia * r['alpha']
+        if best is None or tau > best[0]:
+            best = (tau, r, inertia, how)
+    if best is None:
+        return None
+    tau, r, inertia, how = best
+    calc = _calc('tau_rotate = I_obj_z * alpha_rotate (spin-up of the rotated load about the vertical axis, '
+                 'added to the joint peak demand with the static load)',
+                 {'I_obj_z': (inertia, 'kg*m^2'), 'alpha_rotate': (r['alpha'], 'rad/s^2'),
+                  'omega_rotate': (r['omega'], 'rad/s'), 'static': (static, 'N*m')}, tau, 'N*m',
+                 f'{r["object"].id}: {how}; rotate action {r["n"]} ({r["action"].turns:g} turns at {r["action"].rpm:g} rpm)')
+    return tau, calc
 
 
 def _wheel_sizing(version, fam, p):
@@ -283,12 +385,17 @@ def self_locking(drive: Drive) -> bool:
     return lam <= phi
 
 
+PLANETARY_RATIOS = (3, 4, 5, 7, 10, 15, 20, 30, 50, 100)
+
+
 def _planetary(n):
-    return Drive(type='planetary', ratio=n, efficiency=0.9 if n <= 10 else 0.85, name=f'Planetary gearbox {n:g}:1')
+    """Standard planetary gearbox: one stage (<= 10) 0.90, two stages (<= 50) 0.85, three stages (100) 0.80."""
+    return Drive(type='planetary', ratio=n, efficiency=0.9 if n <= 10 else 0.85 if n <= 50 else 0.8,
+                 name=f'Planetary gearbox {n:g}:1')
 
 
 def drive_options(family: str, joint_index: int, sizing: JointSizing) -> list[Drive]:
-    """Standard gearings for a joint: revolute arm joints planetary 5/10/20/50, harmonic 50/100 (joints 1-4), belt
+    """Standard gearings for a joint: revolute arm joints planetary 3/4/5/7/10/15/20/30/50/100, harmonic 50/100 (joints 1-4), belt
     reduction 3:1, direct drive for wrist and yaw joints; gantry X/Y GT2 belts (20 and 30 tooth pulleys) and a rack;
     gantry Z leadscrew lead 2/5/8/10 mm; wheels direct or gearbox 5-50:1."""
     if sizing.kind == 'wheel':
@@ -304,7 +411,7 @@ def drive_options(family: str, joint_index: int, sizing: JointSizing) -> list[Dr
         pinion = math.pi * 0.03
         return out + [Drive(type='rack', ratio=2 * math.pi / pinion, efficiency=0.9, lead_m=pinion,
                             name='Rack and 30 mm pinion')]
-    out = [_planetary(n) for n in (5, 10, 20, 50)]
+    out = [_planetary(n) for n in PLANETARY_RATIOS]
     if joint_index < 4 and family == 'serial_arm':
         out += [Drive(type='harmonic', ratio=n, efficiency=0.8, name=f'Harmonic reducer {n}:1') for n in (50, 100)]
     out.append(Drive(type='belt', ratio=3.0, efficiency=0.95, name='Timing-belt reduction 3:1'))
@@ -320,15 +427,82 @@ def motor_side(sizing: JointSizing, drive: Drive) -> dict:
             'speed_rpm': sizing.speed * drive.ratio * 60 / (2 * math.pi)}
 
 
+STEPPER_HOLD_TIERS_NM = (3.0, 12.0)   # holding torque of the largest NEMA 23 and NEMA 34 stacks (NEMA_TABLE)
+
+
+def motor_side_calcs(sizing: JointSizing, drive: Drive) -> list[Calc]:
+    """The motor-side figures after the chosen ratio, as calculations (a sanity check of the gearing): tau_m = tau /
+    (N eta) for the continuous and peak torque, and the motor speed omega N in rpm."""
+    ms = motor_side(sizing, drive)
+    inputs = {'N': drive.ratio, 'eta': drive.efficiency}
+    tu = sizing.torque_unit
+    return [
+        _calc('tau_m_continuous = tau_continuous / (N eta)', {**inputs, 'tau_continuous': (sizing.continuous, tu)},
+              ms['continuous_nm'], 'N*m', drive.name),
+        _calc('tau_m_peak = tau_peak / (N eta)', {**inputs, 'tau_peak': (sizing.peak, tu)}, ms['peak_nm'], 'N*m',
+              drive.name),
+        _calc('omega_m = omega N 60 / (2 pi)', {'N': drive.ratio, 'omega': (sizing.speed, sizing.speed_unit)},
+              ms['speed_rpm'], 'rpm', drive.name)]
+
+
 def default_drive(sizing: JointSizing, family: str, joint_index: int) -> Drive:
-    """Gearing for a defined motor: the largest ratio whose motor speed stays <= 1000 rpm (stepper), else <= 3000 rpm,
-    else the slowest option."""
-    opts = drive_options(family, joint_index, sizing)
+    """Gearing for a defined motor (and for the search needs). Revolute joints: the smallest standard ratio whose motor
+    speed stays <= 1000 rpm (stepper) and whose motor torque fits a NEMA 23 stack, else a NEMA 34 stack; else (servo) the
+    smallest ratio within 3000 rpm and 30 N*m, else the largest ratio within the speed limit. Linear axes and wheels: the
+    largest ratio whose motor speed stays <= 1000 rpm (stepper), else <= 3000 rpm, else the slowest option."""
+    opts = sorted(drive_options(family, joint_index, sizing), key=lambda d: (d.ratio, -d.efficiency))
+    if sizing.kind == 'revolute':
+        slow = [d for d in opts if motor_side(sizing, d)['speed_rpm'] <= 1000.0]
+        for hold in STEPPER_HOLD_TIERS_NM:
+            ok = [d for d in slow if max(motor_side(sizing, d)['continuous_nm'],
+                                         motor_side(sizing, d)['peak_nm']) / STEPPER_TORQUE_USE <= hold]
+            if ok:
+                return ok[0]
+        servo = [d for d in opts if motor_side(sizing, d)['speed_rpm'] <= 3000.0
+                 and max(motor_side(sizing, d)['continuous_nm'], motor_side(sizing, d)['peak_nm']) <= SERVO_FRAMES[-1][1]]
+        if servo:
+            return servo[0]
     for limit in (1000.0, 3000.0):
         ok = [d for d in opts if motor_side(sizing, d)['speed_rpm'] <= limit]
         if ok:
             return max(ok, key=lambda d: d.ratio)
     return min(opts, key=lambda d: motor_side(sizing, d)['speed_rpm'])
+
+
+def choose_drive(alt: MotorAlternative, sizing: JointSizing, options: list[Drive], motor_kind: str
+                 ) -> tuple[Drive, bool, dict, list[Check], str]:
+    """(drive, passes, margins, checks, reason) for a motor: the smallest standard ratio that satisfies torque
+    (tau / (N eta) <= the motor's continuous and peak torque) and speed (omega N <= 0.8 of the motor speed, assumed or
+    verified) and the other checks. When none does, the drive with the best smallest margin is returned and `reason` names
+    the binding constraint: torque needs N >= a, speed allows N <= b (or neither range exists)."""
+    opts = sorted(options, key=lambda d: (d.ratio, -d.efficiency))
+    results = [(d, *evaluate(alt, sizing, d, motor_kind)) for d in opts]
+    for r in results:
+        if r[1]:
+            return r
+    best = max(results, key=lambda r: min(r[2].values(), default=-1.0))
+    if not best[2]:                                              # missing deciding values: nothing to compare
+        return best
+    torque_ok = [r[0].ratio for r in results if r[2].get('continuous', 0) >= 1 and r[2].get('peak', 0) >= 1]
+    speed_ok = [r[0].ratio for r in results if r[2].get('speed', 0) >= 1]
+    unit = 'm^-1' if sizing.kind == 'prismatic' else ':1'
+    if not torque_ok and not speed_ok:
+        why = 'torque and speed both fail at every standard ratio'
+    elif not torque_ok:
+        why = (f'torque binds: the motor is too weak even at the largest ratio (best '
+               f'{max(r[2]["peak"] for r in results):.2f}x of the peak torque needed)')
+    elif not speed_ok:
+        why = (f'speed binds: the motor is too slow even at the smallest ratio (best '
+               f'{max(r[2]["speed"] for r in results):.2f}x of the speed needed)')
+    elif min(torque_ok) > max(speed_ok):
+        why = (f'torque needs ratio >= {min(torque_ok):g}{unit} but speed allows <= {max(speed_ok):g}{unit}: '
+               f'torque and speed cannot both be met')
+    else:
+        why = 'torque and speed windows overlap but another check fails'
+    detail = best[4]
+    if detail.startswith('Fails'):
+        detail = detail.split(': ', 1)[-1]
+    return best[0], False, best[2], best[3], f'Fails ({why}); best at {best[0].ratio:g}{unit}: {detail}'[:400]
 
 
 def drive_mass(drive: Drive, sizing: JointSizing) -> float:
@@ -544,7 +718,7 @@ def defined_motor(sizing: JointSizing, drive: Drive, family: str) -> MotorChoice
                              prov['continuous'], sizing.torque_unit))
     return MotorChoice(joint=sizing.joint, source='defined', alternative_id=None, name=f'Defined spec: {label}',
                        motor_type=mtype, values=vals, drive=drive, required=req, provided=prov, margins=margins,
-                       checks=[check])
+                       checks=[check], calcs=motor_side_calcs(sizing, drive))
 
 
 def motor_mass(choice: MotorChoice) -> float:
@@ -563,17 +737,20 @@ def _rating(ratings, need):
 
 
 def electronics_for(motors: list[MotorChoice], family: str, battery_wh: float | None = None) -> list[ElectronicsItem]:
-    """Rule-based `defined` electronics: a driver per motor (rated current >= 1.2 x motor current, standard ratings),
+    """Rule-based `defined` electronics: a driver per motor of the matching type (rated current >= 1.2 x motor current,
+    standard ratings; a stepper with a coil rated below STEPPER_BUS_V runs from that bus, as chopper drives do),
     controllers (axes >= motors, 8 axes each at most), power supplies per voltage (W >= 1.3 x sum(V I)); the mobile base
     gets a battery (capacity `battery_wh` or 0.5 h of the sum(V I), discharge power = capacity x 1 C) instead of a
     PSU. A motor without current or voltage uses the default voltage of its type and its driver check is
     `None` (could not be checked)."""
     items, groups = [], {}
     for m in motors:
-        cur, volt = _val(m.values, 'current_a'), _val(m.values, 'voltage_v')
-        assumed = volt is None
-        volt = volt or DEFAULT_VOLTAGE_V.get(m.motor_type, 24.0)
-        kind = {'stepper': 'Stepper driver', 'dc_gear': 'DC motor driver'}.get(m.motor_type, 'BLDC / servo drive')
+        cur, coil = _val(m.values, 'current_a'), _val(m.values, 'voltage_v')
+        volt = coil or DEFAULT_VOLTAGE_V.get(m.motor_type, 24.0)
+        note = 'default for the motor type' if coil is None else ''
+        if m.motor_type == 'stepper' and coil is not None and coil < STEPPER_BUS_V:
+            volt, note = STEPPER_BUS_V, f'chopper drive bus; the coil is rated {coil:g} V'
+        kind = DRIVER_NAME[driver_type(m.motor_type)]
         need = None if cur is None else DRIVER_MARGIN * cur
         rated = None if need is None else (_rating(DRIVER_RATINGS_A, need) or math.ceil(need))
         chk = (Check(requirement_id=f'driver_{m.joint}_current', name='Driver current >= 1.2 x motor current',
@@ -582,8 +759,7 @@ def electronics_for(motors: list[MotorChoice], family: str, battery_wh: float | 
                _check(f'driver_{m.joint}_current', 'Driver current >= 1.2 x motor current', need, float(rated), 'A',
                       rated >= need, f'{rated:g} A standard rating for {need:.2f} A needed',
                       'I_driver >= 1.2 I_motor', {'I_motor': (cur, 'A'), 'margin': DRIVER_MARGIN}))
-        vals = [SpecValue(key='voltage_v', value=volt, unit='V', status='defined',
-                          note='default for the motor type' if assumed else '')]
+        vals = [SpecValue(key='voltage_v', value=volt, unit='V', status='defined', note=note)]
         if rated:
             vals.append(SpecValue(key='current_a', value=float(rated), unit='A', status='defined'))
         items.append(ElectronicsItem(id=f'driver_{m.joint}'[:63], role='driver', name=f'{kind}, {rated or "?"} A, '

@@ -30,10 +30,16 @@ CONTACT = ('grasp', 'place', 'release')
 class Waypoint:
     name: str
     xyz: tuple[float, float, float] | None     # world frame; None = no position (wait, home, drive to path end)
-    kind: str                                  # approach|grasp|lift|carry|place|release|retreat|home|drive|wait
+    kind: str                                  # approach|grasp|lift|carry|place|release|retreat|home|drive|wait|rotate
     object: str = ''
     phase: str = ''
     dwell_s: float = 0.0
+    limit_s: float = 0.0                       # carry (move): optional upper time for the move; rotate: for the check
+    turns: float = 0.0                         # rotate only
+    rpm: float = 0.0
+    ramp_s: float = 0.0
+    axis: str = 'tool_yaw'
+    index: int = -1                            # index of the action in spec.actions
 
 
 def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Waypoint]:
@@ -41,9 +47,10 @@ def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Way
     pi = spec.physics_inputs
     objs = {o.id: o for o in spec.objects}
     marks = {m.id: m for m in spec.markers}
-    out, carried_z, held = [], None, ''
+    attached = next((o.id for o in spec.objects if o.attached), '')
+    out, carried_z, held = [], None, attached
     has_pick = any(a.verb == 'pick' for a in spec.actions)
-    for a in spec.actions:
+    for ai, a in enumerate(spec.actions):
         m = marks.get(a.target)
         o = objs.get(a.object)
         label = a.description or f'{a.verb} {a.object} {a.target}'.strip()
@@ -76,9 +83,14 @@ def waypoints(spec: TechnicalSpec, scene: SceneSpec, base: BasePose) -> list[Way
                         Waypoint(f'{tag}_retreat', (x, y, za), 'retreat', '', label)]
         elif a.verb == 'move' and m is not None:
             # Never to the surface: carry height above the marker (object height when one is or will be held).
-            size_z = o.size_m[2] if o else (pi.object_size_m[2] if has_pick else 0.0)
+            ob = o or objs.get(held)                       # the held (attached) object sets the carry height
+            size_z = ob.size_m[2] if ob else (pi.object_size_m[2] if has_pick else 0.0)
             x, y, z = m.position
-            out.append(Waypoint(f'move_{m.id}', (x, y, z + size_z + pi.approach_height_m), 'carry', held, label))
+            out.append(Waypoint(f'move_{m.id}', (x, y, z + size_z + pi.approach_height_m), 'carry', held, label,
+                                limit_s=a.duration_s, index=ai))
+        elif a.verb == 'rotate':
+            out.append(Waypoint(f'rotate_{ai}', None, 'rotate', held, label, limit_s=a.duration_s, turns=a.turns,
+                                rpm=a.rpm, ramp_s=a.ramp_s, axis=a.axis, index=ai))
         elif a.verb == 'drive':
             out.append(Waypoint(f'drive_{m.id if m else "end"}', tuple(m.position) if m else None, 'drive', '', label))
         elif a.verb == 'home':
@@ -128,6 +140,30 @@ class _Run:
             if holding is not None and i == n - 1:
                 self.holding = holding
             self.add()
+
+    def move_time(self, qt, vel, acc):
+        """Time of move(qt, vel, acc) without playing it."""
+        dq = np.asarray(qt, float) - self.q
+        mv = np.abs(dq) > 1e-9
+        if not mv.any():
+            return 0.0
+        return float(motion.trapezoid(1.0, min(vel[mv] / np.abs(dq[mv])), min(acc[mv] / np.abs(dq[mv])))['t_total'])
+
+    def rotate(self, j, travel, omega, alpha):
+        """Turn joint j by the signed `travel` (rad) with a trapezoid profile (peak omega, acceleration alpha); no
+        unwinding. A fixed-time segment: it is never stretched. Returns its duration."""
+        d, sign = abs(travel), 1.0 if travel >= 0 else -1.0
+        f = motion.sample(d, omega, alpha, self.dt)
+        T = motion.trapezoid(d, omega, alpha)['t_total']
+        qj, t0 = float(self.q[j]), self.t
+        for fk, tk in zip(f[1:], _times(T, self.dt, len(f))[1:]):
+            self.t = t0 + tk
+            q = self.q.copy()
+            q[j] = qj + sign * fk
+            self.add(q)
+        self.q[j] = qj + travel
+        self.dwelled += T
+        return T
 
     def move(self, qt, vel, acc):
         dq = np.asarray(qt, float) - self.q
@@ -233,14 +269,40 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
     # --- initial pose: the arm starts at the first waypoint, the base at the first stop ---
     q0 = np.clip(np.zeros(len(act)), lo, hi) if act else np.zeros(0)
     first = next((w for w in wps if w.xyz is not None and w.kind != 'drive'), None)
+    attached = next((o for o in spec.objects if o.attached), None)
+    if attached is not None and attached.start_marker in marks:     # starts where the attached object starts
+        ax, ay, az = marks[attached.start_marker].position
+        first = Waypoint('start', (ax, ay, az + attached.size_m[2] + spec.physics_inputs.approach_height_m), 'carry')
     if act and first is not None:
         pose_first = stop_pose(stop_for(first.xyz, 0)) if mobile_path else pose0
         q0 = fam.ik(p, to_base(first.xyz, pose_first)).q
     run = _Run(dt, q0, pose0, bp, _slow)
+    if attached is not None:
+        run.holding = attached.id                # held by the tool from t=0: its mass is in every load
+    run.rows[0]['holding'] = run.holding
     mv_vel, mv_acc = vel / _slow, acc / _slow ** 2
     start_q = q0.copy()
     cur_stop = 0
     reach, torque, limits_ok = [], np.zeros(len(act)), True
+    free = np.ones(len(act), bool)               # joints a rotate has not moved (only these are limit-checked)
+    rotated: dict[int, list[float]] = {}         # joint index -> [min, max] angle swept by rotates
+    rotates, rotate_errors, timed_fail = [], [], []
+
+    def rotate_joint(axis):
+        names = [j.name for j in act]
+        if axis == 'tool_yaw':
+            if 'tool_yaw' in names:
+                return names.index('tool_yaw')
+            ok = [i for i, j in enumerate(act) if j.type in ('revolute', 'continuous')]
+            return ok[-1] if ok else None
+        return names.index(axis) if axis in names and act[names.index(axis)].type != 'prismatic' else None
+
+    def unwound(q, ref):
+        """q with the rotated joints at the 2*pi-equivalent angle nearest their current value in `ref`."""
+        q = np.array(q, float)
+        for j in rotated:
+            q[j] = ref[j] + _wrap(q[j] - ref[j])
+        return q
     prev_kind, last_rest = '', None
 
     def drive_to(dest):
@@ -259,7 +321,29 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
         elif w.kind == 'wait':
             run.dwell(w.dwell_s)
         elif w.kind == 'home':
-            run.move(start_q, mv_vel, mv_acc) if act else None
+            run.move(unwound(start_q, run.q), mv_vel, mv_acc) if act else None
+        elif w.kind == 'rotate':
+            j = rotate_joint(w.axis)
+            omega = abs(w.rpm) * 2 * math.pi / 60
+            if j is None:
+                why = (f'axis "{w.axis}" is not a rotating joint of this robot' if w.axis != 'tool_yaw' else
+                       'this robot has no tool_yaw or other rotating joint')
+                rotate_errors.append(f'{w.phase}: {why}')
+                events.append(SimEvent(t=run.t, kind='warning', text=f'{w.phase}: {why}; rotate skipped'))
+            elif omega <= 0 or abs(w.turns) < 1e-12:
+                rotate_errors.append(f'{w.phase}: a rotate needs rpm > 0 and turns != 0')
+                events.append(SimEvent(t=run.t, kind='warning', text=f'{w.phase}: needs rpm > 0 and turns != 0; skipped'))
+            else:
+                travel = w.turns * 2 * math.pi
+                alpha = omega / w.ramp_s if w.ramp_s > 0 else float(acc[j])
+                q_from = float(run.q[j])
+                T = run.rotate(j, travel, omega, alpha)
+                free[j] = False
+                span = rotated.setdefault(j, [q_from, q_from])
+                span[0], span[1] = min(span[0], q_from, q_from + travel), max(span[1], q_from, q_from + travel)
+                oid = run.holding or (attached.id if attached is not None else '')
+                rotates.append(dict(n=w.index, j=j, turns=w.turns, rpm=abs(w.rpm), ramp=w.ramp_s, T=T, limit=w.limit_s,
+                                    omega=omega, alpha=alpha, d=abs(travel), obj=objs.get(oid)))
         else:
             if mobile_path:
                 drive_to(stop_for(w.xyz, cur_stop))
@@ -276,8 +360,23 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                     last_rest = rest_box(w.xyz)
                 elif prev_kind in CONTACT and last_rest:
                     run.skip = frozenset([last_rest])
-                limits_ok &= bool(np.all(res.q >= lo - 1e-6) and np.all(res.q <= hi + 1e-6))
-                run.move(res.q, mv_vel, mv_acc)
+                if rotated:
+                    res.q = unwound(res.q, run.q)
+                limits_ok &= bool(np.all((res.q >= lo - 1e-6) | ~free) and np.all((res.q <= hi + 1e-6) | ~free))
+                if w.limit_s > 0:
+                    # timed move: the fastest time at the unscaled limits, stretched to the allowed time when shorter
+                    T = run.move_time(res.q, vel, acc)
+                    t_start = run.t
+                    if T > 1e-9 and T <= w.limit_s:
+                        k = w.limit_s / T
+                        run.move(res.q, vel / k, acc / k ** 2)
+                    else:
+                        run.move(res.q, vel, acc)
+                        if T > w.limit_s:
+                            timed_fail.append((w.index, T, w.limit_s, w.phase))
+                    run.dwelled += run.t - t_start        # fixed-time segment: not stretched with the cycle
+                else:
+                    run.move(res.q, mv_vel, mv_acc)
                 payload = objs[run.holding].mass_kg if run.holding in objs else (
                     spec.physics_inputs.object_mass_kg if run.holding else 0.0)
                 torque = np.maximum(torque, np.abs(fam.gravity_torques(p, res.q, payload)))
@@ -350,8 +449,11 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                   travel_distance=run.driven if fam.mobile else None, drive_speed=ex.get('max_speed_m_s'),
                   drive_accel=ex.get('max_accel_m_s2'), wheel_torque=ex.get('wheel_torque_nm'),
                   slope=ex.get('max_slope_deg'), battery=ex.get('battery_wh'))
+    max_accel = _max_accel(run.rows, fam, p, act, bz, rotates) if any(r.id == 'max_accel' for r in requirements) else None
     for rq in requirements:
         a = actual.get(rq.id)
+        if rq.id == 'max_accel':
+            a = max_accel[0]
         if not act and rq.id in ('reach_max', 'reach_min', 'z_min', 'z_max', 'grip_force', 'tcp_speed', 'tcp_accel',
                                  'accuracy'):
             a = None                               # no manipulator: the load rides on the deck
@@ -359,11 +461,15 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
         if rq.id == 'cycle_time':
             calc = Calc(formula='t = sum of simulated move, drive and dwell times',
                         inputs={'moves': Quantity(value=len(run.rows), unit='samples')}, result=duration, unit='s')
+        if rq.id == 'max_accel':
+            calc, detail = max_accel[1], max_accel[2]
         if rq.id == 'cycle_time':
             detail = (f'fastest feasible {fastest:.1f} s; played at the {cycle:.1f} s cycle' if _slow != 1.0
                       else f'fastest feasible {fastest:.1f} s')
         c = report.check(rq, a, calc, detail)
-        if rq.id == 'reach_max' and act:
+        if rq.id == 'max_jerk':
+            c.detail = 'trapezoid profiles: jerk is not bounded in this simulation'
+        elif rq.id == 'reach_max' and act:
             bad = [r for r in reach if not r[1]]
             c.detail = (f'{len(reach) - len(bad)} of {len(reach)} waypoints reachable'
                         + (': unreachable ' + ', '.join(r[0] for r in bad) if bad else ''))
@@ -401,6 +507,32 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
             checks.append(report.custom('joint_speed', f'Peak joint speed ({act[k].name})', float(peak[k]), float(vel[k]),
                                         'rad/s or m/s', detail='peak speed in the simulated motion vs the rating',
                                         passed=bool(np.all(peak <= vel * 1.02))))
+    for r in rotates:
+        j = act[r['j']]
+        ramp = f"ramp {r['ramp']:g} s" if r['ramp'] > 0 else 'the joint acceleration'
+        checks.append(report.custom(
+            f"rotate_{r['n']}", f"Rotate {r['turns']:g} turns on {j.name}", r['limit'] if r['limit'] > 0 else None, r['T'],
+            's', comparator='<=', detail=f"{r['turns']:g} turns at {r['rpm']:g} rpm, {ramp} on {j.name}: {r['T']:.1f} s"))
+    for jx, (a0, a1) in rotated.items():
+        j = act[jx]
+        turns = (a1 - a0) / (2 * math.pi)
+        if j.type == 'continuous':
+            checks.append(report.custom(f'rotate_range_{j.name}', f'Rotation range of {j.name}', None, a1 - a0, 'rad',
+                                        passed=True, detail=f'{turns:.3g} turns on a continuous joint'))
+        else:
+            fits = a0 >= j.lower - 1e-6 and a1 <= j.upper + 1e-6
+            lim = (f'\u00b1{math.degrees(j.upper):.0f}\u00b0' if abs(j.lower + j.upper) < 1e-6 else
+                   f'{math.degrees(j.lower):.0f}\u00b0 to {math.degrees(j.upper):.0f}\u00b0')
+            checks.append(report.custom(
+                f'rotate_range_{j.name}', f'Rotation range of {j.name}', j.upper - j.lower, a1 - a0, 'rad', comparator='<=',
+                passed=fits, detail=(f'{turns:.3g} turns fit inside the joint range ({lim})' if fits else
+                                     f'{turns:.3g} turns need a continuous joint; {j.name} is limited to {lim}')))
+    if rotate_errors:
+        checks.append(report.custom('rotate', 'Rotate action', None, None, '', passed=False,
+                                    detail='; '.join(rotate_errors)))
+    for n, T, D, label in timed_fail:
+        checks.append(report.custom(f'move_time_{n}', f'Move time: {label}'[:120], D, T, 's', comparator='<=',
+                                    detail=f'needs {T:.1f} s, allowed {D:.1f} s'))
     checks.append(report.custom('collision_free', 'No collisions with the scene', None, None, '',
                                 passed=hits == 0, detail=report.collision_detail(hits)))
     if mobile_path:
@@ -415,6 +547,61 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                                     detail='peak simulated base speed'))
     return SimResult(frames=frames, events=sorted(events, key=lambda e: e.t), checks=checks, duration_s=duration,
                      ok=report.all_ok(checks))
+
+
+def _median3(x):
+    if len(x) < 3:
+        return x
+    y = x.copy()
+    y[1:-1] = np.median(np.stack([x[:-2], x[1:-1], x[2:]]), axis=0)
+    return y
+
+
+def _max_accel(rows, fam, p, act, bz, rotates):
+    """(peak, Calc, detail) of the largest acceleration: the tool centre point of the run (second difference of its
+    world positions, median-of-3 smoothed) and the rim of an object a rotate turns."""
+    pos, ts = [], []
+    for r in rows:
+        x, y, yaw = r['pose']
+        if act:
+            tcp = fam.fk(p, r['q'])[:3, 3]
+            c, s = math.cos(yaw), math.sin(yaw)
+            pos.append((x + c * tcp[0] - s * tcp[1], y + s * tcp[0] + c * tcp[1], bz + tcp[2]))
+        else:
+            pos.append((x, y, 0.0))
+        ts.append(r['t'])
+    pos, ts = np.array(pos, float), np.array(ts, float)
+    keep = np.concatenate([[True], np.diff(ts) > 1e-6])
+    pos, ts = pos[keep], ts[keep]
+    a_tcp = 0.0
+    if len(ts) >= 3:
+        v = np.diff(pos, axis=0) / np.diff(ts)[:, None]
+        tm = (ts[1:] + ts[:-1]) / 2
+        acc = np.linalg.norm(np.diff(v, axis=0) / np.diff(tm)[:, None], axis=1)
+        a_tcp = float(_median3(acc).max())
+    best, calc, detail = a_tcp, Calc(
+        formula='a = |d2p/dt2| of the simulated tool centre point (second difference, median of 3)',
+        inputs={'samples': Quantity(value=len(ts), unit='samples')}, result=a_tcp, unit='m/s^2'), \
+        f'peak tool centre point acceleration {a_tcp:.3g} m/s^2'
+    for r in rotates:
+        o = r['obj']
+        if o is None:
+            continue
+        rad = max(o.size_m[0], o.size_m[1]) / 2
+        w = motion.trapezoid(r['d'], r['omega'], r['alpha'])['v_peak']
+        at, ac = r['alpha'] * rad, w * w * rad
+        a_rim = math.hypot(at, ac)
+        if a_rim > best:
+            gov = 'centripetal w^2 r' if ac >= at else 'tangential alpha r'
+            best = a_rim
+            calc = Calc(formula='a_rim = sqrt((alpha r)^2 + (w^2 r)^2) at the end of the ramp, r = half the larger horizontal size',
+                        inputs={'w': Quantity(value=w, unit='rad/s'), 'alpha': Quantity(value=r['alpha'], unit='rad/s^2'),
+                                'r': Quantity(value=rad, unit='m'), 'a_tangential': Quantity(value=at, unit='m/s^2'),
+                                'a_centripetal': Quantity(value=ac, unit='m/s^2')},
+                        result=a_rim, unit='m/s^2', note=f'The {gov} term governs at the rim of {o.id}.')
+            detail = (f'peak rim acceleration of {o.id}: {a_rim:.3g} m/s^2 ({gov} governs: centripetal {ac:.3g}, '
+                      f'tangential {at:.3g}); tool centre point {a_tcp:.3g} m/s^2')
+    return best, calc, detail
 
 
 def _polyline_distance(pt, path):

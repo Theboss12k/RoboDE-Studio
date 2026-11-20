@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 Range = tuple[float, float]
 
@@ -68,6 +68,7 @@ class GantryParams(P):
     z_offset_m: float = Field(default=0.1, ge=0, le=5)            # beam to Z carriage at q_z = 0
     tool_length_m: float = Field(default=0.12, ge=0, le=2)
     tool_yaw: bool = False                                        # a 4th revolute axis about z
+    tool_yaw_continuous: bool = Field(default=False, description='Turn the tool yaw joint without limit (slewing ring); use it when the task rotates the tool more than half a turn.')  # the yaw joint turns without limit (a slewing ring); dropped from dumps when false
     beam_size_m: float = Field(default=0.08, gt=0, le=1)
     max_speed_m_s: tuple[float, float, float] = (1.0, 1.0, 0.5)
     max_accel_m_s2: tuple[float, float, float] = (3.0, 3.0, 2.0)
@@ -81,6 +82,13 @@ class GantryParams(P):
     gripper_stroke_m: float = Field(default=0.08, ge=0)
     payload_kg: float = Field(default=10.0, ge=0)
     repeatability_m: float = Field(default=0.0002, gt=0)
+
+    @model_serializer(mode='wrap')
+    def _drop_continuous_false(self, handler):
+        out = handler(self)
+        if not out.get('tool_yaw_continuous'):
+            out.pop('tool_yaw_continuous', None)
+        return out
 
 
 class MobileBaseParams(P):

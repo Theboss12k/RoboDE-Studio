@@ -12,6 +12,7 @@ from .. import units
 from ..llm.base import ask_json, json_answer, schema_instruction
 from ..schemas import Candidate, Check
 from ..util import slug
+from . import vendors as vendor_list
 
 SYSTEM = """You find real robots that are currently sold and could do a job, using your web search tools. Read pages before reporting numbers.
 
@@ -75,12 +76,13 @@ def today_utc():
     return datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
 
-def clean(raw, limit, today=None, dropped=None):
+def clean(raw, limit, today=None, dropped=None, vendors=None):
     """Validate candidate dicts from the model; drop the unusable, null the unsupported price, make ids unique.
-    `dropped` (a Counter) receives the reason of every nulled price."""
+    `dropped` (a Counter) receives the reason of every nulled price. Candidates sold by a preferred vendor (their product
+    page or price source is on its domain) are marked `preferred` and sorted first, keeping the model's order otherwise."""
     today = today or today_utc()
     out, used = [], set()
-    for item in raw[:limit * 2]:
+    for item in raw[:max(limit * 2, 20)]:
         if not isinstance(item, dict):
             continue
         item = {**item, 'screen': []}
@@ -106,7 +108,10 @@ def clean(raw, limit, today=None, dropped=None):
         except ValidationError:
             continue
         used.add(cid)
+        urls = [candidate.product_url] + ([candidate.price.source_url] if candidate.price else [])
+        candidate.preferred = any(vendor_list.matches(u, vendors, 'robots') for u in urls)
         out.append(candidate)
+    out.sort(key=lambda c: not c.preferred)           # stable: the model's order within each group
     return out[:limit]
 
 
@@ -128,11 +133,14 @@ def valid(data):
     return data
 
 
-async def search(adapter, spec, requirements, concept, limit=6, today=None, dropped=None):
+async def search(adapter, spec, requirements, concept, limit=6, today=None, dropped=None, vendors=None):
     today = today or today_utc()
     schema = {'type': 'object', 'properties': {'candidates': {'type': 'array', 'items': Candidate.model_json_schema()}},
               'required': ['candidates']}
     prompt = 'Find robots for this job.\n' + describe(spec, requirements, concept, limit, today)
+    preferred = vendor_list.prompt_block(vendors, 'robots')
+    if preferred:
+        prompt += '\n' + preferred
     web = adapter.with_web() if callable(getattr(adapter, 'with_web', None)) else adapter
     answer = await web.invoke(prompt, SYSTEM + schema_instruction(schema))
     try:
@@ -141,7 +149,7 @@ async def search(adapter, spec, requirements, concept, limit=6, today=None, drop
             raise ValueError('candidates must be a list')
     except (ValueError, TypeError, AttributeError) as error:
         data = await ask_json(adapter, f'Invalid answer ({error}):\n{answer[:20000]}', REPAIR, schema=schema, validate=valid)
-    candidates = clean(data['candidates'], limit, today, dropped)
+    candidates = clean(data['candidates'], limit, today, dropped, vendors)
     for candidate in candidates:
         candidate.screen = screen(candidate, requirements)
     return candidates
