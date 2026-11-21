@@ -101,5 +101,5 @@ Second app (`60`-`75`), using the real `safe_download` for non-vendor URLs:
 ## google-gemini branch (2026-11-21)
 
 Goldens 01, 03, 10 and 13 were edited by hand, not re-recorded: the default profiles and role defaults are Gemini
-(`gemini_pro`, `gemini_flash`, `gemini_flash_lite`, `gemini_cli_pro`, `gemini_cli_flash`), `kinds` and `models` list
-`gemini_cli`, and the roles request in 10 points `analysis` at `gemini_flash`. The scripted LLM answers are unchanged.
+(`gemini_pro`, `gemini_flash`, `gemini_flash_lite`, `gemini_cli_pro`, `gemini_cli_flash`, `antigravity_flash_high`,
+`antigravity_flash_medium`, `antigravity_flash_low`), `kinds` and `models` list `gemini_cli` and `antigravity_cli` (03 and 13), and the roles request in 10 points `analysis` at `gemini_flash`. The scripted LLM answers are unchanged.

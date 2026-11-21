@@ -49,6 +49,33 @@
         "effort": "",
         "timeout_s": 240,
         "cli_path": ""
+      },
+      {
+        "id": "antigravity_flash_high",
+        "name": "Gemini 3.8 Flash High (Antigravity CLI)",
+        "kind": "antigravity_cli",
+        "model": "gemini-3.8-flash-high",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": ""
+      },
+      {
+        "id": "antigravity_flash_medium",
+        "name": "Gemini 3.8 Flash Medium (Antigravity CLI)",
+        "kind": "antigravity_cli",
+        "model": "gemini-3.8-flash-medium",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": ""
+      },
+      {
+        "id": "antigravity_flash_low",
+        "name": "Gemini 3.8 Flash Low (Antigravity CLI)",
+        "kind": "antigravity_cli",
+        "model": "gemini-3.8-flash-low",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": ""
       }
     ],
     "roles": {
@@ -64,6 +91,7 @@
       "checks": "gemini_pro"
     },
     "kinds": [
+      "antigravity_cli",
       "claude_cli",
       "gemini",
       "gemini_cli"
@@ -88,6 +116,11 @@
       }
     },
     "models": {
+      "antigravity_cli": [
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-low"
+      ],
       "claude_cli": [
         "claude-opus-5-5",
         "claude-sonnet-5-5",

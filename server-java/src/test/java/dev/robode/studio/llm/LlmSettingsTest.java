@@ -31,10 +31,10 @@ class LlmSettingsTest {
         for (String r : new String[] {"spec", "revise", "checks", "analysis", "robot"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_pro");
         for (String r : new String[] {"scene", "search", "extract", "ask"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_flash");
         assertThat(roles.get("objects").asString()).isEqualTo("gemini_flash_lite");
-        assertThat(data.get("profiles")).hasSize(5);
+        assertThat(data.get("profiles")).hasSize(8);
         JsonNode lite = null;
         for (JsonNode p : data.get("profiles")) {
-            assertThat(Json.text(p, "kind")).startsWith("gemini");
+            assertThat(Json.text(p, "kind")).matches("gemini|gemini_cli|antigravity_cli");
             if ("gemini_flash_lite".equals(Json.text(p, "id"))) lite = p;
         }
         assertThat(lite).isNotNull();
@@ -43,6 +43,9 @@ class LlmSettingsTest {
         assertThat(data.toString()).doesNotContain("claude").doesNotContain("api_key");
         assertThat(Json.text(settings().profile("gemini_cli_pro"), "kind")).isEqualTo("gemini_cli");
         assertThat(Json.text(settings().profile("gemini_cli_flash"), "kind")).isEqualTo("gemini_cli");
+        for (String id : new String[] {"antigravity_flash_high", "antigravity_flash_medium", "antigravity_flash_low"})
+            assertThat(Json.text(settings().profile(id), "kind")).isEqualTo("antigravity_cli");
+        assertThat(settings().resolved("antigravity_flash_low").get("api_key").isNull()).isTrue();   // keyless kind
     }
 
     @Test

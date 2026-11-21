@@ -16,6 +16,7 @@ Providers are plugged in through PROVIDERS (kind -> factory(profile)). Adding a 
 module with `invoke(input, system_prompt)` and one entry here; nothing else in the studio changes.
 - gemini:     Google Gemini through the Gemini API; its key comes from llm/keys.py, never from the profile.
 - gemini_cli: Gemini through the Gemini CLI and the user's own Google sign-in (no key; text only).
+- antigravity_cli: Gemini through the Google Antigravity CLI (`agy`) and the user's own Google sign-in (no key; text only).
 - claude_cli: Claude through the Claude Code CLI and its own sign-in (no key). Kept, but not a default on the
               google-gemini branch.
 """
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from ..util import atomic_json, read_json
 from . import gemini as gemini_module
+from .antigravity_cli import MODELS as ANTIGRAVITY_MODELS, AntigravityCLI
 from .claude_cli import MODELS, ClaudeCLI
 from .gemini_cli import GeminiCLI
 from .keys import KeyStore
@@ -50,7 +52,12 @@ def gemini_cli(profile):
                      cli_path=profile.get('cli_path', ''))
 
 
-PROVIDERS = {'claude_cli': claude_cli, 'gemini': gemini, 'gemini_cli': gemini_cli}
+def antigravity_cli(profile):
+    return AntigravityCLI(model=profile['model'], effort=profile.get('effort', ''), timeout_s=profile.get('timeout_s', 240),
+                          cli_path=profile.get('cli_path', ''))
+
+
+PROVIDERS = {'antigravity_cli': antigravity_cli, 'claude_cli': claude_cli, 'gemini': gemini, 'gemini_cli': gemini_cli}
 KEYED = {'gemini'}  # providers whose factory receives the saved API key as profile['api_key']
 
 
@@ -69,6 +76,9 @@ DEFAULTS = [
     {'id': 'gemini_flash_lite', 'name': 'Gemini 3.5 Flash-Lite (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.5-flash-lite'},
     {'id': 'gemini_cli_pro', 'name': 'Gemini 3.1 Pro (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.1-pro-preview'},
     {'id': 'gemini_cli_flash', 'name': 'Gemini 3.8 Flash (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.8-flash'},
+    {'id': 'antigravity_flash_high', 'name': 'Gemini 3.8 Flash High (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-high'},
+    {'id': 'antigravity_flash_medium', 'name': 'Gemini 3.8 Flash Medium (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-medium'},
+    {'id': 'antigravity_flash_low', 'name': 'Gemini 3.8 Flash Low (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-low'},
 ]
 
 
@@ -100,12 +110,12 @@ class LLMRegistry:
 
     def describe(self):
         return {**self.data(), 'kinds': sorted(PROVIDERS), 'roles_available': list(ROLES), 'keys': self.keys.status(),
-                'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)}}
+                'models': {'antigravity_cli': list(ANTIGRAVITY_MODELS), 'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)}}
 
     def upsert(self, profile: Profile, profile_id=None):
         if profile.kind not in PROVIDERS:
             raise ValueError(f'Unknown provider kind {profile.kind}')
-        if profile.kind in ('gemini', 'gemini_cli') and not profile.model.startswith('gemini'):
+        if profile.kind in ('gemini', 'gemini_cli', 'antigravity_cli') and not profile.model.startswith('gemini'):
             raise ValueError('A Gemini profile needs a Gemini model name, such as gemini-3.8-flash')
         data = self.data()
         profile_id = profile_id or uuid.uuid4().hex[:10]

@@ -27,6 +27,9 @@ and `runtime/llm/**`.
   dict. `api_key` is set only for keyed providers (gemini): the saved key, else the `GEMINI_API_KEY` env fallback.
   Keys travel only on stdin: never in argv, env, logs or stdout.
 - `llm.profile`: a single profile dict (only for `llm_test`).
+- Profile kinds: `gemini` (keyed), `gemini_cli`, `antigravity_cli` (keyless CLIs signed in on the machine; text only, no
+  `api_key`) and `claude_cli`. `antigravity_cli` models: `gemini-3.8-flash-high|medium|low`; `effort` becomes `--effort`;
+  `cli_path` defaults to `agy` on PATH, then `~/.gemini/bin/agy`.
 - Profile kind `scripted` (tests only): `{"kind": "scripted", "fixture": "/abs/rules.json"}`. It is accepted only
   when the Python process env has `STUDIO_ALLOW_SCRIPTED=1`. The fixture is `{"rules": [{"match": "text in system
   prompt or input", "answers": [<obj|str>, ...]}]}`. Answers are consumed in order, and the last one repeats. Every

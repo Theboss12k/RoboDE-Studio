@@ -15,6 +15,7 @@ from ..ingest import urdf as urdf_intake
 from ..ingest.docs import extract_text
 from ..llm import gemini as gemini_module
 from ..llm.base import Image, supports_images
+from ..llm.antigravity_cli import MODELS as ANTIGRAVITY_MODELS
 from ..llm.claude_cli import MODELS
 from ..llm.usage import set_context
 from ..llm.registry import DEFAULT_ROLES, PROVIDERS, ROLES, default_profiles
@@ -133,7 +134,7 @@ def urdf_payload(payload, name):
 
 async def meta(inp, ctx):
     return {'families': families.describe(), 'kinds': sorted(PROVIDERS), 'roles': list(ROLES),
-            'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)},
+            'models': {'antigravity_cli': list(ANTIGRAVITY_MODELS), 'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)},
             'default_roles': dict(DEFAULT_ROLES), 'default_profiles': default_profiles()}
 
 

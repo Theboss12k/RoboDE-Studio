@@ -28,10 +28,12 @@ const ROLE_LABELS: Record<string, string> = { objects: "Object models" };
 const PROVIDERS: Record<string, { label: string; note: string }> = {
   gemini: { label: "Google Gemini (API key)", note: "Uses the Gemini API with your key from Google AI Studio. Billed by Google to that key." },
   gemini_cli: { label: "Gemini CLI (Google sign-in)", note: "Uses the Gemini CLI signed in with your Google account on this computer (install it with npm install -g @google/gemini-cli, then run gemini once and sign in). No key needed. Text only: roles that read images need a Gemini API model." },
+  antigravity_cli: { label: "Google Antigravity CLI (signed-in, no key)", note: "Uses the Antigravity CLI (agy) signed in with your Google account on this computer (run agy once and sign in). No key needed; calls count against your Antigravity quota, not a price per token. The studio turns every tool off, so it only answers text. Text only: roles that read images need a Gemini API model." },
 };
 
-const DEFAULT_MODEL: Record<string, string> = { gemini: "gemini-3.8-flash", gemini_cli: "gemini-3.8-flash" };
-const isGemini = (kind: string) => kind === "gemini" || kind === "gemini_cli";
+const DEFAULT_MODEL: Record<string, string> = { gemini: "gemini-3.8-flash", gemini_cli: "gemini-3.8-flash", antigravity_cli: "gemini-3.8-flash-medium" };
+const isCli = (kind: string) => kind === "gemini_cli" || kind === "antigravity_cli";
+const isGemini = (kind: string) => kind === "gemini" || isCli(kind);
 
 export default function Settings() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -54,7 +56,7 @@ export default function Settings() {
   }
   const setRole = (role: string, id: string) => attempt(() => api.put("/llm/roles", { roles: { [role]: id } }));
   const add = () => attempt(async () => {
-    await api.post("/llm/profiles", { ...draft, kind, cli_path: kind === "gemini_cli" ? draft.cli_path : "", effort: kind === "gemini_cli" ? "" : draft.effort, name: draft.name || draft.model });
+    await api.post("/llm/profiles", { ...draft, kind, cli_path: isCli(kind) ? draft.cli_path : "", effort: kind === "gemini" ? draft.effort : "", name: draft.name || draft.model });
     setDraft({ ...draft, name: "" });
   });
   const saveKey = () => attempt(async () => { await api.put("/llm/keys/gemini", { key }); setKey(""); });
@@ -91,7 +93,7 @@ export default function Settings() {
           <table><thead><tr><th>Name</th><th>Provider</th><th>Model</th><th>Effort</th><th /></tr></thead>
           <tbody>{settings.profiles.map((p) => (
             <tr key={p.id}><td>{p.name}{tests[p.id] && <div className="small muted">{tests[p.id]}</div>}</td>
-              <td><span className={`tag ${isGemini(p.kind) ? "google" : ""}`}>{p.kind === "gemini" ? "Gemini" : p.kind === "gemini_cli" ? "Gemini CLI" : p.kind === "claude_cli" ? "Claude" : p.kind}</span></td>
+              <td><span className={`tag ${isGemini(p.kind) ? "google" : ""}`}>{p.kind === "gemini" ? "Gemini" : p.kind === "gemini_cli" ? "Gemini CLI" : p.kind === "antigravity_cli" ? "Antigravity CLI" : p.kind === "claude_cli" ? "Claude" : p.kind}</span></td>
               <td className="mono small">{p.model}</td><td>{p.effort || "default"}</td>
               <td><div className="row"><button disabled={needsKey(p)} title={needsKey(p) ? "Add a Gemini API key first" : undefined} onClick={() => void test(p.id)}>Test</button>
                 <button className="link" onClick={() => void remove(p.id)}>Remove</button></div></td></tr>))}</tbody></table>
@@ -122,7 +124,7 @@ export default function Settings() {
           </div>
         )}
         <div className="row">
-          <label className="field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={kind === "gemini" ? "Gemini search" : "Gemini CLI fast"} /></label>
+          <label className="field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={kind === "gemini" ? "Gemini search" : kind === "antigravity_cli" ? "Antigravity fast" : "Gemini CLI fast"} /></label>
           <label className="field">Model
             <input list="gemini-models" value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} spellCheck={false} />
             <datalist id="gemini-models">{(settings.models[kind] ?? settings.models.gemini ?? []).map((m) => <option key={m} value={m} />)}</datalist>
@@ -132,7 +134,7 @@ export default function Settings() {
               <option value="">Model default</option>
               {["low", "medium", "high"].map((m) => <option key={m}>{m}</option>)}
             </select></label>}
-          {kind === "gemini_cli" && <label className="field">CLI path (optional)<input value={draft.cli_path} onChange={(e) => setDraft({ ...draft, cli_path: e.target.value })} placeholder="found automatically" /></label>}
+          {isCli(kind) && <label className="field">CLI path (optional)<input value={draft.cli_path} onChange={(e) => setDraft({ ...draft, cli_path: e.target.value })} placeholder="found automatically" /></label>}
         </div>
         <div><button onClick={() => void add()}>Add model</button></div>
         {kind === "gemini" && <p className="small muted">Suggested: a fast model for search and extraction, a stronger one for the specification, robot and revise roles. Web search uses Grounding with Google Search: 5,000 searches a month free, then $14 per 1,000 (Google's prices, November 2026).</p>}

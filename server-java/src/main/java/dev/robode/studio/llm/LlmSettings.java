@@ -52,7 +52,10 @@ public class LlmSettings {
             new String[] {"gemini_flash", "Gemini 3.8 Flash (Gemini API)", "gemini", "gemini-3.8-flash"},
             new String[] {"gemini_flash_lite", "Gemini 3.5 Flash-Lite (Gemini API)", "gemini", "gemini-3.5-flash-lite"},
             new String[] {"gemini_cli_pro", "Gemini 3.1 Pro (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.1-pro-preview"},
-            new String[] {"gemini_cli_flash", "Gemini 3.8 Flash (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.8-flash"});
+            new String[] {"gemini_cli_flash", "Gemini 3.8 Flash (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.8-flash"},
+            new String[] {"antigravity_flash_high", "Gemini 3.8 Flash High (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-high"},
+            new String[] {"antigravity_flash_medium", "Gemini 3.8 Flash Medium (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-medium"},
+            new String[] {"antigravity_flash_low", "Gemini 3.8 Flash Low (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-low"});
 
     /** profiles + roles (profiles.json, or the defaults when it does not exist); later-added roles get their default. */
     public ObjectNode data() {
@@ -97,7 +100,7 @@ public class LlmSettings {
 
     private List<String> kinds() {
         JsonNode k = metaOrEmpty().get("kinds");
-        if (k == null || !k.isArray()) return List.of("claude_cli", "gemini", "gemini_cli");
+        if (k == null || !k.isArray()) return List.of("antigravity_cli", "claude_cli", "gemini", "gemini_cli");
         return k.valueStream().map(JsonNode::asString).sorted().toList();
     }
 
@@ -120,7 +123,7 @@ public class LlmSettings {
         ObjectNode profile = validate(body);
         if (!kinds().contains(profile.get("kind").asString()))
             throw StudioException.value("Unknown provider kind " + profile.get("kind").asString());
-        if (List.of("gemini", "gemini_cli").contains(profile.get("kind").asString()) && !profile.get("model").asString().startsWith("gemini"))
+        if (List.of("gemini", "gemini_cli", "antigravity_cli").contains(profile.get("kind").asString()) && !profile.get("model").asString().startsWith("gemini"))
             throw StudioException.value("A Gemini profile needs a Gemini model name, such as gemini-3.8-flash");
         synchronized (lock) {
             ObjectNode data = data();

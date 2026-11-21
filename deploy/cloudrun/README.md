@@ -88,7 +88,7 @@ address bar and also sets it as a `studio_token` cookie, so API calls (Authoriza
 download links (cookie) both work. Under **AI models** every role should show a Gemini profile and the Gemini key as
 "from GEMINI_API_KEY". Use **Test** on a profile to check the key with one small real call (this is a billed Gemini call).
 
-The Gemini CLI profiles (`gemini_cli_*`) do not work on Cloud Run: they need a Google sign-in on the machine that
+The Gemini CLI and Antigravity CLI profiles (`gemini_cli_*`, `antigravity_*`) do not work on Cloud Run: they need a Google sign-in on the machine that
 runs the CLI, and the image does not contain the CLI. They are for running the studio on your own computer.
 
 ## 6. Where projects are stored

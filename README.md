@@ -146,6 +146,14 @@ Cloud Run; the tests use fake adapters and a fake `gemini` executable.
   folder with every CLI tool turned off (only Google Search and web fetch for the search role), and the child process
   gets no `GEMINI_API_KEY` or `GOOGLE_API_KEY`, so the CLI's own login is used. Text only: roles that read images need a Gemini API model.
   Details are in `server/studio/llm/gemini_cli.py`.
+- **Google Antigravity CLI (local, no key).** Install Google Antigravity, run `agy` once and sign in (the installer puts
+  it in `~/.gemini/bin`, which need not be on `PATH`; the studio looks there). Add a "Google Antigravity CLI
+  (signed-in, no key)" model under Settings with `gemini-3.8-flash-high`, `-medium` or `-low` (profiles
+  `antigravity_flash_high`, `antigravity_flash_medium` and `antigravity_flash_low` are saved for new installs; assign them
+  to roles to use them). Each call is one headless `agy` run in an empty temporary folder: the system prompt is a
+  custom agent file, the model is offered no tool (only web search and fetch for the search role), every file, shell and
+  MCP permission is denied, the prompt goes on stdin, structured answers use `--json-schema`, and the child gets no API
+  keys. Calls use your Antigravity quota (no price is shown). Text only. Details are in `server/studio/llm/antigravity_cli.py`.
 - **Cloud Run.** `Dockerfile` and `deploy/cloudrun/README.md` (the exact `gcloud` steps, secrets, sizing and storage).
   The browser opens the deployment once with `/#token=<STUDIO_TOKEN>`.
 
