@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "normal": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Normal",
+      "type": "array"
+    },
+    "d": {
+      "title": "D",
+      "type": "number"
+    }
+  },
+  "required": [
+    "normal",
+    "d"
+  ],
+  "title": "ScanPlane",
+  "type": "object"
+}

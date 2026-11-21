@@ -33,7 +33,7 @@ public class JobService {
 
     public JobService(UsageLedger ledger) { this.ledger = ledger; }
 
-    private static final Set<String> EXCLUSIVE = Set.of("design", "revise", "fleet_design");
+    private static final Set<String> EXCLUSIVE = Set.of("design", "revise", "fleet_design", "apply_scene");
     /** Kinds that exclude only themselves within a project (a studio build does not block design or revise). */
     private static final Set<String> SELF_EXCLUSIVE = Set.of("studio_build", "studio_pdf");
     private static final int LIST_MAX = 20;

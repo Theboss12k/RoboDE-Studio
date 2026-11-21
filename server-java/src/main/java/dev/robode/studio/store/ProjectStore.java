@@ -14,6 +14,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -477,6 +480,313 @@ public class ProjectStore {
         for (JsonNode e : briefImages(pid))
             out.add(obj().put("path", briefDir(pid).resolve(Json.text(e, "name")).toString()).put("name", Json.text(e, "name")));
         return out;
+    }
+
+    // -- AR scenes ----------------------------------------------------------------------------------------------
+    /** One photo of a site with its calibration; stored under ar/<sid>/ and never part of a design version. */
+    public record ArPhoto(Path path, String contentType) {}
+
+    public static final int MAX_AR_SCENES = 10;
+    public static final String AR_LIMIT_MESSAGE = "At most " + MAX_AR_SCENES + " AR scenes per project";
+    private static final Pattern SCENE_ID = Pattern.compile("^s_[0-9a-f]{10}$");
+    private static final Map<String, String> AR_MIME = Map.of("png", "image/png", "jpg", "image/jpeg", "webp", "image/webp");
+
+    private Path arDir(String pid) { return dir(pid).resolve("ar"); }
+
+    private Path sceneDir(String pid, String sid) {
+        if (sid == null || !SCENE_ID.matcher(sid).matches()) throw StudioException.notFound("AR scene not found");
+        return arDir(pid).resolve(sid);
+    }
+
+    /** The scene's scene.json as stored (with schemaVersion), or 404. */
+    private ObjectNode sceneFile(String pid, String sid) {
+        ObjectNode scene = Json.readObject(sceneDir(pid, sid).resolve("scene.json"));
+        if (scene == null) throw StudioException.notFound("AR scene not found");
+        return scene;
+    }
+
+    private static ObjectNode sceneView(ObjectNode scene) { return Json.withoutSchemaVersion(scene); }
+
+    private List<Path> sceneFolders(String pid) {
+        Path folder = arDir(pid);
+        if (!Files.isDirectory(folder)) return List.of();
+        try (Stream<Path> files = Files.list(folder)) {
+            return files.filter(p -> Files.isRegularFile(p.resolve("scene.json"))).toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public int arSceneCount(String pid) { return locked(pid, () -> sceneFolders(pid).size()); }
+
+    /** Stores a validated photo as photo.&lt;ext&gt; (ext: png, jpg or webp) and a new scene.json; returns the scene. */
+    public ObjectNode createArScene(String pid, byte[] bytes, String ext, Integer width, Integer height) {
+        return locked(pid, () -> {
+            if (sceneFolders(pid).size() >= MAX_AR_SCENES) throw StudioException.value(AR_LIMIT_MESSAGE);
+            String sid;
+            Path folder;
+            do {
+                byte[] raw = new byte[5];
+                RANDOM.nextBytes(raw);
+                sid = "s_" + HexFormat.of().formatHex(raw);
+                folder = sceneDir(pid, sid);
+            } while (Files.exists(folder));
+            try {
+                Files.createDirectories(folder);
+                Files.write(folder.resolve("photo." + ext), bytes);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            ObjectNode scene = obj();
+            scene.put("id", sid);
+            scene.put("image", "photo." + ext);
+            if (width == null) scene.putNull("width"); else scene.put("width", width.intValue());
+            if (height == null) scene.putNull("height"); else scene.put("height", height.intValue());
+            scene.put("created", OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MILLIS).toString());
+            scene.putNull("reference");
+            scene.putNull("calibration");
+            scene.putNull("estimate");
+            ObjectNode placement = obj();
+            placement.put("x", 0.0);
+            placement.put("y", 0.0);
+            placement.put("yaw_deg", 0.0);
+            scene.set("placement", placement);
+            Json.write(folder.resolve("scene.json"), scene);
+            return sceneView(scene);
+        });
+    }
+
+    /** The scenes of a project, newest first. */
+    public ArrayNode listArScenes(String pid) {
+        return locked(pid, () -> {
+            List<ObjectNode> scenes = new ArrayList<>();
+            for (Path folder : sceneFolders(pid)) {
+                ObjectNode scene = Json.readObject(folder.resolve("scene.json"));
+                if (scene != null) scenes.add(sceneView(scene));
+            }
+            scenes.sort(Comparator.comparing((ObjectNode s) -> { String c = Json.text(s, "created"); return c == null ? "" : c; })
+                    .thenComparing(s -> { String id = Json.text(s, "id"); return id == null ? "" : id; }).reversed());
+            ArrayNode out = arr();
+            scenes.forEach(out::add);
+            return out;
+        });
+    }
+
+    public ObjectNode getArScene(String pid, String sid) {
+        return locked(pid, () -> sceneView(sceneFile(pid, sid)));
+    }
+
+    /** The photo file and its content type (404 when the scene or its photo is missing). */
+    public ArPhoto arPhoto(String pid, String sid) {
+        return locked(pid, () -> {
+            ObjectNode scene = sceneFile(pid, sid);
+            String image = Json.text(scene, "image");
+            if (image == null) throw StudioException.notFound("Photo not found");
+            String ext = image.substring(image.lastIndexOf('.') + 1).toLowerCase();
+            Path file = Ids.inside(sceneDir(pid, sid), image);
+            if (!AR_MIME.containsKey(ext) || !Files.isRegularFile(file)) throw StudioException.notFound("Photo not found");
+            return new ArPhoto(file, AR_MIME.get(ext));
+        });
+    }
+
+    /** Read-modify-write of scene.json under the project lock; returns the updated scene. */
+    public ObjectNode updateArScene(String pid, String sid, Consumer<ObjectNode> change) {
+        return locked(pid, () -> {
+            ObjectNode scene = sceneFile(pid, sid);
+            change.accept(scene);
+            Json.write(sceneDir(pid, sid).resolve("scene.json"), scene);
+            return sceneView(scene);
+        });
+    }
+
+    /** Removes the scene's folder (photo and scene.json). */
+    public void deleteArScene(String pid, String sid) {
+        locked(pid, () -> {
+            sceneFile(pid, sid);
+            deleteTree(sceneDir(pid, sid));
+        });
+    }
+
+    // -- site scans (video AR) ----------------------------------------------------------------------------------
+    /** A stored site-scan video and its content type. */
+    public record ScanFile(Path path, String contentType) {}
+
+    public static final int MAX_SCANS = 5;
+    public static final String SCAN_LIMIT_MESSAGE = "At most " + MAX_SCANS + " site scans per project";
+    private static final Pattern SCAN_ID = Pattern.compile("^sc_[0-9a-f]{10}$");
+    private static final Map<String, String> VIDEO_MIME = Map.of("mp4", "video/mp4", "mov", "video/quicktime", "webm", "video/webm");
+
+    /** The lower-case extension (mp4, mov or webm) of a video file name, or null for any other name. */
+    public static String videoExtension(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0) return null;
+        String ext = fileName.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        return VIDEO_MIME.containsKey(ext) ? ext : null;
+    }
+
+    private Path scansDir(String pid) { return dir(pid).resolve("scans"); }
+
+    private Path scanDir(String pid, String sid) {
+        if (sid == null || !SCAN_ID.matcher(sid).matches()) throw StudioException.notFound("Site scan not found");
+        return scansDir(pid).resolve(sid);
+    }
+
+    /** The scan's scan.json as stored (with schemaVersion), or 404. */
+    private ObjectNode scanFile(String pid, String sid) {
+        ObjectNode scan = Json.readObject(scanDir(pid, sid).resolve("scan.json"));
+        if (scan == null) throw StudioException.notFound("Site scan not found");
+        return scan;
+    }
+
+    private List<Path> scanFolders(String pid) {
+        Path folder = scansDir(pid);
+        if (!Files.isDirectory(folder)) return List.of();
+        try (Stream<Path> files = Files.list(folder)) {
+            return files.filter(p -> Files.isRegularFile(p.resolve("scan.json"))).toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public int scanCount(String pid) { return locked(pid, () -> scanFolders(pid).size()); }
+
+    /**
+     * Moves the validated video into a new scans/&lt;sid&gt;/ folder and writes scan.json with status "uploaded".
+     * `probe` is the scan_probe result (ScanVideo without file); `bytes` is the stored size. Returns the scan.
+     */
+    public ObjectNode createScan(String pid, Path video, String ext, JsonNode probe, long bytes) {
+        return locked(pid, () -> {
+            if (scanFolders(pid).size() >= MAX_SCANS) throw StudioException.value(SCAN_LIMIT_MESSAGE);
+            String sid;
+            Path folder;
+            do {
+                byte[] raw = new byte[5];
+                RANDOM.nextBytes(raw);
+                sid = "sc_" + HexFormat.of().formatHex(raw);
+                folder = scanDir(pid, sid);
+            } while (Files.exists(folder));
+            try {
+                Files.createDirectories(folder.resolve("frames"));
+                String fileName = "video." + ext;
+                Json.move(video, folder.resolve(fileName));
+                ObjectNode videoInfo = obj().put("file", fileName).put("bytes", bytes);
+                probe.properties().forEach(e -> {
+                    if (!e.getKey().equals("file") && !e.getKey().equals("bytes")) videoInfo.set(e.getKey(), e.getValue());
+                });
+                ObjectNode scan = obj();
+                scan.put("id", sid);
+                scan.put("created", OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MILLIS).toString());
+                scan.set("video", videoInfo);
+                scan.put("status", "uploaded");
+                scan.putNull("error");
+                scan.putNull("camera");
+                scan.set("frames", arr());
+                scan.putNull("floor");
+                scan.putNull("alignment");
+                scan.putNull("scale");
+                scan.putNull("mesh");
+                ObjectNode placement = obj();
+                placement.put("x", 0.0);
+                placement.put("y", 0.0);
+                placement.put("yaw_deg", 0.0);
+                scan.set("placement", placement);
+                scan.putNull("stats");
+                Json.write(folder.resolve("scan.json"), scan);
+                return Json.withoutSchemaVersion(scan);
+            } catch (IOException e) {
+                deleteTree(folder);
+                throw new UncheckedIOException(e);
+            } catch (RuntimeException e) {
+                deleteTree(folder);
+                throw e;
+            }
+        });
+    }
+
+    /** The scans of a project, newest first. */
+    public ArrayNode listScans(String pid) {
+        return locked(pid, () -> {
+            List<ObjectNode> scans = new ArrayList<>();
+            for (Path folder : scanFolders(pid)) {
+                ObjectNode scan = Json.readObject(folder.resolve("scan.json"));
+                if (scan != null) scans.add(Json.withoutSchemaVersion(scan));
+            }
+            scans.sort(Comparator.comparing((ObjectNode s) -> { String c = Json.text(s, "created"); return c == null ? "" : c; })
+                    .thenComparing(s -> { String id = Json.text(s, "id"); return id == null ? "" : id; }).reversed());
+            ArrayNode out = arr();
+            scans.forEach(out::add);
+            return out;
+        });
+    }
+
+    public ObjectNode getScan(String pid, String sid) {
+        return locked(pid, () -> Json.withoutSchemaVersion(scanFile(pid, sid)));
+    }
+
+    /** Read-modify-write of scan.json under the project lock; returns the updated scan. */
+    public ObjectNode updateScan(String pid, String sid, Consumer<ObjectNode> change) {
+        return locked(pid, () -> {
+            ObjectNode scan = scanFile(pid, sid);
+            change.accept(scan);
+            Json.write(scanDir(pid, sid).resolve("scan.json"), scan);
+            return Json.withoutSchemaVersion(scan);
+        });
+    }
+
+    /** Removes the scan's folder (video, scan.json, frames and mesh). */
+    public void deleteScan(String pid, String sid) {
+        locked(pid, () -> {
+            scanFile(pid, sid);
+            deleteTree(scanDir(pid, sid));
+        });
+    }
+
+    /** The video file and its content type (404 when the scan or its video is missing). */
+    public ScanFile scanVideo(String pid, String sid) {
+        return locked(pid, () -> {
+            ObjectNode scan = scanFile(pid, sid);
+            String name = Json.text(scan.get("video"), "file");
+            String ext = name == null ? null : videoExtension(name);
+            if (ext == null) throw StudioException.notFound("Video not found");
+            Path file = Ids.inside(scanDir(pid, sid), name);
+            if (!Files.isRegularFile(file)) throw StudioException.notFound("Video not found");
+            return new ScanFile(file, VIDEO_MIME.get(ext));
+        });
+    }
+
+    /** frames/NNNN.jpg for a non-negative index (404 when there is no such frame). */
+    public Path scanFrame(String pid, String sid, int index) {
+        return locked(pid, () -> {
+            scanFile(pid, sid);
+            Path file = scanDir(pid, sid).resolve("frames").resolve(String.format(java.util.Locale.ROOT, "%04d.jpg", index));
+            if (index < 0 || !Files.isRegularFile(file)) throw StudioException.notFound("Frame not found");
+            return file;
+        });
+    }
+
+    /** scan.glb (404 when the scan has no mesh yet). */
+    public Path scanMesh(String pid, String sid) {
+        return locked(pid, () -> {
+            scanFile(pid, sid);
+            Path file = scanDir(pid, sid).resolve("scan.glb");
+            if (!Files.isRegularFile(file)) throw StudioException.notFound("Mesh not found");
+            return file;
+        });
+    }
+
+    /** Moves the frames folder and the mesh of a finished reconstruction into the scan folder, replacing older ones. */
+    public void adoptScanOutputs(String pid, String sid, Path frames, Path mesh) {
+        locked(pid, () -> {
+            scanFile(pid, sid);
+            Path folder = scanDir(pid, sid);
+            try {
+                deleteTree(folder.resolve("frames"));
+                Files.move(frames, folder.resolve("frames"));
+                Json.move(mesh, folder.resolve("scan.glb"));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
     }
 
     // -- versions -----------------------------------------------------------------------------------------------

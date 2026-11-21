@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "file": {
+      "title": "File",
+      "type": "string"
+    },
+    "vertices": {
+      "title": "Vertices",
+      "type": "integer"
+    },
+    "triangles": {
+      "title": "Triangles",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file",
+    "vertices",
+    "triangles"
+  ],
+  "title": "ScanMesh",
+  "type": "object"
+}

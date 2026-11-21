@@ -9,13 +9,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Settings bound from the environment: STUDIO_RUNTIME, STUDIO_PYTHON, STUDIO_REPO_ROOT, STUDIO_HOST, STUDIO_PORT,
  * STUDIO_TOKEN, STUDIO_ALLOW_SCRIPTED (tests only), STUDIO_CORS_ORIGINS (comma separated),
- * STUDIO_CALLBACK_HOSTS (comma separated hosts allowed for X-Studio-Callback), STUDIO_CALLBACK_SECRET (HMAC key).
+ * STUDIO_CALLBACK_HOSTS (comma separated hosts allowed for X-Studio-Callback), STUDIO_CALLBACK_SECRET (HMAC key),
+ * STUDIO_PAIR_PORT (the phone-link listener; default 8801, 0 picks a free port).
  */
 @ConfigurationProperties("studio")
 public record StudioProperties(Path repoRoot, Path runtime, Path python, String host, Integer port, String token,
                                Boolean allowScripted, List<String> corsOrigins, Duration idleTimeout,
                                Duration ceiling, Integer maxProcesses, Boolean warmMeta, Boolean keepJobDirs, Path fakeDownload,
-                               List<String> callbackHosts, String callbackSecret, List<Duration> callbackRetryDelays) {
+                               List<String> callbackHosts, String callbackSecret, List<Duration> callbackRetryDelays, Integer pairPort) {
     @org.springframework.boot.context.properties.bind.ConstructorBinding
     public StudioProperties {
         repoRoot = (repoRoot != null ? repoRoot : detectRoot()).toAbsolutePath().normalize();
@@ -37,14 +38,15 @@ public record StudioProperties(Path repoRoot, Path runtime, Path python, String 
         callbackSecret = callbackSecret == null || callbackSecret.isBlank() ? null : callbackSecret;
         callbackRetryDelays = callbackRetryDelays == null || callbackRetryDelays.isEmpty()
                 ? List.of(Duration.ofSeconds(1), Duration.ofSeconds(5), Duration.ofSeconds(25)) : List.copyOf(callbackRetryDelays);
+        pairPort = pairPort != null && pairPort >= 0 && pairPort <= 65535 ? pairPort : 8801;
     }
 
-    /** The settings without callback options (their defaults apply). */
+    /** The settings without callback or phone-link options (their defaults apply). */
     public StudioProperties(Path repoRoot, Path runtime, Path python, String host, Integer port, String token,
                             Boolean allowScripted, List<String> corsOrigins, Duration idleTimeout, Duration ceiling,
                             Integer maxProcesses, Boolean warmMeta, Boolean keepJobDirs, Path fakeDownload) {
         this(repoRoot, runtime, python, host, port, token, allowScripted, corsOrigins, idleTimeout, ceiling, maxProcesses,
-                warmMeta, keepJobDirs, fakeDownload, null, null, null);
+                warmMeta, keepJobDirs, fakeDownload, null, null, null, null);
     }
 
     public Path server() { return repoRoot.resolve("server"); }

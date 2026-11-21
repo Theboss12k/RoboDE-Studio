@@ -87,6 +87,10 @@ tags:
     description: Record the decision and export the design.
   - name: Studio
     description: Robot studio for an approved design. Builds (CAD, motors, electronics), the digital twin, snapshots and the manufacturer package.
+  - name: AR
+    description: Photo AR (design drawn over a photo of the site) and the phone link.
+  - name: Site scan
+    description: Site videos reconstructed in 3D, and the scene edits made inside them.
   - name: Ask
     description: The Ask bar. Questions answered from stored project data, and at most two actions the server performs for the user.
   - name: Jobs
@@ -1182,6 +1186,536 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /projects/{pid}/ar/scenes:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadArScene
+      tags: [AR]
+      summary: Add a photo of the site (photo AR)
+      description: Raw image bytes (PNG, JPEG or WebP, at most 64 MB). At most 10 AR scenes per project (422 beyond). See docs/AR_PHOTO.md.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: The new AR scene.
+          content:
+            application/json:
+                schema: { $ref: './schemas/ArScene.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      operationId: listArScenes
+      tags: [AR]
+      summary: List the AR scenes of a project
+      description: Newest first.
+      responses:
+        '200':
+          description: The scenes.
+          content:
+            application/json:
+                schema:
+                  type: array
+                  items: { $ref: './schemas/ArScene.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/ar/scenes/{sid}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    get:
+      operationId: getArScene
+      tags: [AR]
+      summary: Read one AR scene
+      responses:
+        '200':
+          description: The scene.
+          content:
+            application/json:
+                schema: { $ref: './schemas/ArScene.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteArScene
+      tags: [AR]
+      summary: Delete an AR scene
+      description: Removes the photo and the scene.
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/ar/scenes/{sid}/photo:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    get:
+      operationId: getArPhoto
+      tags: [AR]
+      summary: Download the photo of an AR scene
+      responses:
+        '200':
+          description: The image bytes with their media type.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/ar/scenes/{sid}/calibrate:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    post:
+      operationId: calibrateArScene
+      tags: [AR]
+      summary: Calibrate the camera from a photographed reference rectangle
+      description: Runs `ar_calibrate` synchronously and stores the reference and the calibration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reference], properties: { reference: { $ref: './schemas/ArReference.json' } } }
+      responses:
+        '200':
+          description: The scene with its calibration.
+          content:
+            application/json:
+                schema: { $ref: './schemas/ArScene.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/ar/scenes/{sid}/estimate:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    post:
+      operationId: estimateArScene
+      tags: [AR]
+      summary: Estimate the camera and the floor from the photo alone
+      description: Starts an `ar_estimate` job (needs the optional depth model). On success the scene has `estimate`.
+      responses:
+        '200':
+          description: The job record (kind `ar_estimate`). Poll `GET /jobs/{id}` for the result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{pid}/ar/scenes/{sid}/placement:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    put:
+      operationId: placeArScene
+      tags: [AR]
+      summary: Place the design in the photo
+      description: Absent values are 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: './schemas/ArPlacement.json' }
+      responses:
+        '200':
+          description: The scene with the new placement.
+          content:
+            application/json:
+                schema: { $ref: './schemas/ArScene.json' }
+        '400':
+          description: A value is not acceptable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/ar/pairing:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: startArPairing
+      tags: [AR]
+      summary: Link a phone
+      description: Opens the phone listener for this project and replaces any earlier link. 409 when no network address is available.
+      responses:
+        '200':
+          description: The link, with its QR code.
+          content:
+            application/json:
+                schema: { type: object, properties: { url: { type: string }, urls: { type: array, items: { type: string } }, qr_svg: { type: string }, expires_at: { type: string }, uploads: { type: integer }, max_uploads: { type: integer } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      operationId: getArPairing
+      tags: [AR]
+      summary: Read the phone link
+      description: 404 when none is active.
+      responses:
+        '200':
+          description: The link (without `qr_svg`).
+          content:
+            application/json:
+                schema: { type: object, properties: { url: { type: string }, urls: { type: array, items: { type: string } }, qr_svg: { type: string }, expires_at: { type: string }, uploads: { type: integer }, max_uploads: { type: integer } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: endArPairing
+      tags: [AR]
+      summary: End the phone link
+      responses:
+        '204':
+          description: Ended.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/ar/pairing/qr:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getArPairingQr
+      tags: [AR]
+      summary: The QR code of a link address
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: One of the link `urls`.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The QR code.
+          content:
+            image/svg+xml: { schema: { type: string } }
+        '400':
+          description: A value is not acceptable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/scans:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadScan
+      tags: [Site scan]
+      summary: Add a site video
+      description: Raw video bytes (MP4, MOV or WebM), streamed to disk, at most 500 MB (413 beyond). At most 5 scans per project. See docs/SITE_SCAN.md.
+      parameters:
+        - $ref: '#/components/parameters/Filename'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: The new scan (status `uploaded`).
+          content:
+            application/json:
+                schema: { $ref: './schemas/SiteScan.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      operationId: listScans
+      tags: [Site scan]
+      summary: List the site scans of a project
+      description: Newest first.
+      responses:
+        '200':
+          description: The scans.
+          content:
+            application/json:
+                schema:
+                  type: array
+                  items: { $ref: './schemas/SiteScan.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/scans/{sid}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    get:
+      operationId: getScan
+      tags: [Site scan]
+      summary: Read one site scan
+      responses:
+        '200':
+          description: The scan.
+          content:
+            application/json:
+                schema: { $ref: './schemas/SiteScan.json' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteScan
+      tags: [Site scan]
+      summary: Delete a site scan
+      description: Removes the video, frames and mesh.
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{pid}/scans/{sid}/video:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    get:
+      operationId: getScanVideo
+      tags: [Site scan]
+      summary: Stream the scan video
+      description: Supports HTTP Range requests.
+      responses:
+        '200':
+          description: The video.
+          content:
+            video/mp4: { schema: { type: string, format: binary } }
+            video/quicktime: { schema: { type: string, format: binary } }
+            video/webm: { schema: { type: string, format: binary } }
+        '206':
+          description: A byte range of the video.
+          content:
+            video/mp4: { schema: { type: string, format: binary } }
+            video/quicktime: { schema: { type: string, format: binary } }
+            video/webm: { schema: { type: string, format: binary } }
+        '416':
+          description: The range cannot be served.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/scans/{sid}/mesh:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    get:
+      operationId: getScanMesh
+      tags: [Site scan]
+      summary: Download the reconstructed mesh
+      description: 404 before the scan is reconstructed.
+      responses:
+        '200':
+          description: The mesh.
+          content:
+            model/gltf-binary: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/scans/{sid}/frames/{index}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+      - name: index
+        in: path
+        required: true
+        description: Frame index (digits).
+        schema: { type: integer, minimum: 0 }
+    get:
+      operationId: getScanFrame
+      tags: [Site scan]
+      summary: Download one keyframe
+      responses:
+        '200':
+          description: The frame.
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{pid}/scans/{sid}/reconstruct:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    post:
+      operationId: reconstructScan
+      tags: [Site scan]
+      summary: Reconstruct the site in 3D
+      description: Starts a `scan_reconstruct` job. On success the scan is `reconstructed`, on failure `failed` with `error`.
+      responses:
+        '200':
+          description: The job record (kind `scan_reconstruct`). Poll `GET /jobs/{id}` for the result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/scans/{sid}/scale:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    post:
+      operationId: scaleScan
+      tags: [Site scan]
+      summary: Set the scale of a scan
+      description: From a known distance between two points, or a known floor-to-camera height (see docs/SITE_SCAN.md).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: The scan with its scale.
+          content:
+            application/json:
+                schema: { $ref: './schemas/SiteScan.json' }
+        '400':
+          description: A value is not acceptable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/scans/{sid}/floor:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    put:
+      operationId: floorScan
+      tags: [Site scan]
+      summary: Re-pick the floor
+      description: From at least three clicked points.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [points], additionalProperties: true, properties: { points: { type: array, items: { type: array, items: { type: number }, minItems: 3, maxItems: 3 } } } }
+      responses:
+        '200':
+          description: The scan with the new floor.
+          content:
+            application/json:
+                schema: { $ref: './schemas/SiteScan.json' }
+        '400':
+          description: A value is not acceptable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /projects/{pid}/scans/{sid}/placement:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: sid
+        in: path
+        required: true
+        description: Scene or scan id.
+        schema: { type: string }
+    put:
+      operationId: placeScan
+      tags: [Site scan]
+      summary: Place the design in the scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: './schemas/ArPlacement.json' }
+      responses:
+        '200':
+          description: The scan with the new placement.
+          content:
+            application/json:
+                schema: { $ref: './schemas/SiteScan.json' }
+        '400':
+          description: A value is not acceptable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /projects/{pid}/apply-scene:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: applySceneEdits
+      tags: [Site scan]
+      summary: Apply edits made in the site scan as a new version
+      description: Starts an `apply_scene` job (deterministic, no model unless `auto_repair`). The new version has `parent_version` = `base_version`. A project with an approved version refuses it (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [scene], properties: { base_version: { type: [integer, 'null'] }, scene: { $ref: './schemas/SceneSpec.json' }, markers: { type: array, items: { type: object, additionalProperties: true } }, auto_repair: { type: [boolean, 'null'] }, note: { type: [string, 'null'], maxLength: 4000 } } }
+      responses:
+        '200':
+          description: The job record (kind `apply_scene`). Poll `GET /jobs/{id}` for the result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /ask:
     post:
       operationId: ask
@@ -2141,7 +2675,7 @@ components:
       description: A background job's record.
       properties:
         id: { type: string }
-        kind: { type: string, enum: [design, revise, fleet_design, search, analyse, llm_test, studio_build, studio_pdf, ask] }
+        kind: { type: string, enum: [design, revise, fleet_design, search, analyse, llm_test, studio_build, studio_pdf, ask, ar_estimate, scan_reconstruct, apply_scene] }
         robot_id: { type: [string, 'null'], description: 'The project id; null for `llm_test` and for an `ask` without a project.' }
         status: { type: string, enum: [running, done, error, cancelled] }
         progress: { type: array, items: { type: string }, description: 'Progress lines so far.' }

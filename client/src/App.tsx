@@ -57,19 +57,20 @@ function startStage(p: Project): StageId {
 
 /** Where a job's result is shown. */
 function jobStage(job: TrackedJob, hasVersions: boolean): StageId {
-  if (job.kind === "revise") return "design";
+  if (job.kind === "revise" || job.kind === "ar_estimate" || job.kind === "scan_reconstruct" || job.kind === "apply_scene") return "design";
   if (job.kind === "search") return "options";
   if (job.kind === "studio_build" || job.kind === "studio_pdf") return "studio";
   if (job.kind === "analyse") return "analysis";
   const status = (job.result as { status?: string } | null)?.status;
   return status === "designed" || (status === undefined && hasVersions) ? "design" : "questions";
 }
-const JOB_NAMES: Record<string, string> = { design: "Design", revise: "Revision", search: "Robot search", analyse: "Analysis", studio_build: "Robot build", studio_pdf: "Build approval" };
+const JOB_NAMES: Record<string, string> = { design: "Design", revise: "Revision", search: "Robot search", analyse: "Analysis", studio_build: "Robot build", studio_pdf: "Build approval", ar_estimate: "Photo estimate", scan_reconstruct: "Site scan", apply_scene: "Site edits" };
 
 function toastText(job: TrackedJob) {
   const name = JOB_NAMES[job.kind] ?? "Job";
   if (job.status === "error") return `${name} failed`;
   const version = (job.result as { version?: number } | null)?.version;
+  if (job.kind === "apply_scene") return version ? `Site edits applied: v${version}` : "Site edits applied";
   if (job.kind === "design" || job.kind === "revise") return version ? `${name === "Revision" ? "Design" : name} finished: v${version}` : `${name} finished`;
   return `${name} finished`;
 }

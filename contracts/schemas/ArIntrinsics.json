@@ -1,0 +1,39 @@
+{
+  "description": "Pinhole camera in pixels of the stored photo (top-left origin, no distortion).",
+  "properties": {
+    "fx": {
+      "title": "Fx",
+      "type": "number"
+    },
+    "fy": {
+      "title": "Fy",
+      "type": "number"
+    },
+    "cx": {
+      "title": "Cx",
+      "type": "number"
+    },
+    "cy": {
+      "title": "Cy",
+      "type": "number"
+    },
+    "width": {
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "title": "Height",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "fx",
+    "fy",
+    "cx",
+    "cy",
+    "width",
+    "height"
+  ],
+  "title": "ArIntrinsics",
+  "type": "object"
+}

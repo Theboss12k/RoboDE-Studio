@@ -15,3 +15,13 @@ runtime/
 .env
 .DS_Store
 .claude/
+
+# Playwright end-to-end output
+e2e/.runtime/
+e2e/.runtime*/
+e2e/.photos/
+e2e/report/
+test-results/
+
+# Cached synthetic scan video
+tests/.cache/

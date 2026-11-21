@@ -896,6 +896,451 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{pid}/ar/scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the AR scenes of a project
+         * @description Newest first.
+         */
+        get: operations["listArScenes"];
+        put?: never;
+        /**
+         * Add a photo of the site (photo AR)
+         * @description Raw image bytes (PNG, JPEG or WebP, at most 64 MB). At most 10 AR scenes per project (422 beyond). See docs/AR_PHOTO.md.
+         */
+        post: operations["uploadArScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/scenes/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /** Read one AR scene */
+        get: operations["getArScene"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an AR scene
+         * @description Removes the photo and the scene.
+         */
+        delete: operations["deleteArScene"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/scenes/{sid}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /** Download the photo of an AR scene */
+        get: operations["getArPhoto"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/scenes/{sid}/calibrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Calibrate the camera from a photographed reference rectangle
+         * @description Runs `ar_calibrate` synchronously and stores the reference and the calibration.
+         */
+        post: operations["calibrateArScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/scenes/{sid}/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate the camera and the floor from the photo alone
+         * @description Starts an `ar_estimate` job (needs the optional depth model). On success the scene has `estimate`.
+         */
+        post: operations["estimateArScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/scenes/{sid}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Place the design in the photo
+         * @description Absent values are 0.
+         */
+        put: operations["placeArScene"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/pairing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the phone link
+         * @description 404 when none is active.
+         */
+        get: operations["getArPairing"];
+        put?: never;
+        /**
+         * Link a phone
+         * @description Opens the phone listener for this project and replaces any earlier link. 409 when no network address is available.
+         */
+        post: operations["startArPairing"];
+        /** End the phone link */
+        delete: operations["endArPairing"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/ar/pairing/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** The QR code of a link address */
+        get: operations["getArPairingQr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the site scans of a project
+         * @description Newest first.
+         */
+        get: operations["listScans"];
+        put?: never;
+        /**
+         * Add a site video
+         * @description Raw video bytes (MP4, MOV or WebM), streamed to disk, at most 500 MB (413 beyond). At most 5 scans per project. See docs/SITE_SCAN.md.
+         */
+        post: operations["uploadScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /** Read one site scan */
+        get: operations["getScan"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a site scan
+         * @description Removes the video, frames and mesh.
+         */
+        delete: operations["deleteScan"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Stream the scan video
+         * @description Supports HTTP Range requests.
+         */
+        get: operations["getScanVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/mesh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the reconstructed mesh
+         * @description 404 before the scan is reconstructed.
+         */
+        get: operations["getScanMesh"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/frames/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+                /** @description Frame index (digits). */
+                index: number;
+            };
+            cookie?: never;
+        };
+        /** Download one keyframe */
+        get: operations["getScanFrame"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/reconstruct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconstruct the site in 3D
+         * @description Starts a `scan_reconstruct` job. On success the scan is `reconstructed`, on failure `failed` with `error`.
+         */
+        post: operations["reconstructScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/scale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the scale of a scan
+         * @description From a known distance between two points, or a known floor-to-camera height (see docs/SITE_SCAN.md).
+         */
+        post: operations["scaleScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/floor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Re-pick the floor
+         * @description From at least three clicked points.
+         */
+        put: operations["floorScan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/scans/{sid}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Place the design in the scan */
+        put: operations["placeScan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{pid}/apply-scene": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply edits made in the site scan as a new version
+         * @description Starts an `apply_scene` job (deterministic, no model unless `auto_repair`). The new version has `parent_version` = `base_version`. A project with an approved version refuses it (409).
+         */
+        post: operations["applySceneEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ask": {
         parameters: {
             query?: never;
@@ -1572,7 +2017,7 @@ export interface components {
         Job: {
             id: string;
             /** @enum {string} */
-            kind: "design" | "revise" | "fleet_design" | "search" | "analyse" | "llm_test" | "studio_build" | "studio_pdf" | "ask";
+            kind: "design" | "revise" | "fleet_design" | "search" | "analyse" | "llm_test" | "studio_build" | "studio_pdf" | "ask" | "ar_estimate" | "scan_reconstruct" | "apply_scene";
             /** @description The project id; null for `llm_test` and for an `ask` without a project. */
             robot_id: string | null;
             /** @enum {string} */
@@ -6064,6 +6509,750 @@ export interface components {
                 };
             };
         };
+        /**
+         * ArIntrinsics
+         * @description Pinhole camera in pixels of the stored photo (top-left origin, no distortion).
+         */
+        ArIntrinsics: {
+            /** Fx */
+            fx: number;
+            /** Fy */
+            fy: number;
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+        };
+        /**
+         * ArReference
+         * @description A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.
+         */
+        ArReference: {
+            /** Corners Px */
+            corners_px: number[][];
+            /** Size M */
+            size_m: number[];
+        };
+        /** ArCalibration */
+        ArCalibration: {
+            intrinsics: components["schemas"]["ArIntrinsics"];
+            /** World From Camera */
+            world_from_camera: number[][];
+            /**
+             * Scale Source
+             * @enum {string}
+             */
+            scale_source: "reference" | "estimate";
+            /**
+             * Focal Source
+             * @enum {string}
+             */
+            focal_source: "reference" | "estimate" | "default";
+            /**
+             * Residual Px
+             * @default null
+             */
+            residual_px: number | null;
+            /** Camera Height M */
+            camera_height_m: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /** ArPlacement */
+        ArPlacement: {
+            /**
+             * X
+             * @default 0
+             */
+            x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            y: number;
+            /**
+             * Yaw Deg
+             * @default 0
+             */
+            yaw_deg: number;
+        };
+        /** ArScene */
+        ArScene: {
+            /** Id */
+            id: string;
+            /** Image */
+            image: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Created */
+            created: string;
+            /** @default null */
+            reference: components["schemas"]["ArReference"] | null;
+            /** @default null */
+            calibration: components["schemas"]["ArCalibration"] | null;
+            /** @default null */
+            estimate: components["schemas"]["ArCalibration"] | null;
+            /**
+             * @default {
+             *       "x": 0,
+             *       "y": 0,
+             *       "yaw_deg": 0
+             *     }
+             */
+            placement: components["schemas"]["ArPlacement"];
+            $defs: {
+                /** ArCalibration */
+                ArCalibration: {
+                    intrinsics: components["schemas"]["ArIntrinsics"];
+                    /** World From Camera */
+                    world_from_camera: number[][];
+                    /**
+                     * Scale Source
+                     * @enum {string}
+                     */
+                    scale_source: "reference" | "estimate";
+                    /**
+                     * Focal Source
+                     * @enum {string}
+                     */
+                    focal_source: "reference" | "estimate" | "default";
+                    /**
+                     * Residual Px
+                     * @default null
+                     */
+                    residual_px: number | null;
+                    /** Camera Height M */
+                    camera_height_m: number;
+                    /**
+                     * Warnings
+                     * @default []
+                     */
+                    warnings: string[];
+                };
+                /**
+                 * ArIntrinsics
+                 * @description Pinhole camera in pixels of the stored photo (top-left origin, no distortion).
+                 */
+                ArIntrinsics: {
+                    /** Fx */
+                    fx: number;
+                    /** Fy */
+                    fy: number;
+                    /** Cx */
+                    cx: number;
+                    /** Cy */
+                    cy: number;
+                    /** Width */
+                    width: number;
+                    /** Height */
+                    height: number;
+                };
+                /** ArPlacement */
+                ArPlacement: {
+                    /**
+                     * X
+                     * @default 0
+                     */
+                    x: number;
+                    /**
+                     * Y
+                     * @default 0
+                     */
+                    y: number;
+                    /**
+                     * Yaw Deg
+                     * @default 0
+                     */
+                    yaw_deg: number;
+                };
+                /**
+                 * ArReference
+                 * @description A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.
+                 */
+                ArReference: {
+                    /** Corners Px */
+                    corners_px: number[][];
+                    /** Size M */
+                    size_m: number[];
+                };
+            };
+        };
+        /** ScanVideo */
+        ScanVideo: {
+            /** File */
+            file: string;
+            /** Bytes */
+            bytes: number;
+            /** Duration S */
+            duration_s: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Fps */
+            fps: number;
+            /** Rotation Deg */
+            rotation_deg: number;
+        };
+        /**
+         * ScanCamera
+         * @description ONE camera for the whole clip, at keyframe resolution (OpenCV convention).
+         */
+        ScanCamera: {
+            /**
+             * Model
+             * @default SIMPLE_RADIAL
+             * @constant
+             */
+            model: "SIMPLE_RADIAL";
+            /** Fx */
+            fx: number;
+            /** Fy */
+            fy: number;
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** K1 */
+            k1: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * Undistorted
+             * @default false
+             */
+            undistorted: boolean;
+        };
+        /** ScanFrame */
+        ScanFrame: {
+            /** Index */
+            index: number;
+            /** T S */
+            t_s: number;
+            /** Image */
+            image: string;
+            /**
+             * World From Camera
+             * @default null
+             */
+            world_from_camera: number[][] | null;
+        };
+        /** ScanPlane */
+        ScanPlane: {
+            /** Normal */
+            normal: number[];
+            /** D */
+            d: number;
+        };
+        /** ScanScale */
+        ScanScale: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "sheet" | "distance";
+            /** Factor */
+            factor: number;
+            /** Residual */
+            residual: number;
+            /**
+             * Frame
+             * @default null
+             */
+            frame: number | null;
+            /**
+             * Corners Px
+             * @default null
+             */
+            corners_px: number[][] | null;
+            /**
+             * Size M
+             * @default null
+             */
+            size_m: number[] | null;
+            /**
+             * P1
+             * @default null
+             */
+            p1: number[] | null;
+            /**
+             * P2
+             * @default null
+             */
+            p2: number[] | null;
+            /**
+             * Distance M
+             * @default null
+             */
+            distance_m: number | null;
+        };
+        /** ScanMesh */
+        ScanMesh: {
+            /** File */
+            file: string;
+            /** Vertices */
+            vertices: number;
+            /** Triangles */
+            triangles: number;
+        };
+        /** ScanStats */
+        ScanStats: {
+            /** Frames Total */
+            frames_total: number;
+            /** Frames Registered */
+            frames_registered: number;
+            /** Reproj Px */
+            reproj_px: number;
+            /** Points3D */
+            points3d: number;
+            /** Extent */
+            extent: number[];
+        };
+        /** SiteScan */
+        SiteScan: {
+            /** Id */
+            id: string;
+            /** Created */
+            created: string;
+            video: components["schemas"]["ScanVideo"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "uploaded" | "reconstructing" | "reconstructed" | "failed";
+            /**
+             * Error
+             * @default null
+             */
+            error: string | null;
+            /** @default null */
+            camera: components["schemas"]["ScanCamera"] | null;
+            /**
+             * Frames
+             * @default []
+             */
+            frames: components["schemas"]["ScanFrame"][];
+            /** @default null */
+            floor: components["schemas"]["ScanPlane"] | null;
+            /**
+             * Alignment
+             * @default null
+             */
+            alignment: number[][] | null;
+            /** @default null */
+            scale: components["schemas"]["ScanScale"] | null;
+            /** @default null */
+            mesh: components["schemas"]["ScanMesh"] | null;
+            /**
+             * @default {
+             *       "x": 0,
+             *       "y": 0,
+             *       "yaw_deg": 0
+             *     }
+             */
+            placement: components["schemas"]["ArPlacement"];
+            /** @default null */
+            stats: components["schemas"]["ScanStats"] | null;
+            $defs: {
+                /** ArPlacement */
+                ArPlacement: {
+                    /**
+                     * X
+                     * @default 0
+                     */
+                    x: number;
+                    /**
+                     * Y
+                     * @default 0
+                     */
+                    y: number;
+                    /**
+                     * Yaw Deg
+                     * @default 0
+                     */
+                    yaw_deg: number;
+                };
+                /**
+                 * ScanCamera
+                 * @description ONE camera for the whole clip, at keyframe resolution (OpenCV convention).
+                 */
+                ScanCamera: {
+                    /**
+                     * Model
+                     * @default SIMPLE_RADIAL
+                     * @constant
+                     */
+                    model: "SIMPLE_RADIAL";
+                    /** Fx */
+                    fx: number;
+                    /** Fy */
+                    fy: number;
+                    /** Cx */
+                    cx: number;
+                    /** Cy */
+                    cy: number;
+                    /** K1 */
+                    k1: number;
+                    /** Width */
+                    width: number;
+                    /** Height */
+                    height: number;
+                    /**
+                     * Undistorted
+                     * @default false
+                     */
+                    undistorted: boolean;
+                };
+                /** ScanFrame */
+                ScanFrame: {
+                    /** Index */
+                    index: number;
+                    /** T S */
+                    t_s: number;
+                    /** Image */
+                    image: string;
+                    /**
+                     * World From Camera
+                     * @default null
+                     */
+                    world_from_camera: number[][] | null;
+                };
+                /** ScanMesh */
+                ScanMesh: {
+                    /** File */
+                    file: string;
+                    /** Vertices */
+                    vertices: number;
+                    /** Triangles */
+                    triangles: number;
+                };
+                /** ScanPlane */
+                ScanPlane: {
+                    /** Normal */
+                    normal: number[];
+                    /** D */
+                    d: number;
+                };
+                /** ScanScale */
+                ScanScale: {
+                    /**
+                     * Method
+                     * @enum {string}
+                     */
+                    method: "sheet" | "distance";
+                    /** Factor */
+                    factor: number;
+                    /** Residual */
+                    residual: number;
+                    /**
+                     * Frame
+                     * @default null
+                     */
+                    frame: number | null;
+                    /**
+                     * Corners Px
+                     * @default null
+                     */
+                    corners_px: number[][] | null;
+                    /**
+                     * Size M
+                     * @default null
+                     */
+                    size_m: number[] | null;
+                    /**
+                     * P1
+                     * @default null
+                     */
+                    p1: number[] | null;
+                    /**
+                     * P2
+                     * @default null
+                     */
+                    p2: number[] | null;
+                    /**
+                     * Distance M
+                     * @default null
+                     */
+                    distance_m: number | null;
+                };
+                /** ScanStats */
+                ScanStats: {
+                    /** Frames Total */
+                    frames_total: number;
+                    /** Frames Registered */
+                    frames_registered: number;
+                    /** Reproj Px */
+                    reproj_px: number;
+                    /** Points3D */
+                    points3d: number;
+                    /** Extent */
+                    extent: number[];
+                };
+                /** ScanVideo */
+                ScanVideo: {
+                    /** File */
+                    file: string;
+                    /** Bytes */
+                    bytes: number;
+                    /** Duration S */
+                    duration_s: number;
+                    /** Width */
+                    width: number;
+                    /** Height */
+                    height: number;
+                    /** Fps */
+                    fps: number;
+                    /** Rotation Deg */
+                    rotation_deg: number;
+                };
+            };
+        };
+        /** SceneSpec */
+        "SceneSpec-2": {
+            /**
+             * Floor Size M
+             * @default [
+             *       4,
+             *       4
+             *     ]
+             */
+            floor_size_m: [
+                number,
+                number
+            ];
+            /**
+             * Boxes
+             * @default []
+             */
+            boxes: components["schemas"]["SceneBox"][];
+            /**
+             * Objects
+             * @default []
+             */
+            objects: components["schemas"]["SceneObject"][];
+            /**
+             * Markers
+             * @default []
+             */
+            markers: components["schemas"]["Marker"][];
+            /**
+             * @default {
+             *       "position": [
+             *         0,
+             *         0,
+             *         0
+             *       ],
+             *       "yaw": 0
+             *     }
+             */
+            robot_base: components["schemas"]["BasePose"];
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            $defs: {
+                /** BasePose */
+                BasePose: {
+                    /**
+                     * Position
+                     * @default [
+                     *       0,
+                     *       0,
+                     *       0
+                     *     ]
+                     */
+                    position: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /**
+                     * Yaw
+                     * @default 0
+                     */
+                    yaw: number;
+                };
+                /**
+                 * Marker
+                 * @description A named point in the world frame: pick-up and drop-off points, waypoints, docking stations.
+                 */
+                Marker: {
+                    /** Id */
+                    id: string;
+                    /** Name */
+                    name: string;
+                    /** Position */
+                    position: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /**
+                     * Note
+                     * @default
+                     */
+                    note: string;
+                };
+                /**
+                 * ObjectModel
+                 * @description A recognisable model of a task object made of simple primitives (objects agent).
+                 */
+                ObjectModel: {
+                    /** Object Id */
+                    object_id: string;
+                    /** Parts */
+                    parts: components["schemas"]["ObjectModelPart"][];
+                    /**
+                     * Note
+                     * @default
+                     */
+                    note: string;
+                };
+                /**
+                 * ObjectModelPart
+                 * @description One primitive of an object model, in the object's own frame: origin at the centre of the object's box, z up.
+                 */
+                ObjectModelPart: {
+                    /**
+                     * Shape
+                     * @enum {string}
+                     */
+                    shape: "box" | "cylinder" | "sphere" | "cone" | "capsule" | "torus";
+                    /** Center */
+                    center: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /** Size */
+                    size: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /**
+                     * Rotation
+                     * @default [
+                     *       0,
+                     *       0,
+                     *       0
+                     *     ]
+                     */
+                    rotation: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /** Color */
+                    color: string;
+                    /**
+                     * Roughness
+                     * @default 0.6
+                     */
+                    roughness: number;
+                    /**
+                     * Metalness
+                     * @default 0
+                     */
+                    metalness: number;
+                    /**
+                     * Opacity
+                     * @default 1
+                     */
+                    opacity: number;
+                    /**
+                     * Label
+                     * @default
+                     */
+                    label: string;
+                };
+                /** SceneBox */
+                SceneBox: {
+                    /** Id */
+                    id: string;
+                    /**
+                     * Kind
+                     * @default obstacle
+                     * @enum {string}
+                     */
+                    kind: "table" | "shelf" | "wall" | "obstacle" | "conveyor" | "pallet" | "box" | "floor_zone";
+                    /** Center */
+                    center: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /** Size */
+                    size: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /**
+                     * Yaw
+                     * @default 0
+                     */
+                    yaw: number;
+                    /**
+                     * Color
+                     * @default #9aa5b1
+                     */
+                    color: string;
+                    /**
+                     * Collides
+                     * @default true
+                     */
+                    collides: boolean;
+                };
+                /** SceneObject */
+                SceneObject: {
+                    /** Id */
+                    id: string;
+                    /**
+                     * Shape
+                     * @default box
+                     * @enum {string}
+                     */
+                    shape: "box" | "cylinder" | "sphere";
+                    /** Center */
+                    center: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /** Size */
+                    size: [
+                        number,
+                        number,
+                        number
+                    ];
+                    /**
+                     * Color
+                     * @default #2f80ed
+                     */
+                    color: string;
+                    /**
+                     * Name
+                     * @default
+                     */
+                    name: string;
+                    /** @default null */
+                    model: components["schemas"]["ObjectModel"] | null;
+                };
+            };
+        };
         /** AskTurn */
         AskTurn: {
             /**
@@ -7937,6 +9126,793 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    listArScenes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scenes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArScene"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadArScene: {
+        parameters: {
+            query: {
+                /** @description Name of the uploaded file. Its extension tells the type (for example `photo.png`, `robot.urdf`, `ra6.pdf`). */
+                filename: components["parameters"]["Filename"];
+            };
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description The new AR scene. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArScene"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["TooLarge"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getArScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scene. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArScene"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteArScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getArPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image bytes with their media type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    calibrateArScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reference: components["schemas"]["ArReference"];
+                };
+            };
+        };
+        responses: {
+            /** @description The scene with its calibration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArScene"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    estimateArScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job record (kind `ar_estimate`). Poll `GET /jobs/{id}` for the result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    placeArScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArPlacement"];
+            };
+        };
+        responses: {
+            /** @description The scene with the new placement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArScene"];
+                };
+            };
+            /** @description A value is not acceptable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getArPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link (without `qr_svg`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url?: string;
+                        urls?: string[];
+                        qr_svg?: string;
+                        expires_at?: string;
+                        uploads?: number;
+                        max_uploads?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startArPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link, with its QR code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url?: string;
+                        urls?: string[];
+                        qr_svg?: string;
+                        expires_at?: string;
+                        uploads?: number;
+                        max_uploads?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    endArPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getArPairingQr: {
+        parameters: {
+            query: {
+                /** @description One of the link `urls`. */
+                url: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The QR code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description A value is not acceptable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listScans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scans. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadScan: {
+        parameters: {
+            query: {
+                /** @description Name of the uploaded file. Its extension tells the type (for example `photo.png`, `robot.urdf`, `ra6.pdf`). */
+                filename: components["parameters"]["Filename"];
+            };
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description The new scan (status `uploaded`). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["TooLarge"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getScanVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                    "video/quicktime": string;
+                    "video/webm": string;
+                };
+            };
+            /** @description A byte range of the video. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                    "video/quicktime": string;
+                    "video/webm": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The range cannot be served. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getScanMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The mesh. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getScanFrame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+                /** @description Frame index (digits). */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The frame. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reconstructScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job record (kind `scan_reconstruct`). Poll `GET /jobs/{id}` for the result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    scaleScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The scan with its scale. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"];
+                };
+            };
+            /** @description A value is not acceptable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    floorScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    points: number[][];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The scan with the new floor. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"];
+                };
+            };
+            /** @description A value is not acceptable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    placeScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+                /** @description Scene or scan id. */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArPlacement"];
+            };
+        };
+        responses: {
+            /** @description The scan with the new placement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteScan"];
+                };
+            };
+            /** @description A value is not acceptable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    applySceneEdits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project id, as returned by `createProject` (`p_` and 10 hex characters). */
+                pid: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    base_version?: number | null;
+                    scene: components["schemas"]["SceneSpec-2"];
+                    markers?: {
+                        [key: string]: unknown;
+                    }[];
+                    auto_repair?: boolean | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The job record (kind `apply_scene`). Poll `GET /jobs/{id}` for the result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["TooLarge"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     ask: {

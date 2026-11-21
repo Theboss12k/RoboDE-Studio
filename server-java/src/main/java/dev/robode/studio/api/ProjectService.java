@@ -1,7 +1,9 @@
 package dev.robode.studio.api;
 
 import dev.robode.studio.common.Ids;
+import dev.robode.studio.common.ImageSize;
 import dev.robode.studio.common.Json;
+import dev.robode.studio.common.StagedUpload;
 import dev.robode.studio.common.StudioException;
 import dev.robode.studio.jobs.JobService;
 import dev.robode.studio.jobs.TaskResult;
@@ -11,6 +13,7 @@ import dev.robode.studio.settings.PreferredVendors;
 import dev.robode.studio.store.ProjectStore;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +25,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -52,13 +56,16 @@ public class ProjectService {
     private final LlmSettings llm;
     private final PreferredVendors vendors;
     private final Map<String, Object> flights = new ConcurrentHashMap<>();
+    private final long scanMaxBytes;
 
-    public ProjectService(ProjectStore store, TaskRunner runner, JobService jobs, LlmSettings llm, PreferredVendors vendors) {
+    public ProjectService(ProjectStore store, TaskRunner runner, JobService jobs, LlmSettings llm, PreferredVendors vendors,
+                          @Value("${studio.scan-max-bytes:524288000}") long scanMaxBytes) {
         this.store = store;
         this.runner = runner;
         this.jobs = jobs;
         this.llm = llm;
         this.vendors = vendors;
+        this.scanMaxBytes = scanMaxBytes;
     }
 
     private static String taskId(String prefix) { return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10); }
@@ -535,6 +542,272 @@ public class ProjectService {
             store.saveUploadedDocument(pid, cid, name, staged.file());
             return Json.obj().put("ok", true).put("characters", result.data().path("text_chars").asInt(0));
         }
+    }
+
+    // -- AR scenes (photo over the robot) -----------------------------------------------------------------------
+    /** Validates the photo with inspect_upload and stores it; width and height come from the header until calibration. */
+    public ObjectNode uploadArScene(String pid, String filename, byte[] payload) {
+        store.require(pid);
+        String name = Ids.safeName(filename);
+        ImageSize.Size size = ImageSize.read(payload);
+        if (size == null) throw StudioException.value("The photo must be a PNG, JPEG or WebP image");
+        if (store.arSceneCount(pid) >= ProjectStore.MAX_AR_SCENES) throw StudioException.value(ProjectStore.AR_LIMIT_MESSAGE);
+        Staged staged = inspect(name, payload, "image");
+        try (TaskResult result = staged.result()) {
+            return store.createArScene(pid, payload, size.format(), size.width(), size.height());
+        }
+    }
+
+    /**
+     * Runs ar_calibrate synchronously on the stored photo, then writes the reference and the calibration into scene.json.
+     * The Python result also sets width and height from the intrinsics. Returns the scene.
+     */
+    public ObjectNode calibrateArScene(String pid, String sid, JsonNode reference) {
+        store.require(pid);
+        ObjectNode scene = store.getArScene(pid, sid);
+        JsonNode intrinsics = scene.path("estimate").path("intrinsics");
+        ObjectNode input = Json.obj();
+        input.set("image", Json.obj().put("path", store.arPhoto(pid, sid).path().toString()));
+        input.set("reference", reference);
+        input.set("intrinsics", intrinsics.isObject() ? intrinsics : Json.MAPPER.nullNode());
+        try (TaskResult r = runner.run(taskId("ar-"), "ar_calibrate", input, LlmSettings.none(), null, "ar_calibrate", null)) {
+            JsonNode calibration = r.data();
+            JsonNode size = calibration.path("intrinsics");
+            int width = size.path("width").asInt(0);
+            int height = size.path("height").asInt(0);
+            store.updateArScene(pid, sid, s -> {
+                s.set("reference", reference);
+                s.set("calibration", calibration);
+                if (width > 0 && height > 0) {
+                    s.put("width", width);
+                    s.put("height", height);
+                }
+            });
+        }
+        return store.getArScene(pid, sid);
+    }
+
+    /** Starts an ar_estimate job; on success the store sets scene.estimate. The job record is returned. */
+    public ObjectNode estimateArScene(String pid, String sid) {
+        store.require(pid);
+        store.getArScene(pid, sid);
+        Path photo = store.arPhoto(pid, sid).path();
+        return jobs.start("ar_estimate", pid, sid, job -> {
+            ObjectNode input = Json.obj();
+            input.set("image", Json.obj().put("path", photo.toString()));
+            try (TaskResult r = runner.run(job.id(), "ar_estimate", input, LlmSettings.none(), pid, "ar_estimate", job.listener())) {
+                JsonNode estimate = r.data();
+                store.updateArScene(pid, sid, s -> s.set("estimate", estimate));
+                return store.getArScene(pid, sid);
+            }
+        });
+    }
+
+    /** Stores the placement (x, y in metres and yaw_deg). Absent values are 0; a value that is not a finite number is a 400. */
+    public ObjectNode placeArScene(String pid, String sid, JsonNode body) {
+        store.require(pid);
+        ObjectNode placement = Json.obj();
+        for (String key : new String[] {"x", "y", "yaw_deg"}) placement.put(key, placementNumber(body, key));
+        return store.updateArScene(pid, sid, s -> s.set("placement", placement));
+    }
+
+    private static double placementNumber(JsonNode body, String key) {
+        JsonNode value = body == null ? null : body.get(key);
+        if (value == null || value.isNull()) return 0.0;
+        if (!value.isNumber() || !Double.isFinite(value.asDouble())) throw new StudioException(400, key + " must be a finite number", null);
+        return value.asDouble();
+    }
+
+    // -- apply the edited scene (deterministic, no LLM) ---------------------------------------------------------
+    /** Starts apply_scene: the edited scene becomes a new version of the base (the latest by default), as revise does. */
+    public ObjectNode applyScene(String pid, Integer baseVersion, JsonNode scene, JsonNode markers, boolean autoRepair, String note) {
+        store.require(pid);
+        JsonNode frozen = store.meta(pid).get("approved_version");
+        if (frozen != null && !frozen.isNull() && frozen.asInt() != 0) throw StudioException.conflict(frozenMessage(frozen));
+        List<Integer> versions = store.versions(pid);
+        Integer base0 = baseVersion != null ? baseVersion : (versions.isEmpty() ? null : versions.get(versions.size() - 1));
+        if (base0 != null && !versions.contains(base0)) throw StudioException.value("Unknown base version " + base0);
+        ObjectNode base = base0 == null ? null : Json.withoutSchemaVersion(store.version(pid, base0));
+        final Integer baseFinal = base0;
+        return jobs.start("apply_scene", pid, base0 == null ? null : "v" + base0, job -> {
+            if (base == null) throw StudioException.value("There is no design to change yet");
+            ObjectNode input = Json.obj();
+            input.set("base", base);
+            input.set("scene", scene);
+            input.set("markers", markers);
+            input.put("auto_repair", autoRepair);
+            input.put("note", note == null ? "" : note);
+            try (TaskResult r = runner.run(job.id(), "apply_scene", input, LlmSettings.none(), pid, "apply_scene", job.listener())) {
+                int n = store.addVersion(pid, r.data().get("version"), baseFinal, r.data().get("parsed"), meta -> {
+                    JsonNode now = meta.get("approved_version");
+                    if (now != null && !now.isNull() && now.asInt() != 0) throw StudioException.conflict(frozenMessage(now));
+                });
+                return Json.obj().put("version", n);
+            }
+        });
+    }
+
+    // -- site scans (video AR) ----------------------------------------------------------------------------------
+    /** Streams an uploaded video into a new runtime/tmp/jobs/u-* folder; refuses a bad name, a 6th scan or a body over the cap. */
+    public Path stageScan(String pid, String filename, InputStream body, long declared) {
+        store.require(pid);
+        String name = Ids.safeName(filename);
+        if (ProjectStore.videoExtension(name) == null) throw StudioException.value("The video must be an MP4, MOV or WebM file");
+        if (store.scanCount(pid) >= ProjectStore.MAX_SCANS) throw StudioException.value(ProjectStore.SCAN_LIMIT_MESSAGE);
+        String tooLarge = "The video is too large (" + (scanMaxBytes / (1024 * 1024)) + " MB at most)";
+        return StagedUpload.stage(body, declared, scanMaxBytes, runner.jobsDir().resolve(taskId("u-")), name, tooLarge);
+    }
+
+    /**
+     * Probes the staged video with scan_probe (synchronous) and stores it as a new site scan with status uploaded.
+     * The staging folder is removed in every case.
+     */
+    public ObjectNode uploadScan(String pid, String filename, Path staged) {
+        try {
+            store.require(pid);
+            String ext = ProjectStore.videoExtension(Ids.safeName(filename));
+            if (ext == null) throw StudioException.value("The video must be an MP4, MOV or WebM file");
+            ObjectNode input = Json.obj();
+            input.set("video", Json.obj().put("path", staged.toString()));
+            JsonNode probe;
+            try (TaskResult r = runner.run(taskId("sc-"), "scan_probe", input, LlmSettings.none(), null, "scan_probe", null)) {
+                probe = r.data();
+            }
+            return store.createScan(pid, staged, ext, probe, Files.size(staged));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            ProjectStore.deleteTree(staged.getParent());
+        }
+    }
+
+    /**
+     * Starts scan_reconstruct as a job. Python may only write in the job's out dir, so the frames and the mesh are written
+     * there and moved into the scan folder after success. The scan is "reconstructing" meanwhile.
+     */
+    public ObjectNode reconstructScan(String pid, String sid) {
+        store.require(pid);
+        ObjectNode scan = store.getScan(pid, sid);
+        if ("reconstructing".equals(Json.text(scan, "status"))) throw StudioException.conflict("This site scan is already being reconstructed");
+        Path video = store.scanVideo(pid, sid).path();
+        int rotation = scan.path("video").path("rotation_deg").asInt(0);
+        store.updateScan(pid, sid, s -> { s.put("status", "reconstructing"); s.putNull("error"); });
+        return jobs.start("scan_reconstruct", pid, sid, job -> {
+            Path out = runner.jobsDir().resolve(job.id());
+            ObjectNode input = Json.obj();
+            input.set("video", Json.obj().put("path", video.toString()));
+            input.put("rotation_deg", rotation);
+            input.set("out", Json.obj().put("frames_dir", out.resolve("frames").toString())
+                    .put("mesh_path", out.resolve("scan.glb").toString()));
+            try (TaskResult r = runner.run(job.id(), "scan_reconstruct", input, LlmSettings.none(), pid, "scan_reconstruct", job.listener())) {
+                JsonNode data = r.data();
+                if (!Files.isDirectory(out.resolve("frames"))) throw StudioException.internal("The reconstruction wrote no frames", "no_result");
+                store.adoptScanOutputs(pid, sid, out.resolve("frames"), out.resolve("scan.glb"));
+                store.updateScan(pid, sid, s -> {
+                    s.set("camera", field(data, "camera"));
+                    s.set("frames", field(data, "frames"));
+                    s.set("floor", field(data, "floor"));
+                    s.set("alignment", field(data, "alignment"));
+                    s.set("mesh", field(data, "mesh"));
+                    s.set("stats", field(data, "stats"));
+                    s.putNull("scale"); // a scale belongs to one reconstruction; the new one needs its own
+                    s.putNull("error");
+                    s.put("status", "reconstructed");
+                });
+                return store.getScan(pid, sid);
+            } catch (RuntimeException e) {
+                markScanFailed(pid, sid, e);
+                throw e;
+            }
+        });
+    }
+
+    private void markScanFailed(String pid, String sid, RuntimeException e) {
+        String message = e instanceof StudioException ? e.getMessage() : e.getClass().getSimpleName() + ": " + e.getMessage();
+        try {
+            store.updateScan(pid, sid, s -> { s.put("status", "failed"); s.put("error", message); });
+        } catch (StudioException gone) {
+            // the scan was deleted while the job ran
+        }
+    }
+
+    /** The scan as stored, which must be reconstructed (409 otherwise). */
+    private ObjectNode reconstructed(String pid, String sid) {
+        store.require(pid);
+        ObjectNode scan = store.getScan(pid, sid);
+        if (!"reconstructed".equals(Json.text(scan, "status"))) throw StudioException.conflict("Reconstruct this site scan first");
+        return scan;
+    }
+
+    /** scan_scale (synchronous): the body plus the current scan; the result is stored as scan.scale. */
+    public ObjectNode scaleScan(String pid, String sid, JsonNode body) {
+        ObjectNode scan = reconstructed(pid, sid);
+        ObjectNode input = ((ObjectNode) body).deepCopy();
+        input.set("scan", scan);
+        try (TaskResult r = runner.run(taskId("sc-"), "scan_scale", input, LlmSettings.none(), null, "scan_scale", null)) {
+            JsonNode scale = r.data();
+            return store.updateScan(pid, sid, s -> s.set("scale", scale));
+        }
+    }
+
+    /** scan_floor (synchronous): re-picks the floor from clicked points; camera_up is computed here from the cameras. */
+    public ObjectNode floorScan(String pid, String sid, JsonNode body) {
+        ObjectNode scan = reconstructed(pid, sid);
+        JsonNode points = body == null ? null : body.get("points");
+        if (points == null || !points.isArray()) throw StudioException.value("points must be a list of points");
+        ObjectNode input = Json.obj();
+        input.set("points", points);
+        input.set("camera_up", cameraUp(scan));
+        try (TaskResult r = runner.run(taskId("sc-"), "scan_floor", input, LlmSettings.none(), null, "scan_floor", null)) {
+            JsonNode data = r.data();
+            return store.updateScan(pid, sid, s -> {
+                s.set("floor", field(data, "floor"));
+                s.set("alignment", field(data, "alignment"));
+            });
+        }
+    }
+
+    /** Mean of the registered cameras' up directions in R (minus the camera y axis, since OpenCV y points down), unit length. */
+    static JsonNode cameraUp(JsonNode scan) {
+        double x = 0;
+        double y = 0;
+        double z = 0;
+        int n = 0;
+        for (JsonNode frame : scan.path("frames")) {
+            JsonNode m = frame.get("world_from_camera");
+            if (m == null || !m.isArray() || m.size() < 3) continue;
+            if (!(m.get(0).size() > 1 && m.get(1).size() > 1 && m.get(2).size() > 1)) continue;
+            // world_from_camera is row-major 4x4: column 1 of the rotation block is the camera's y axis in R
+            x -= m.get(0).get(1).asDouble();
+            y -= m.get(1).get(1).asDouble();
+            z -= m.get(2).get(1).asDouble();
+            n++;
+        }
+        if (n == 0) throw StudioException.value("No camera is registered; reconstruct the scan first");
+        double length = Math.sqrt(x * x + y * y + z * z);
+        if (length < 1e-9) throw StudioException.value("The camera up directions cancel out");
+        return Json.arr().add(x / length).add(y / length).add(z / length);
+    }
+
+    /** Stores the placement of a scan (x, y in metres and yaw_deg), validated like the photo placement. */
+    public ObjectNode placeScan(String pid, String sid, JsonNode body) {
+        store.require(pid);
+        ObjectNode placement = Json.obj();
+        for (String key : new String[] {"x", "y", "yaw_deg"}) placement.put(key, placementNumber(body, key));
+        return store.updateScan(pid, sid, s -> s.set("placement", placement));
+    }
+
+    /** Removes a scan; a scan that is being reconstructed cannot be removed (409). */
+    public void deleteScan(String pid, String sid) {
+        store.require(pid);
+        if ("reconstructing".equals(Json.text(store.getScan(pid, sid), "status")))
+            throw StudioException.conflict("This site scan is still being reconstructed");
+        store.deleteScan(pid, sid);
+    }
+
+    private static JsonNode field(JsonNode node, String name) {
+        JsonNode value = node == null ? null : node.get(name);
+        return value == null ? Json.MAPPER.nullNode() : value;
     }
 
     // -- export -------------------------------------------------------------------------------------------------

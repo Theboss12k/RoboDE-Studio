@@ -51,6 +51,15 @@ final class FlowSupport {
         registry.add("studio.fake-download", DATASHEET::toString);
     }
 
+    /** True when server/studio/tasks/handlers.py registers the task; tests that need a Python task not written yet are skipped. */
+    static boolean hasTask(String task) {
+        try {
+            return Files.readString(REPO.resolve("server/studio/tasks/handlers.py")).contains("'" + task + "'");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     /** profiles.json with the two default profiles plus `fx` (scripted, rules.json); every role uses `fx`. */
     static void writeScriptedProfiles(Path runtime, String rulesFile) {
         ObjectNode data = Json.obj();

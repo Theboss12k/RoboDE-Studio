@@ -1,20 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAskRequest, useAskSelection } from "../components/AskBar";
 import { api } from "../api";
 import { Dictation, JobStatus, StageHead, useJob } from "../components/common";
 import { useProjectJob } from "../jobs";
-import { Complete, Fail, Pass } from "../components/icons";
+import { Complete, Fail, Pass, ViewModel, ViewPhoto, ViewSite, type LucideIcon } from "../components/icons";
 import Player, { type PlayerHandle } from "../components/Player";
 import FleetAssignmentEditor from "../components/fleet/FleetAssignmentEditor";
 import FleetBanner from "../components/fleet/FleetBanner";
 import FleetLimitsForm from "../components/fleet/FleetLimitsForm";
 import FleetPanel from "../components/fleet/FleetPanel";
-import type { FleetOverlay } from "../components/SceneView";
+import ArPanel from "../components/ar/ArPanel";
+import SiteWorkspace from "../components/scan/SiteWorkspace";
+import { NO_EDITS, type SiteEdits } from "../components/scan/types";
+import type { ArView, FleetOverlay } from "../components/SceneView";
 import RepairLog from "../components/RepairLog";
 import Requirements from "../components/Requirements";
 import { ConceptPanel, SpecSummary } from "../components/SpecPanels";
 import TimeSaved from "../components/TimeSaved";
-import type { DesignVersion, Project, ReviseRequest } from "../types";
+import type { ArPlacement, ArScene, DesignVersion, Project, ReviseRequest } from "../types";
+
+type ViewMode = "model" | "photo" | "site";
+const VIEWS: { id: ViewMode; label: string; icon: LucideIcon }[] = [
+  { id: "model", label: "Modelled scene", icon: ViewModel },
+  { id: "photo", label: "My photo", icon: ViewPhoto },
+  { id: "site", label: "My site", icon: ViewSite },
+];
 
 export default function Design({ project, reload, approved }: { project: Project; reload: () => Promise<void>; approved: () => void }) {
   const versions = project.versions ?? [];
@@ -31,6 +41,17 @@ export default function Design({ project, reload, approved }: { project: Project
   function changeAutoRepair(on: boolean) { setAutoRepair(on); try { localStorage.setItem("studio.autoRepair", on ? "1" : "0"); } catch { /* not remembered */ } }
   useEffect(() => { if (current === undefined || !versions.includes(current)) setCurrent(latest); }, [latest]); // eslint-disable-line react-hooks/exhaustive-deps
   const player = useRef<PlayerHandle>(null);
+  // How the design is shown: the modelled scene, over a calibrated photo ("My photo") or inside a scanned site ("My site").
+  const [view, setView] = useState<ViewMode>("model");
+  const arOn = view === "photo";
+  const [siteEdits, setSiteEdits] = useState<Record<number, SiteEdits>>({});
+  const [arScene, setArScene] = useState<ArScene | null>(null);
+  const [arBoxes, setArBoxes] = useState(false);
+  const arBox = useRef<HTMLDivElement>(null);
+  const arReady = arOn && !!arScene && !!(arScene.calibration ?? arScene.estimate);
+  const arPlace = useCallback((p: ArPlacement) => setArScene((s) => (s ? { ...s, placement: p } : s)), []);
+  const arView: ArView | undefined = arReady
+    ? { photoUrl: api.arPhotoUrl(project.id, arScene!.id), scene: arScene!, showBoxes: arBoxes, onPlace: arPlace } : undefined;
   // Load the viewed version first, then the rest (the tabs show each version's parent).
   useEffect(() => {
     const wanted = [current, ...versions].filter((n): n is number => n !== undefined && !cache[n]);
@@ -83,10 +104,26 @@ export default function Design({ project, reload, approved }: { project: Project
           {(v.repair ?? null) && <RepairLog log={v.repair!} />}
           <div className="design-grid">
             <div className="panel">
-              <div className="panel-head"><h3>{fleet ? "Simulated task (all robots)" : "Simulated task"}</h3><span className={`tag ${(fleet ? fleet.ok : v.sim.ok) ? "ok" : "bad"}`}>{(fleet ? fleet.ok : v.sim.ok) ? <Pass size={14} aria-hidden="true" /> : <Fail size={14} aria-hidden="true" />}{(fleet ? fleet.ok : v.sim.ok) ? "All checks pass" : "Some checks fail"}</span></div>
-              <Player ref={player} scene={v.scene} parsed={v.parsed} sim={v.sim} robotBase={v.robot.base ?? v.scene.robot_base}
-                fleet={fleet && v.fleet_parsed ? { plan: fleet, parsed: v.fleet_parsed } : undefined} overlay={fleet ? undefined : overlay ?? undefined} />
-              {fleet && !v.fleet_parsed && <div className="notice warning small">The fleet's robot models are not available, so only the primary robot is drawn.</div>}
+              <div className="panel-head"><h3>{fleet ? "Simulated task (all robots)" : "Simulated task"}</h3>
+                <div className="seg" role="radiogroup" aria-label="View">
+                  {VIEWS.map(({ id, label, icon: Icon }) => (
+                    <button key={id} type="button" role="radio" aria-checked={view === id} onClick={() => setView(id)}><Icon size={16} aria-hidden="true" /> {label}</button>
+                  ))}
+                </div>
+                <span className={`tag ${(fleet ? fleet.ok : v.sim.ok) ? "ok" : "bad"}`}>{(fleet ? fleet.ok : v.sim.ok) ? <Pass size={14} aria-hidden="true" /> : <Fail size={14} aria-hidden="true" />}{(fleet ? fleet.ok : v.sim.ok) ? "All checks pass" : "Some checks fail"}</span></div>
+              {view === "site" ? (
+                <SiteWorkspace pid={project.id} version={v} frozen={frozen} playerRef={player}
+                  edits={siteEdits[v.version] ?? NO_EDITS} setEdits={(change) => setSiteEdits((all) => ({ ...all, [v.version]: change(all[v.version] ?? NO_EDITS) }))}
+                  onApplied={async (n) => { setCurrent(n); await reload(); }} />
+              ) : (
+                <div ref={arBox} className="stack">
+                  <Player ref={player} scene={v.scene} parsed={v.parsed} sim={v.sim} robotBase={v.robot.base ?? v.scene.robot_base} ar={arView}
+                    fleet={fleet && v.fleet_parsed ? { plan: fleet, parsed: v.fleet_parsed } : undefined} overlay={fleet ? undefined : overlay ?? undefined} />
+                </div>
+              )}
+              {view !== "site" && fleet && !v.fleet_parsed && <div className="notice warning small">The fleet's robot models are not available, so only the primary robot is drawn.</div>}
+              {arOn && <ArPanel pid={project.id} scene={arScene} onScene={setArScene} showBoxes={arBoxes} onShowBoxes={setArBoxes}
+                getCanvas={() => arBox.current?.querySelector("canvas") ?? null} />}
               {v.scene.notes && <p className="small muted">{v.scene.notes}</p>}
             </div>
             <div className="panel"><h3>{fleet ? `Requirements (primary robot ${fleet.primary})` : "Requirements"}</h3><Requirements requirements={v.requirements} checks={v.sim.checks} /></div>

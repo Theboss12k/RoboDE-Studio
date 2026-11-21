@@ -254,6 +254,100 @@ Dated record of changes to this repository. Newest entries are added at the bott
 - Real run (2026-11-20, browser pane on a copy of the runtime, project "Tabletop bottle transfer A to B", approved v2; search, extract and analysis roles: Claude Sonnet 5.5 via the Claude Code CLI with web search; robot role: Claude Opus 5.5): build b1 finished with 4 joints, 39 parts, 61 files, 21 of 21 checks passing, structure style machined aluminium (proposed by the model, kept by code). The shop search returned 5 stepper candidates, all from pololu.com (product pages 1478, 1474, 2267); none passed, because none states a rated speed on its page (the rule requires the deciding values to be verified), so all 4 motors are defined specs. No price was captured and no Indian shop listing came back. The twin ran the task (7.06 s, peak torque use 31 % at j3); at speed scale 2 the speed and acceleration limits bound and were shown. Approving uploaded four snapshots and produced a 13-page manufacturer PDF, `package.zip` and `bom.csv`.
 - Limitations: concept-level envelope CAD (simplified profiles, no interference analysis, no FEA); sizing is kinematic, static and acceleration only (no dynamics simulation, not tested on hardware); prices are dated web estimates; gripper fingers are not symmetric about the tool point; the client uses the server for tool moves (no local IK chain from the URDF yet). Open question for the user: how to judge stepper speed when shops publish only holding torque.
 
+## 2026-11-20 — Photo AR ("View in my space"), first delivery
+
+- Applications: Python tasks (`server/studio/ar/`, `ar_calibrate`, `ar_estimate`), schemas and contracts (`ArScene` and related models), Java routes and store (`/api/v1/projects/{pid}/ar/scenes`, `runtime/projects/<pid>/ar/`), `packages/core` (`ar.ts`), client Design stage ("View in my space").
+- Plan: the user uploads a site photo; code finds the camera from a known-size floor rectangle (homography, numpy) or, optionally, a depth-model estimate (torch + MoGe, an optional install). The robot, task objects and playback render over the photo at true scale. Contract: `docs/AR_PHOTO.md`.
+- This is a visual overlay only: no checks against the real room, and pass/fail numbers still come from the existing kinematic checks.
+- Calibration: the focal length comes from the reference homography, using whichever of the two constraints is well-conditioned, so a sheet square or at 45° to the camera still solves. Otherwise it falls back to the estimate, else a default 60° horizontal field of view, with a warning.
+- Windows support (not AR): `server/studio/llm/claude_cli.py` imported the Unix-only `pwd` module, which stopped every task import on Windows. It now falls back to `~` when `pwd` is absent; behaviour on macOS and Linux is unchanged.
+- Checked so far (2026-11-20, Windows 11, Python 3.12.10, Node 26.13.1; fixture tests only, no real model):
+  - pytest with `PYTHONUTF8=1`: 181 passed, 4 skipped, including 29 new AR tests. The synthetic camera recovers its pose within 1 mm and 0.1° and its focal length within 1%. Without UTF-8 mode, `test_catalog.py::test_extract_verifies_quotes` fails on Windows; this is pre-existing and not related to AR.
+  - `scripts/export_schemas.py --check` and `npm run contracts:check`: up to date.
+  - `npm run typecheck` (core and client): passes.
+  - Core `node --test`: 4 of 4 pass; the GL projection matches the OpenCV pinhole within 0.5 px.
+- Java fix (not AR): `ProjectService` used `ProjectStore.BUDGET_MESSAGE`, which was package-private, so `main` as downloaded did not compile. It is now `public`.
+- Java (`mvnw test`, JDK 25.0.5, with `STUDIO_PYTHON=.venv\Scripts\python.exe` and `PYTHONUTF8=1`): 36 run, 1 error, 7 skipped. New tests: `ArScenesFlowTest` (upload, list, photo, `ar_calibrate` through Python, placement, the 10-scene limit, delete) and `ImageSizeTest`. The one error is `KeysAndUsageTest.keyFileIsOwnerOnlyAndKeysAreNeverReturned`, which sets POSIX file permissions and is unsupported on Windows; it is pre-existing and not related to AR.
+- Browser check (built-in browser pane, scripted fixture model, no real model):
+  - Test photo: a synthetic 1600×1200 floor photo with an A4 sheet, rendered from a known camera (f = 1200 px, 1.3 m high, 40° pitch, 15° yaw).
+  - Calibration from the sheet corners gave f = 1201 px, a camera height of 1.3002 m and a residual of 0.05 px, through the API and through the UI calibrator.
+  - With the design placed so the robot base sits on the sheet centre, the base drew on the sheet at the canvas centre, as the maths requires.
+  - Playback ran over the photo with shadows, and there were no console errors.
+  - "Estimate automatically" showed the error that the optional backend is missing.
+- Not checked: uploading a photo through the file picker (the browser pane cannot pick a local file, so the upload used the same API route), dragging to move the design, the PNG snapshot, a real phone photo, and `ar_estimate` with a real depth model (torch and MoGe are not installed; that code path is untested).
+- The local repo was created from a ZIP of `main` (no git history); see `docs/agents/merge-ar-photo.md`.
+
+## 2026-11-20 — Photo AR: GPU depth estimate, phone link and end-to-end test
+
+- Applications:
+  - Python: `.venv` and `requirements-ar.txt`.
+  - Java: the `pairing` package; `StudioProperties.pairPort`; zxing 3.5.3 in `pom.xml`; the `/api/v1/projects/{pid}/ar/pairing` routes.
+  - Client: `PhoneLink.tsx` and `ArPanel.tsx`.
+  - `packages/core`: the pairing API functions.
+  - Playwright end-to-end test: `e2e/`, `npm run e2e`.
+- Automatic estimate: installed into `.venv`. It follows the recipe now in `requirements-ar.txt`; MoGe's other declared dependencies (gradio, FlexGEMM/Triton, newer trimesh) are not installed.
+  - PyTorch 2.14.1+cu130 and torchvision 0.29.1.
+  - MoGe 3.0.0 (MIT), using the MoGe-2 ViT-L weights (1.32 GB, MIT) in the Hugging Face cache.
+  - OpenCV headless, SciPy and Pillow.
+- Real depth-model run (MoGe-2 ViT-L on an RTX 4050, 2026-11-20) on the synthetic A4 photo: about 12–17 s per estimate, including model load. It estimated a focal length of 1147–1171 px (true 1200) and a camera height of about 2.1 m (true 1.3 m). The scale is approximate, as the UI says; a flat rendered checkerboard is a poor input for a depth model, and real photos were not tried.
+- Phone link:
+  - The desktop shows a QR code. A phone on the same Wi-Fi opens a page that takes a photo with its camera app, or picks one from its gallery, and the photo arrives as an AR scene.
+  - The phone talks to a separate JDK HttpServer on 0.0.0.0:8801 (`STUDIO_PAIR_PORT`), started only while a link is active. It serves exactly `GET /p/{code}` and `POST /p/{code}/photo`; everything else returns 404.
+  - The code is 256-bit, expires after 10 minutes, belongs to one project and allows at most 20 uploads. Uploads are capped at 15 MB.
+  - The main API stays on loopback.
+  - Traffic on the Wi-Fi is plain HTTP.
+  - There is no per-connection timeout yet.
+- Checked (2026-11-20, Windows 11; fixture LLM only, no real language model):
+  - Playwright end-to-end: 8 of 8 pass in 44.9 s, run on installed Chrome (`E2E_CHANNEL=chrome`) because the Playwright Chromium download stalled. The suite uses three synthetic sample photos with known cameras (`e2e/fixtures/make_photos.py`):
+    - Upload through the real file input, drag the 4 handles and calibrate. Every photo calibrated to its true camera: A4 PNG at f 1200 px and 1.30 m, Letter square to the camera at 1500 px and 1.10 m (`focal_source` "reference"), and the EXIF-rotated phone JPEG stored as 1500×2000 at 1600 px and 1.45 m.
+    - AR view: the aspect ratio matches the photo, there are no console errors, and dragging the floor and changing the turn update the placement.
+    - The snapshot PNG matches the photo size.
+    - The real MoGe estimate shows the "Approximate scale" badge.
+    - Phone link in an emulated Pixel 7: sent through the LAN address; "Photos received: 1" and a new portrait scene appeared; after "Stop linking" the link returns 404.
+    - Error cases: a collinear reference and a non-image file.
+  - pytest: 180 passed, 5 skipped. The `ar_estimator_unavailable` test now skips because torch is installed.
+  - Java (`mvnw test`): 38 run, 1 error, 7 skipped, as reported by the worker that added `PairingFlowTest`. The one error is the known Windows-only `KeysAndUsageTest`.
+- Not checked: a real phone on real Wi-Fi (the Windows firewall prompt was not seen), real site photos, the 20-upload limit, link expiry in the UI, deleting a scene, and the "Show scene boxes" toggle.
+
+## 2026-11-20 — Claude Code CLI adapter on Windows; every role set to Sonnet 5.5
+
+- Applications: Python LLM adapter (`server/studio/llm/claude_cli.py`); the local LLM settings in `runtime/llm/` (not in git).
+- Windows support: `find_cli` now also searches the Windows install locations, newest version first:
+  - `%USERPROFILE%\.local\bin\claude.exe` and `%USERPROFILE%\.claude\local\claude.exe`;
+  - the Claude desktop app's bundled CLI, under `%LOCALAPPDATA%\Claude-Data\*\claude-code\<version>\*\claude.exe` or `%APPDATA%\Claude\claude-code\...`.
+- Environment: `cli_environment()` builds the CLI's reduced environment.
+  - On Windows it keeps only what a Windows program needs to start and find its login: SYSTEMROOT, the profile folders, TEMP/TMP and a PATH of system folders. Nothing from the project is passed (no PYTHONPATH, tokens or keys).
+  - macOS and Linux are unchanged.
+- Encoding: the system-prompt file is written as UTF-8.
+- Local settings (this machine): a profile "Claude Sonnet 5.5 (Claude Code CLI)" (`claude_cli`, model `claude-sonnet-5-5`, CLI path auto-detected) is assigned to all seven roles: spec, scene, robot, revise, search, extract and analysis.
+- Found: the desktop app's bundled CLI is 2.1.326. On its own it answers "Not logged in", so the user must sign in once (`claude /login`) before Studio can use it.
+- Checked: pytest 180 passed, 5 skipped after the change. CLI discovery finds the bundled 2.1.326 executable.
+- Not checked: no real Sonnet call has been made through Studio yet (the CLI was not signed in). The connection test and a real design run remain to do.
+
+## 2026-11-20 — Photo AR follow-ups: phone-listener limits, CLI adapter tests, more end-to-end coverage
+
+- Applications: Java `pairing/PairingListener.java` and `pom.xml` (test-only surefire property); client `ArPanel.tsx`; Python tests `tests/test_claude_cli.py`; `e2e/tests/ar.spec.ts`.
+- Phone listener limits:
+  - A request may take at most 60 s, a response 30 s, and an idle connection 30 s (the JDK `sun.net.httpserver.*` properties, set only when the operator has not set them).
+  - At most 8 requests are handled at once; more get 503 "Busy, try again".
+  - New tests in `PairingFlowTest`: a stalled half-request is closed, and the 9th concurrent request gets 503.
+- Calibrator: the residual line no longer appears twice. The panel's "Calibration residual" line shows only when the calibrator is closed.
+- `tests/test_claude_cli.py` (new; no network, no real CLI):
+  - CLI discovery: the newest version wins, plus the Windows layouts, a configured path, a missing path and none found.
+  - The reduced environment never carries STUDIO_TOKEN, ANTHROPIC_API_KEY, GEMINI_API_KEY or PYTHONPATH.
+  - A stub CLI run checks the stream-json input and the result, image and error handling.
+- End-to-end, new tests 9–11:
+  - "Show scene boxes" changes the rendered pixels.
+  - Deleting a scene through the UI removes it from the list and the API, and its photo URL returns 404.
+  - The 11th upload shows "At most 10 AR scenes per project".
+- Checked (2026-11-20, Windows 11; fixture LLM only):
+  - pytest: 190 passed, 6 skipped.
+  - Playwright `npm run e2e` with `E2E_CHANNEL=chrome`: 11 of 11 pass in 54.7 s.
+  - Java: 40 run, 1 error (the known Windows-only `KeysAndUsageTest`), 7 skipped.
+  - `npm run typecheck`: passes.
+  - Core tests: 4 of 4 pass.
+- Not checked: Playwright's bundled Chromium. Its download hung twice on this machine, so the suite ran on the installed Google Chrome.
+
 ## 2026-11-21 — Robot studio: conservative assumed stepper speed (user decision)
 
 - Applications: Python `server/studio/robot/sizing.py` (`STEPPER_USABLE_RPM`, `stepper_frame`, `capability`, `evaluate`), `sourcing.py` (docstring), tests, `docs/STUDIO_ROBOT_DESIGN.md`.
@@ -412,3 +506,82 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
 - Profiles `vertex_pro`, `vertex_flash`, `vertex_flash_lite` are added to the defaults (existing `profiles.json` files keep their roles). A new install with `K_SERVICE` set (Cloud Run) or `STUDIO_LLM_DEFAULT=vertex` defaults all roles to them; otherwise the Gemini API defaults are unchanged. Profiles gain optional `location` and `project` (Python, Java, OpenAPI, client). Settings has "Gemini on Vertex AI (Google Cloud project, no key)".
 - Deploy guide: Vertex is the recommended Cloud Run route (enable `aiplatform.googleapis.com`, grant the service account `roles/aiplatform.user`); the `gemini-api-key` secret is optional.
 - Checked (fixture tests only, no real Vertex call, no real Gemini inference, no Cloud Run run): `tests/test_vertex.py` (fake HTTP layer and fake gcloud: URLs, headers, bodies, usage, error mapping, token cache and refresh, metadata path, no token in logs); full Python suite, Java suite (goldens `03_llm_settings` and `13_llm_profile_delete` updated for the three new profiles, the new kind and models), `contracts:check`, client typecheck and build. Limitation: request and response shapes follow Google's REST reference but have not been confirmed against the live service.
+
+## 2026-11-21 — Fix: "Link a phone" showed a stray address error in development
+
+- Applications: client `client/src/components/ar/PhoneLink.tsx`.
+- Bug, found while taking UI screenshots on the dev server: the panel showed "That address is not one of this link's addresses" under a working QR code.
+  - React's double mount in development started two links at once. The second replaced the first while the first's QR code was being fetched, so that fetch was refused.
+  - The error was never cleared after the next QR code loaded.
+- Fix: starting a link is now single-flight (a concurrent start reuses the one in progress), and a QR code that loads clears the error.
+- Checked: `npm run typecheck` passes. A re-captured dev-server screenshot shows one link and no error. Playwright `npm run e2e` (Chrome) passes. The production build has no double mount, so the e2e suite could not have caught this.
+- Screenshots of the current UI: `docs/screenshots/ar/` (Design stage AR view, AR panel, calibrator, Link a phone, phone page). The link codes they show were stopped right after capture.
+
+## 2026-11-21 — Site scan (video AR): rebuild the real site in 3D and design inside it
+
+- Applications: Python (`server/studio/scan/`; tasks `scan_probe`, `scan_reconstruct`, `scan_scale`, `scan_floor`, `apply_scene`); schemas and contracts (`SiteScan` and related models); Java (streaming video upload, `/api/v1/projects/{pid}/scans`, `/apply-scene`, the phone video route); client (Design stage "My site" view and its tools). Contract: `docs/SITE_SCAN.md`.
+- Plan:
+  - A walk-around video from any phone becomes a coloured 3D mesh, at true scale once a sheet or a measured distance is given.
+  - The pipeline: our own structure-from-motion (OpenCV + SciPy) with one shared camera, so the clip has one focal length; then MoGe-2 depth aligned to the sparse points; then TSDF fusion (Open3D).
+  - Users place the robot, add objects, move task points onto real surfaces and measure, then apply the edits as a new design version computed in code (no LLM).
+- This is a visual 3D reconstruction, not a survey. Scan geometry is not part of the pass/fail checks in this delivery; added objects are, as modelled scene boxes.
+- Environment: pycolmap was tried and rejected, because Windows Application Control blocked its native DLL. Installed into `.venv`: av 19.0.2 and open3d 0.20.0 with its dependencies (`requirements-scan.txt`).
+- What was built:
+  - **Python:** `server/studio/scan/`, covering video probe and keyframes (PyAV) and our own SfM.
+    - The SfM uses RootSIFT matching across frame offsets 1–12, essential-matrix initialisation with a field-of-view sweep, PnP registration and SciPy bundle adjustment with one shared (f, k1) camera.
+    - MoGe-2 depth is aligned to the sparse points, then fused with Open3D's tensor `VoxelBlockGrid` TSDF. The legacy `ScalableTSDFVolume` in the 0.20 wheel integrated nothing.
+    - Floor and scale come from a sheet in a frame or a measured distance.
+  - **Deterministic `apply_scene`:** no LLM unless auto-repair is asked for. It moves markers and objects, validates, re-sizes and re-simulates.
+  - **Java:** streaming video upload (500 MB, exempt from the 64 MB body filter on that route only), scan storage and routes with HTTP Range, and `/apply-scene`.
+  - **Phone link:** "Record a site video", sent to a new socket-based phone listener. Video gets a 15 min window only after a valid code; it answers wrong codes without reading the body, and has at most 32 open connections and 8 requests at a time.
+  - **Client:** a three-way view switch next to "Simulated task" (Modelled scene / My photo / My site), and the My site panel with its tools (place robot, add object, task point, measure, set scale, pick floor) and Apply to design.
+- Checked (2026-11-21, Windows 11, RTX 4050; synthetic test video, fixture LLM, no real phone footage):
+  - The synthetic room video comes from `tests/scan_synth.py`: about 5 × 4 m, ray-cast at f = 700 px, 30 s.
+    - 90 of 90 frames registered, reprojection 0.40 px.
+    - Focal 699.9 px against 700, floor normal 0.05° off.
+    - After the sheet scale (residual 0.0005), walls 5.011 m and 4.007 m (0.2% error), table top 0.738 m against 0.75 (1.6%).
+    - Mesh 300k triangles. Reconstruction about 2–4 min.
+  - The synthetic video is ideal footage (no motion blur, rolling shutter, lens distortion or bad light), so real phone clips will be less accurate. That has not been measured.
+  - pytest: 228 passed, 6 skipped (3 min 35 s, including the GPU reconstruction).
+  - Java (`mvnw test`): 55 run, 1 error (the known Windows-only `KeysAndUsageTest`), 7 skipped.
+  - Playwright `npm run e2e` (Chrome): 17 of 17 passed in 4.1 min.
+    - The scan suite uploads through the UI and reconstructs on the GPU, then sets the scale from the sheet in a frame.
+    - It measures 4.990 m between walls (true 5 m) and places the robot.
+    - It adds a table and puts drop point B on it (z = 0.750 m), then applies to the design. That gives v2 with `parent_version` 1 and "Edited in the site scan".
+    - It also sends a video from an emulated Pixel 7, and checks all three views with no console errors.
+  - `npm run typecheck` passes, and the core tests pass 12 of 12.
+- Known issue: during the worker's runs, one reconstruction failed once with an out-of-memory error in the Python job and passed on retry with nothing changed. It did not recur in the final run. The machine has 16 GB RAM, and the cause has not been investigated.
+- Not checked: real phone footage, a 180-frame clip at 1600 px, and a 500 MB phone upload over real Wi-Fi.
+- Screenshots: `docs/screenshots/site/`.
+
+## 2026-11-21 — Site scan: undistorted keyframes, finer lit mesh
+
+- Applications: Python `server/studio/scan/` (dense.py, scale.py), the `ScanCamera.undistorted` field (default false; contracts regenerated), `docs/SITE_SCAN.md`.
+- Behaviour:
+  - Registered keyframes are rewritten undistorted with the recovered k1 and the same K, so they are pure pinhole images. `camera.undistorted` is true, and `scan_scale` no longer applies k1 to corners clicked on them.
+  - The mesh is finer: voxel = extent/384 (falling back to /320 when out of memory), capped at 600k triangles.
+  - The mesh is cleaned up: Taubin smoothing, removal of degenerate, duplicate and small floating parts, and vertex normals in the GLB.
+  - Vertex colours come from every depth-tested view, weighted by sharpness and viewing angle, with the blurriest 20% of frames skipped and a 2-pass bilateral filter.
+  - The TSDF's initial block capacity is cut from 100000 to 20000 (it grows on demand), after a CPU allocation failure with about 5 GB RAM free. This is a likely cause of the earlier one-off out-of-memory failure.
+- Checked (2026-11-21, synthetic clip; not real footage): 90/90 registered, focal 0.01%, floor 0.05°, walls 0.21% and 0.17%, table 1.58%. The mesh has 599,999 triangles with normals, and reconstruction took 142–153 s (was 131 s). pytest: 234 passed, 6 skipped.
+
+## 2026-11-21 — Site scan: "Through the camera" view, Focus robot, lit 3D view
+
+- Applications: client `client/src/components/scan/` (SiteLayer, SiteWorkspace), `SceneView.tsx`, `styles.css`; core `packages/core/src/scan.ts`; `e2e/` (E2E_PORT and E2E_RUNTIME overrides).
+- Behaviour:
+  - "Through the camera" shows an undistorted keyframe as the background, with the camera from the shared intrinsics and the frame pose. The scan mesh is drawn depth-only, so real walls hide the robot, and it catches the robot's shadow. A walk scrubber, Play walk (6 fps) and "Best view of the robot" move along the recording.
+  - The 3D view zooms to the cursor, with a scale-aware minDistance and damping. "Focus robot" and "Reset view" buttons; double-click sets the orbit target. The mesh is lit with hemisphere and directional light, with shadows and fog.
+- Checked (2026-11-21, synthetic clip, fixture LLM): e2e 19 of 19 (Chrome). The robot fills 60.5% of the canvas height after Focus robot (15.7% before). Camera-view reprojection is 2.56 px mean and 2.85 px worst (limit 4 px) on one frame pair. Typecheck is clean and core tests pass 15 of 15. Not checked: real phone footage.
+
+@@MERGE_ENTRY@@
+
+## 2026-11-21 — Merge of origin/AR_review into google-gemini (finalised)
+- Affected: all applications. The Photo AR and Site scan work (ar_calibrate, ar_estimate, scan tasks, phone pairing, AR and
+  site views in Design) is merged with the Gemini providers, objects/ask/checks roles, studio, fleet, savings and vendors.
+- Resolution notes: the pom keeps zxing and not springdoc (the API spec is the bundled contract); the job kind enum in
+  `contracts/openapi.yaml` gained ar_estimate, scan_reconstruct and apply_scene; two Java tests were adapted to the
+  18-argument `StudioProperties`; the spin-mill worked example was removed from the spec and checks prompts (generic wording).
+  Generated files (schemas, types, OpenAPI bundle, path types, lockfile) were regenerated, not hand-merged.
+- Checks (fixture tests, no real model, no GPU): pytest 517 passed, 8 skipped, 12 failed (tests/test_scan.py needs the
+  optional av, OpenCV and SciPy, which are not installed in the shared venv); Java 88 run, 2 failures (the same missing
+  `av` for a scan upload and a phone video); contracts:check, typecheck, build and the core tests (15) pass.

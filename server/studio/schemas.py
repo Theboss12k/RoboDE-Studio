@@ -893,3 +893,142 @@ class AskResponse(Model):
     actions_taken: list[AskActionTaken] = []           # filled by Java after it executed or refused the proposals
     confirm: list[AskConfirm] = []
     navigate: AskNavigate | None = None
+# --- Photo AR (docs/AR_PHOTO.md) -------------------------------------------------------------------------------------
+# Lists, not tuples: the Claude CLI rejects `prefixItems`.
+
+class ArIntrinsics(Model):
+    """Pinhole camera in pixels of the stored photo (top-left origin, no distortion)."""
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    width: int
+    height: int
+
+
+class ArReference(Model):
+    """A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres."""
+    corners_px: list[list[float]]                    # exactly 4 [u, v]
+    size_m: list[float]                              # [length of corner0->1, length of corner1->2], each > 0
+
+    @field_validator('corners_px')
+    @classmethod
+    def four_pairs(cls, value):
+        if len(value) != 4 or any(len(p) != 2 for p in value):
+            raise ValueError('corners_px must be exactly 4 [u, v] pairs')
+        return value
+
+    @field_validator('size_m')
+    @classmethod
+    def two_positive(cls, value):
+        if len(value) != 2 or not all(v > 0 for v in value):
+            raise ValueError('size_m must be 2 positive values')
+        return value
+
+
+class ArCalibration(Model):
+    intrinsics: ArIntrinsics
+    world_from_camera: list[list[float]]             # 4x4 T_FC, row-major
+    scale_source: Literal['reference', 'estimate']
+    focal_source: Literal['reference', 'estimate', 'default']
+    residual_px: float | None = None                 # RMS reprojection of the 4 corners; None for an estimate
+    camera_height_m: float                           # camera centre above the floor
+    warnings: list[str] = []
+
+
+class ArPlacement(Model):
+    x: float = 0.0
+    y: float = 0.0
+    yaw_deg: float = 0.0
+
+
+class ArScene(Model):
+    id: str
+    image: str                                       # file name in the scene folder
+    width: int
+    height: int
+    created: str                                     # ISO 8601 UTC
+    reference: ArReference | None = None
+    calibration: ArCalibration | None = None         # from the reference (trusted scale)
+    estimate: ArCalibration | None = None            # from the depth model (approximate scale)
+    placement: ArPlacement = ArPlacement()
+
+
+# --- Site scan (docs/SITE_SCAN.md) ------------------------------------------------------------------------------------
+# Lists, not tuples. R is the structure-from-motion frame, A the aligned frame (z up, floor z = 0), S metres.
+
+class ScanVideo(Model):
+    file: str
+    bytes: int
+    duration_s: float
+    width: int
+    height: int
+    fps: float
+    rotation_deg: int
+
+
+class ScanCamera(Model):
+    """ONE camera for the whole clip, at keyframe resolution (OpenCV convention)."""
+    model: Literal['SIMPLE_RADIAL'] = 'SIMPLE_RADIAL'
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    k1: float
+    width: int
+    height: int
+    undistorted: bool = False        # True: the stored frames are pure pinhole images (k1 is informational)
+
+
+class ScanFrame(Model):
+    index: int
+    t_s: float
+    image: str                                       # frames/NNNN.jpg
+    world_from_camera: list[list[float]] | None = None   # 4x4 R_from_C, row-major; None = not registered
+
+
+class ScanPlane(Model):
+    normal: list[float]                              # 3, unit, in R
+    d: float                                         # normal . p + d = 0
+
+
+class ScanScale(Model):
+    method: Literal['sheet', 'distance']
+    factor: float = Field(gt=0)
+    residual: float                                  # relative side disagreement; 0 for distance
+    frame: int | None = None
+    corners_px: list[list[float]] | None = None
+    size_m: list[float] | None = None
+    p1: list[float] | None = None                    # in R
+    p2: list[float] | None = None
+    distance_m: float | None = None
+
+
+class ScanMesh(Model):
+    file: str                                        # "scan.glb"
+    vertices: int
+    triangles: int
+
+
+class ScanStats(Model):
+    frames_total: int
+    frames_registered: int
+    reproj_px: float
+    points3d: int
+    extent: list[float]                              # A-frame size, scan units
+
+
+class SiteScan(Model):
+    id: str
+    created: str
+    video: ScanVideo
+    status: Literal['uploaded', 'reconstructing', 'reconstructed', 'failed']
+    error: str | None = None
+    camera: ScanCamera | None = None
+    frames: list[ScanFrame] = []
+    floor: ScanPlane | None = None
+    alignment: list[list[float]] | None = None       # A_from_R, 4x4 row-major
+    scale: ScanScale | None = None
+    mesh: ScanMesh | None = None
+    placement: ArPlacement = ArPlacement()
+    stats: ScanStats | None = None

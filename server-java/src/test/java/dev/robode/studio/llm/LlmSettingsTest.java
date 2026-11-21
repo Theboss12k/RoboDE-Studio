@@ -21,7 +21,7 @@ class LlmSettingsTest {
 
     LlmSettings settings(Map<String, String> env) {
         StudioProperties props = new StudioProperties(runtime, runtime, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
         return new LlmSettings(props, null, new Keys(runtime, Map.of()), env);
     }
 

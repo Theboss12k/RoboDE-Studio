@@ -3,6 +3,11 @@
 
 export interface Contracts {
   Analysis?: Analysis;
+  ArCalibration?: ArCalibration;
+  ArIntrinsics?: ArIntrinsics;
+  ArPlacement?: ArPlacement;
+  ArReference?: ArReference;
+  ArScene?: ArScene;
   AskRequest?: AskRequest;
   AskResponse?: AskResponse;
   Baseline?: Baseline;
@@ -22,8 +27,16 @@ export interface Contracts {
   RobotConcept?: RobotConcept;
   Savings?: Savings;
   SavingsInputs?: SavingsInputs;
+  ScanCamera?: ScanCamera;
+  ScanFrame?: ScanFrame;
+  ScanMesh?: ScanMesh;
+  ScanPlane?: ScanPlane;
+  ScanScale?: ScanScale;
+  ScanStats?: ScanStats;
+  ScanVideo?: ScanVideo;
   SceneSpec?: SceneSpec;
   SimResult?: SimResult;
+  SiteScan?: SiteScan;
   StudioBuild?: StudioBuild;
   TechnicalSpec?: TechnicalSpec;
   TwinMoveRequest?: TwinMoveRequest;
@@ -177,6 +190,67 @@ export interface Difference {
   candidate: string;
   impact: string;
   severity: "ok" | "minor" | "major" | "blocking";
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArCalibration".
+ */
+export interface ArCalibration {
+  intrinsics: ArIntrinsics;
+  world_from_camera: number[][];
+  scale_source: "reference" | "estimate";
+  focal_source: "reference" | "estimate" | "default";
+  residual_px: number | null;
+  camera_height_m: number;
+  warnings: string[];
+}
+/**
+ * Pinhole camera in pixels of the stored photo (top-left origin, no distortion).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArIntrinsics".
+ */
+export interface ArIntrinsics {
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  width: number;
+  height: number;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArPlacement".
+ */
+export interface ArPlacement {
+  x: number;
+  y: number;
+  yaw_deg: number;
+}
+/**
+ * A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArReference".
+ */
+export interface ArReference {
+  corners_px: number[][];
+  size_m: number[];
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArScene".
+ */
+export interface ArScene {
+  id: string;
+  image: string;
+  width: number;
+  height: number;
+  created: string;
+  reference: ArReference | null;
+  calibration: ArCalibration | null;
+  estimate: ArCalibration | null;
+  placement: ArPlacement;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -799,6 +873,108 @@ export interface SavingsInputs {
   days_per_week: number;
   days_per_year: number;
   supervision_min_per_shift: number;
+}
+/**
+ * ONE camera for the whole clip, at keyframe resolution (OpenCV convention).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanCamera".
+ */
+export interface ScanCamera {
+  model: "SIMPLE_RADIAL";
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  k1: number;
+  width: number;
+  height: number;
+  undistorted: boolean;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanFrame".
+ */
+export interface ScanFrame {
+  index: number;
+  t_s: number;
+  image: string;
+  world_from_camera: number[][] | null;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanMesh".
+ */
+export interface ScanMesh {
+  file: string;
+  vertices: number;
+  triangles: number;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanPlane".
+ */
+export interface ScanPlane {
+  normal: number[];
+  d: number;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanScale".
+ */
+export interface ScanScale {
+  method: "sheet" | "distance";
+  factor: number;
+  residual: number;
+  frame: number | null;
+  corners_px: number[][] | null;
+  size_m: number[] | null;
+  p1: number[] | null;
+  p2: number[] | null;
+  distance_m: number | null;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanStats".
+ */
+export interface ScanStats {
+  frames_total: number;
+  frames_registered: number;
+  reproj_px: number;
+  points3d: number;
+  extent: number[];
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ScanVideo".
+ */
+export interface ScanVideo {
+  file: string;
+  bytes: number;
+  duration_s: number;
+  width: number;
+  height: number;
+  fps: number;
+  rotation_deg: number;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "SiteScan".
+ */
+export interface SiteScan {
+  id: string;
+  created: string;
+  video: ScanVideo;
+  status: "uploaded" | "reconstructing" | "reconstructed" | "failed";
+  error: string | null;
+  camera: ScanCamera | null;
+  frames: ScanFrame[];
+  floor: ScanPlane | null;
+  alignment: number[][] | null;
+  scale: ScanScale | null;
+  mesh: ScanMesh | null;
+  placement: ArPlacement;
+  stats: ScanStats | null;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema

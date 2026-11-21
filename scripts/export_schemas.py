@@ -18,7 +18,9 @@ MODELS = ['DesignVersion', 'TechnicalSpec', 'SceneSpec', 'RobotConcept', 'Requir
           'Candidate', 'Analysis', 'ManufacturerSpec', 'Difference', 'Question',
           'FleetLimits', 'FleetAssignment', 'FleetPlan', 'RepairLog', 'FleetHint',
           'StudioBuild', 'TwinMoveRequest', 'TwinMoveResult', 'Baseline', 'SavingsInputs', 'Savings',
-          'AskRequest', 'AskResponse']
+          'AskRequest', 'AskResponse',
+          'ArIntrinsics', 'ArReference', 'ArCalibration', 'ArPlacement', 'ArScene',
+          'ScanVideo', 'ScanCamera', 'ScanFrame', 'ScanPlane', 'ScanScale', 'ScanMesh', 'ScanStats', 'SiteScan']
 OUT = ROOT / 'contracts' / 'schemas'
 
 

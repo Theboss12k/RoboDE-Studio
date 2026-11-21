@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, type MutableRefObject, type RefObject } fro
 import { BufferGeometry, Float32BufferAttribute } from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
-import { Vector3 } from "three";
-import { linkFrames, objectCenters, robotExtent, Z_UP } from "@robode/studio-core";
+import { DirectionalLight, Matrix4, Object3D, Vector3, type Group } from "three";
+import { cameraMatrixWorld, linkFrames, objectCenters, placementMatrix, projectionFromIntrinsics, robotExtent, scanCameraMatrixWorld, Z_UP } from "@robode/studio-core";
 import { RobotGeometry } from "../RobotView";
 import { ObjectModel, objectKind } from "./objectModels";
 import { ModelParts } from "./objectParts";
-import type { BasePose, Frame, Marker, Parsed, SceneObject, SceneSpec, Vec3 } from "../types";
+import SiteLayer from "./scan/SiteLayer";
+import type { SiteView } from "./scan/types";
+import type { ArCalibration, ArPlacement, ArScene, BasePose, Frame, Marker, Parsed, SceneObject, SceneSpec, Vec3 } from "../types";
 
 type Base = { x: number; y: number; z: number; yaw: number };
 /** One robot of a fleet: its parsed URDF, current joint positions and base pose. */
@@ -59,6 +61,95 @@ function Overlay({ overlay, ids }: { overlay: FleetOverlay; ids: string[] }) {
   );
 }
 
+/** Photo AR (docs/AR_PHOTO.md): the scene is drawn over a photo with the camera taken from its calibration. */
+export type ArView = { photoUrl: string; scene: ArScene; showBoxes: boolean; onPlace?: (p: ArPlacement) => void };
+
+/** A camera with a given projection and pose (column-major). Set every frame so the canvas size can never overwrite it. */
+function FixedCamera({ proj, world }: { proj: number[]; world: number[] }) {
+  useFrame(({ camera }) => {
+    camera.matrixAutoUpdate = false;
+    camera.matrix.fromArray(world);
+    camera.matrixWorld.fromArray(world);
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    camera.projectionMatrix.fromArray(proj);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  });
+  return null;
+}
+
+/** Camera from the photo's intrinsics and pose. */
+function ArCamera({ cal }: { cal: ArCalibration }) {
+  const proj = useMemo(() => {
+    const i = cal.intrinsics;
+    return projectionFromIntrinsics(i.fx, i.fy, i.cx, i.cy, i.width, i.height, 0.05, 200);
+  }, [cal]);
+  const world = useMemo(() => cameraMatrixWorld(cal.world_from_camera), [cal]);
+  return <FixedCamera proj={proj} world={world} />;
+}
+
+/** Through the camera (My site): the scan camera's intrinsics at the frame resolution, posed by Z_UP * S_from_R * R_from_C * flip. */
+function SiteCamera({ site }: { site: SiteView }) {
+  const cam = site.camera!;
+  const proj = useMemo(() => projectionFromIntrinsics(cam.k.fx, cam.k.fy, cam.k.cx, cam.k.cy, cam.k.width, cam.k.height, 0.02, 300), [cam.k]);
+  const world = useMemo(() => scanCameraMatrixWorld(site.sFromR, cam.worldFromCamera), [site.sFromR, cam.worldFromCamera]);
+  return <FixedCamera proj={proj} world={world} />;
+}
+
+/**
+ * Lights of My site: a hemisphere light and one soft directional light that casts the robot's shadow. Its shadow camera covers
+ * the design's extent (the sphere `centre`, `radius`, three.js world), so the shadow stays sharp.
+ */
+function SiteLights({ centre, radius }: { centre: Vector3; radius: number }) {
+  const light = useRef<DirectionalLight>(null);
+  const target = useMemo(() => new Object3D(), []);
+  const r = radius * 1.25 + 0.4, d = r * 2.5;
+  useEffect(() => {
+    const l = light.current;
+    if (!l) return;
+    target.position.copy(centre);
+    target.updateMatrixWorld();
+    l.target = target;
+    l.position.copy(centre).add(new Vector3(0.45, 0.8, 0.35).normalize().multiplyScalar(d));
+    l.shadow.camera.updateProjectionMatrix();
+  }, [centre, d, target]);
+  return (
+    <>
+      <hemisphereLight args={["#f4f7fa", "#8a8f94", 0.95]} />
+      <directionalLight ref={light} intensity={1.15} castShadow
+        shadow-camera-left={-r} shadow-camera-right={r} shadow-camera-top={r} shadow-camera-bottom={-r}
+        shadow-camera-near={0.1} shadow-camera-far={d + r * 3} shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.015} shadow-radius={3} />
+      <primitive object={target} />
+    </>
+  );
+}
+/** Shadow-only floor at z = 0 of the floor frame F; dragging on it moves the placement. */
+function ArFloor({ placement, onPlace }: { placement: ArPlacement; onPlace?: (p: ArPlacement) => void }) {
+  const grab = useRef<{ dx: number; dy: number } | null>(null);
+  // three.js y-up point to F: (x, y, z) -> (x, -z, y)
+  return (
+    <group matrixAutoUpdate={false} matrix={Z_UP}>
+      <mesh receiveShadow
+        onPointerDown={(e) => {
+          if (!onPlace) return;
+          e.stopPropagation();
+          try { (e.target as unknown as Element).setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+          grab.current = { dx: e.point.x - placement.x, dy: -e.point.z - placement.y };
+        }}
+        onPointerMove={(e) => {
+          if (!grab.current || !onPlace) return;
+          onPlace({ ...placement, x: e.point.x - grab.current.dx, y: -e.point.z - grab.current.dy });
+        }}
+        onPointerUp={(e) => {
+          grab.current = null;
+          try { (e.target as unknown as Element).releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+        }}>
+        <planeGeometry args={[200, 200]} />
+        <shadowMaterial opacity={0.3} />
+      </mesh>
+    </group>
+  );
+}
+
 function ObjectMesh({ o, centre }: { o: SceneObject; centre: Vec3 }) {
   // The agent's model (own frame: box centre, z up), else the keyword models, else the plain primitive.
   if (o.model) return <group position={centre}><ModelParts model={o.model} /></group>;
@@ -74,13 +165,15 @@ function ObjectMesh({ o, centre }: { o: SceneObject; centre: Vec3 }) {
   );
 }
 
-function Pin({ marker, labels }: { marker: Marker; labels: RefObject<Map<string, HTMLSpanElement>> }) {
+function Pin({ marker, labels, world }: { marker: Marker; labels: RefObject<Map<string, HTMLSpanElement>>; world?: Matrix4 }) {
   const [x, y, z] = marker.position;
   const projected = useMemo(() => new Vector3(), []);
   useFrame(({ camera, size }) => {
     const label = labels.current.get(marker.id);
     if (!label) return;
-    projected.set(x, z + 0.1, -y).project(camera);
+    // World z-up to three.js; in AR the placement is part of `world`.
+    if (world) projected.set(x, y, z + 0.1).applyMatrix4(world).project(camera);
+    else projected.set(x, z + 0.1, -y).project(camera);
     const left = (projected.x + 1) * size.width / 2;
     const top = (1 - projected.y) * size.height / 2;
     label.style.visibility = Math.abs(projected.z) <= 1 ? "visible" : "hidden";
@@ -161,8 +254,8 @@ function bounds(scene: SceneSpec, parsed: Parsed | undefined, initialBase: BaseP
   return { cx, cy, cz, fx, fy, floorX, floorY, radius };
 }
 
-export default function SceneView({ scene, parsed, frame, frames = [], index = 0, base, initialBase, height = 420, robots, centres: given, overlay, meshBase, handle }: {
-  scene: SceneSpec; parsed: Parsed | undefined; frame?: Frame; frames?: Frame[]; index?: number; base: Base; initialBase: BasePose; height?: number;
+export default function SceneView({ scene, parsed, frame, frames = [], index = 0, base, initialBase, height = 420, robots, centres: given, overlay, meshBase, handle, ar, site }: {
+  scene: SceneSpec; parsed: Parsed | undefined; frame?: Frame; frames?: Frame[]; index?: number; base: Base; initialBase: BasePose; height?: number; ar?: ArView; site?: SiteView;
   /** A fleet: every robot is drawn (replaces `parsed`/`frame`/`base`), and `centres` carries the objects on the shared clock. */
   robots?: FleetRobot[]; centres?: Record<string, Vec3>; overlay?: FleetOverlay;
   /** Url folder that URDF mesh uris are relative to (Robot studio builds); without it meshes show as placeholders. */
@@ -170,6 +263,16 @@ export default function SceneView({ scene, parsed, frame, frames = [], index = 0
   /** Receives a handle for snapshots from set camera views (Robot studio approval). */
   handle?: MutableRefObject<SceneViewHandle | null>;
 }) {
+  const arCal = ar ? (ar.scene.calibration ?? ar.scene.estimate ?? null) : null;
+  const useAr = !!(ar && arCal);
+  const worldMatrix = useMemo(() => {
+    // My site: the design world sits in the site through the placement, Z_UP * T_SW (docs/SITE_SCAN.md).
+    if (site) return Z_UP.clone().multiply(new Matrix4().fromArray(placementMatrix(site.placement)));
+    if (!useAr) return Z_UP;
+    const p = ar!.scene.placement;
+    // F -> three.js is Z_UP; the design world sits in F through the placement: Z_UP * T_FW.
+    return Z_UP.clone().multiply(new Matrix4().fromArray(placementMatrix(p)));
+  }, [useAr, ar?.scene.placement.x, ar?.scene.placement.y, ar?.scene.placement.yaw_deg, site?.placement.x, site?.placement.y, site?.placement.yaw_deg]); // eslint-disable-line react-hooks/exhaustive-deps
   const labels = useRef(new Map<string, HTMLSpanElement>());
   const first = frames[0];
   const b = useMemo(() => bounds(scene, parsed, initialBase, first, robots?.map((r) => ({ ...r, positions: {} })), overlay), [scene, parsed, initialBase, first, robots?.map((r) => r.id).join(","), overlay]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -178,29 +281,66 @@ export default function SceneView({ scene, parsed, frame, frames = [], index = 0
   const objectMap = Object.fromEntries(scene.objects.map((o) => [o.id, o]));
   const target: [number, number, number] = [b.cx, b.cz, -b.cy];
   const d = b.radius * 2.8;
+  const robotRef = useRef<Group>(null);
+  const cam = site?.mode === "camera" ? site.camera : null;
+  // The design's extent as a sphere in the three.js world (for the shadow camera).
+  const designCentre = useMemo(() => new Vector3(b.cx, b.cy, b.cz).applyMatrix4(worldMatrix), [b.cx, b.cy, b.cz, worldMatrix]);
+  const frameStyle = cam ? {
+    aspectRatio: `${cam.k.width} / ${cam.k.height}`, width: `min(100%, calc(78vh * ${cam.k.width / cam.k.height}))`,
+    backgroundImage: `url("${cam.frameUrl}")`, backgroundSize: "100% 100%",
+  } : null;
   return (
-    <div className="scene" style={{ height }} role="img" aria-label="3D view of the scene and the robot. Drag to orbit, scroll to zoom.">
-      <Canvas shadows camera={{ position: [b.cx + d * 0.7, b.cz + d * 0.7, -b.cy + d * 0.9], fov: 45, near: 0.05, far: 200 }} gl={{ preserveDrawingBuffer: true }}>
-        <ambientLight intensity={0.75} />
-        <directionalLight position={[3, 5, 2]} intensity={1.2} castShadow />
-        <Grid position={[b.floorX, 0.001, -b.floorY]} args={[b.fx, b.fy]} cellSize={0.1} sectionSize={0.5} cellColor="#b5c0ca" sectionColor="#8593a2" fadeDistance={b.radius * 14} />
-        <group matrixAutoUpdate={false} matrix={Z_UP}>
-          <mesh position={[b.floorX, b.floorY, -0.002]} receiveShadow><planeGeometry args={[b.fx, b.fy]} /><meshStandardMaterial color="#cfd6dd" /></mesh>
-          {scene.boxes.map((box) => (
-            <mesh key={box.id} position={box.center} rotation={[0, 0, box.yaw]} castShadow receiveShadow>
-              <boxGeometry args={box.size} />
-              <meshStandardMaterial color={box.color} transparent={!box.collides} opacity={box.collides ? 1 : 0.35} roughness={0.7} />
-            </mesh>
-          ))}
-          {scene.markers.map((m) => <Pin key={m.id} marker={m} labels={labels} />)}
+    <div className={`scene${site ? (cam ? " site-camera" : " site-3d") : ""}${site?.tool ? " site-tool" : ""}`} style={useAr
+      ? { aspectRatio: `${ar!.scene.width} / ${ar!.scene.height}`, backgroundImage: `url("${ar!.photoUrl}")`, backgroundSize: "100% 100%" }
+      : frameStyle ?? { height }} role="img"
+      aria-label={cam ? "Your design drawn over a frame of the site video, seen through the scan camera."
+        : site ? "3D view of your site scan with the design placed in it. Drag to orbit, scroll to zoom to the cursor, double-click a surface to orbit around it, pick a tool to click on surfaces."
+        : useAr ? "The design drawn over your photo. Drag on the floor to move it." : "3D view of the scene and the robot. Drag to orbit, scroll to zoom."}>
+      <Canvas key={cam ? "site-camera" : site ? "site-3d" : "plain"} shadows camera={{ position: [b.cx + d * 0.7, b.cz + d * 0.7, -b.cy + d * 0.9], fov: 45, near: 0.05, far: 200 }}
+        gl={useAr || site ? { preserveDrawingBuffer: true, alpha: true } : { preserveDrawingBuffer: true }}>
+        {useAr && <ArCamera cal={arCal!} />}
+        {cam && <SiteCamera site={site!} />}
+        {site ? <SiteLights centre={designCentre} radius={b.radius} /> : (
+          <>
+            <ambientLight intensity={0.75} />
+            <directionalLight position={[3, 5, 2]} intensity={1.2} castShadow
+              {...(useAr ? { "shadow-camera-left": -8, "shadow-camera-right": 8, "shadow-camera-top": 8, "shadow-camera-bottom": -8, "shadow-camera-far": 30, "shadow-mapSize": [2048, 2048] as [number, number] } : {})} />
+          </>
+        )}
+        {useAr && <ArFloor placement={ar!.scene.placement} onPlace={ar!.onPlace} />}
+        {site && <SiteLayer site={site} robotRef={robotRef} />}
+        {!useAr && !site && <Grid position={[b.floorX, 0.001, -b.floorY]} args={[b.fx, b.fy]} cellSize={0.1} sectionSize={0.5} cellColor="#b5c0ca" sectionColor="#8593a2" fadeDistance={b.radius * 14} />}
+        <group matrixAutoUpdate={false} matrix={worldMatrix}>
+          {!useAr && !site && <mesh position={[b.floorX, b.floorY, -0.002]} receiveShadow><planeGeometry args={[b.fx, b.fy]} /><meshStandardMaterial color="#cfd6dd" /></mesh>}
+          {(!useAr || ar!.showBoxes) && scene.boxes.map((box) => {
+            // A keep-out zone is a collision box drawn see-through, so the scan stays visible behind it.
+            const ghost = !box.collides || box.kind === "floor_zone";
+            return (
+              <mesh key={box.id} position={box.center} rotation={[0, 0, box.yaw]} castShadow receiveShadow onClick={site?.onPick}>
+                <boxGeometry args={box.size} />
+                <meshStandardMaterial color={box.color} transparent={ghost} opacity={ghost ? 0.35 : 1} roughness={0.7} />
+              </mesh>
+            );
+          })}
+          {scene.markers.map((m) => <Pin key={m.id} marker={m} labels={labels} world={useAr || site ? worldMatrix : undefined} />)}
           {scene.objects.map((o) => <ObjectMesh key={o.id} o={objectMap[o.id]} centre={centres[o.id]} />)}
-          {robots ? robots.map((r) => <RobotGeometry key={r.id} parsed={r.parsed} positions={r.positions} base={r.base} meshBase={meshBase} />)
-            : parsed && <RobotGeometry parsed={parsed} positions={frame?.joints} base={base} meshBase={meshBase} />}
+          <group ref={robotRef}>
+            {robots ? robots.map((r) => <RobotGeometry key={r.id} parsed={r.parsed} positions={r.positions} base={r.base} meshBase={meshBase} />)
+              : parsed && <RobotGeometry parsed={parsed} positions={frame?.joints} base={base} meshBase={meshBase} />}
+          </group>
           {overlay && <Overlay overlay={overlay} ids={overlayIds(overlay, robots)} />}
         </group>
-        <OrbitControls target={target} makeDefault />
+        {!useAr && !site && <OrbitControls target={target} makeDefault />}
         {handle && <ViewProbe handle={handle} target={target} d={d} />}
       </Canvas>
+      {useAr && !ar!.scene.calibration && <span className="ar-badge">Approximate scale</span>}
+      {site?.unscaled && <span className="ar-badge">Unscaled — set a scale</span>}
+      {site && !cam && (
+        <div className="scene-nav">
+          <button type="button" onClick={site.onFocusRobot}>Focus robot</button>
+          <button type="button" onClick={site.onResetView}>Reset view</button>
+        </div>
+      )}
       <div className="pin-labels" aria-hidden="true">
         {scene.markers.map(({ id, name }) => (
           <span key={id} className="pin-label" ref={(node) => {

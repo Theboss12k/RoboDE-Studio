@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "index": {
+      "title": "Index",
+      "type": "integer"
+    },
+    "t_s": {
+      "title": "T S",
+      "type": "number"
+    },
+    "image": {
+      "title": "Image",
+      "type": "string"
+    },
+    "world_from_camera": {
+      "anyOf": [
+        {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "World From Camera"
+    }
+  },
+  "required": [
+    "index",
+    "t_s",
+    "image"
+  ],
+  "title": "ScanFrame",
+  "type": "object"
+}

@@ -2,8 +2,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { baseAt, fleetObjectCenters, frameAt, memberFrameAt } from "@robode/studio-core";
 import { Pause, Play } from "./icons";
-import SceneView, { type FleetOverlay, type FleetRobot, type SceneViewHandle } from "./SceneView";
+import SceneView, { type ArView, type FleetOverlay, type FleetRobot, type SceneViewHandle } from "./SceneView";
 import type { MutableRefObject } from "react";
+import type { SiteView } from "./scan/types";
 import { fmt } from "./common";
 import type { BasePose, FleetPlan, Parsed, SceneSpec, SimResult } from "../types";
 
@@ -13,7 +14,7 @@ export type PlayerHandle = { getMoment: () => { t: number } };
 /** A fleet to play on one shared clock: the plan and each member's parsed URDF (by member id). */
 export type PlayerFleet = { plan: FleetPlan; parsed: Record<string, Parsed> };
 
-const Player = forwardRef<PlayerHandle, { scene: SceneSpec; parsed?: Parsed; sim: SimResult; robotBase: BasePose; height?: number; fleet?: PlayerFleet; overlay?: FleetOverlay; meshBase?: string; handle?: MutableRefObject<SceneViewHandle | null> }>(function Player({ scene, parsed, sim, robotBase, height, fleet, overlay, meshBase, handle }, ref) {
+const Player = forwardRef<PlayerHandle, { scene: SceneSpec; parsed?: Parsed; sim: SimResult; robotBase: BasePose; height?: number; fleet?: PlayerFleet; overlay?: FleetOverlay; meshBase?: string; handle?: MutableRefObject<SceneViewHandle | null>; ar?: ArView; site?: SiteView }>(function Player({ scene, parsed, sim, robotBase, height, fleet, overlay, meshBase, handle, ar, site }, ref) {
   const frames = sim.frames ?? [];
   const times = useMemo(() => frames.map((f) => f.t), [frames]);
   const members = fleet?.plan.members ?? [];
@@ -57,7 +58,7 @@ const Player = forwardRef<PlayerHandle, { scene: SceneSpec; parsed?: Parsed; sim
   const bad = ((fleet ? fleet.plan.events : sim.events) ?? []).filter((e) => e.kind === "collision" || e.kind === "unreachable");
   return (
     <div className="stack">
-      <SceneView scene={scene} parsed={parsed} frame={frame} frames={frames} index={index} base={base} initialBase={robotBase} height={height} robots={robots} centres={fleetCentres} overlay={overlay} meshBase={meshBase} handle={handle} />
+      <SceneView scene={scene} parsed={parsed} frame={frame} frames={frames} index={index} base={base} initialBase={robotBase} height={height} robots={robots} centres={fleetCentres} overlay={overlay} meshBase={meshBase} handle={handle} ar={ar} site={site} />
       {!frames.length && !fleet ? <div className="notice warning small">This simulation has no frames to play.</div> : (
         <div className="playbar">
           <button type="button" className="go" aria-label={playing ? "Pause" : "Play"} onClick={() => { if (!playing && t >= duration) setT(0); setPlaying(!playing); }}>
