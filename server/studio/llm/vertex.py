@@ -64,18 +64,30 @@ def run_command(argv, timeout=30):
     return done.returncode, done.stdout, done.stderr
 
 
+def read_dmi_product():
+    """The machine's DMI product name ("Google Compute Engine" on a GCE VM; the same check Google's own client libraries use)."""
+    try:
+        with open('/sys/class/dmi/id/product_name', encoding='utf-8') as handle:
+            return handle.read().strip()
+    except OSError:
+        return ''
+
+
 class Credentials:
     """Access tokens and the project id, from the metadata server or gcloud. Cached; safe to share between calls."""
 
-    def __init__(self, env=None, transport=None, runner=run_command, clock=time.monotonic, which=shutil.which):
+    def __init__(self, env=None, transport=None, runner=run_command, clock=time.monotonic, which=shutil.which,
+                 dmi_product=None):
         self.env = os.environ if env is None else env
+        self.dmi_product = dmi_product or read_dmi_product
         self.transport, self.runner, self.clock, self.which = transport, runner, clock, which
         self._token, self._expires, self._project = None, 0.0, None
         self._lock = threading.Lock()
 
     @property
     def on_cloud(self):
-        return bool(self.env.get('K_SERVICE') or self.env.get('GCE_METADATA_HOST'))
+        # Cloud Run sets K_SERVICE; a plain Compute Engine VM sets nothing, but its firmware reports "Google Compute Engine".
+        return bool(self.env.get('K_SERVICE') or self.env.get('GCE_METADATA_HOST')) or self.dmi_product().startswith('Google')
 
     def invalidate(self):
         with self._lock:

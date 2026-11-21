@@ -596,3 +596,10 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
 
 - Client: a three-way theme switch (Light, Dark, System) in the rail footer and in Settings → Appearance, kept in sync, remembered per browser (`localStorage` key `robode.theme`) and applied before the first render, with no flash. `:root[data-theme="dark"]` forces the dark tokens on a light OS; `data-theme="light"` forces light on a dark OS; System follows the OS live. The robot and scene 3D views use theme-aware background, floor and grid colours.
 - Checks: typecheck and build pass. In the browser (branch server 5191, macOS in Dark), choosing Light turned the whole app light (page, panels, example tiles, buttons, Design 3D scene) and the choice persisted. The dark hero banner is part of the design.
+
+## 2026-11-21 — Compute Engine VM deployment (deploy/vm) and GCE detection in the Vertex adapter
+
+- Applications: Google edition server (Python Vertex adapter), deployment scripts.
+- `deploy/vm/` added: `startup.sh` (idempotent GCE startup script: JDK 25, Python 3.12, Node 22, Caddy, build, systemd service, Caddy HTTPS on `<ip>.sslip.io`, role profiles on `vertex_*` written only if absent), `create.sh` (gcloud steps), `budget.md`, `README.md`. The existing token mechanism is reused: the server enforces `STUDIO_TOKEN` on every `/api/v1` call even on a loopback bind (covered by ApiSmokeTest), and the client takes `#token=` once and sets the `studio_token` cookie for plain links. No Java or client change was needed.
+- Bug fix: `Credentials.on_cloud` only recognised Cloud Run (`K_SERVICE`) or `GCE_METADATA_HOST`, so a plain Compute Engine VM would have fallen back to gcloud. It now also checks the DMI product name "Google Compute Engine". New test `test_compute_engine_vm_is_detected_without_cloud_run_variables`; tests/test_vertex.py passes (28 passed, fixtures only).
+- Limitations: the scripts were syntax-checked with `bash -n` only (shellcheck not installed); nothing was run on a real VM and no cloud resources were created; no real Vertex inference.

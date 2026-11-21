@@ -66,7 +66,7 @@ def make(fake=None, gcloud=None, env=None, clock=None, **kw):
     fake = fake or Fake()
     gcloud = gcloud or Gcloud()
     creds = Credentials(env={} if env is None else env, transport=httpx.MockTransport(fake), runner=gcloud,
-                        which=gcloud.which, clock=clock or Clock())
+                        which=gcloud.which, clock=clock or Clock(), dmi_product=lambda: '')
     kw.setdefault('project', 'my-proj')
     return VertexGemini(transport=httpx.MockTransport(fake), credentials=creds, **kw), fake, gcloud, creds
 
@@ -321,3 +321,11 @@ def test_role_defaults_switch_to_vertex_on_cloud_run(monkeypatch):
     assert registry.default_roles({'K_SERVICE': 'x'}) == registry.VERTEX_ROLES
     assert registry.default_roles({'STUDIO_LLM_DEFAULT': 'vertex'})['objects'] == 'vertex_flash_lite'
     assert registry.default_roles({'STUDIO_LLM_DEFAULT': 'gemini'})['spec'] == 'gemini_pro'
+
+
+async def test_compute_engine_vm_is_detected_without_cloud_run_variables():
+    gcloud = Gcloud()
+    on_vm = Credentials(env={}, runner=gcloud, which=gcloud.which, dmi_product=lambda: 'Google Compute Engine')
+    laptop = Credentials(env={}, runner=gcloud, which=gcloud.which, dmi_product=lambda: 'MacBookPro18,3')
+    nowhere = Credentials(env={}, runner=gcloud, which=gcloud.which, dmi_product=lambda: '')
+    assert on_vm.on_cloud and not laptop.on_cloud and not nowhere.on_cloud
