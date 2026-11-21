@@ -22,16 +22,45 @@ def _cycle_shortfall(sim: SimResult, spec: TechnicalSpec) -> float | None:
     return c.actual / cycle
 
 
+def one_robot_reaches(spec: TechnicalSpec, requirements: list[Requirement]) -> str | None:
+    """The first fixed-base family that, sized from the requirements alone (no model), reaches every waypoint of the
+    task from place_base; None when none does. A reach failure of the chosen robot is a sizing or placement problem,
+    not a reason for more robots, when another single robot sized this way covers the task."""
+    from ..physics import place_base
+    from ..schemas import SceneSpec
+    from ..sim import simulate
+    from .assign import FIXED_BASE_FAMILIES
+    base = place_base(spec)
+    for name in FIXED_BASE_FAMILIES:
+        fam = families.get(name)
+        try:
+            params = fam.size_from_physics(requirements, spec, {}).model_dump()
+            if hasattr(fam, 'clamp_to_caps'):
+                params = fam.clamp_to_caps(params)
+            concept = RobotConcept(family=name, name=name, params=params, base=base)
+            sim = simulate(spec, requirements, SceneSpec(robot_base=base), concept)
+        except Exception:                                  # a family that cannot be sized for this task is no answer
+            continue
+        reach = next((c for c in sim.checks if c.requirement_id == 'reach_max'), None)
+        if (reach is None or reach.passed is not False) and not any(e.kind == 'unreachable' for e in sim.events):
+            return name
+    return None
+
+
 def single_robot_shortfall(spec: TechnicalSpec, requirements: list[Requirement], concept: RobotConcept,
                            sim: SimResult) -> list[str]:
-    """Plain-English reasons why the sized single robot falls short; [] = one robot is fine."""
+    """Plain-English reasons why the sized single robot falls short; [] = one robot is fine. A failing reach counts
+    only when no fixed-base family sized from the requirements reaches every waypoint (one_robot_reaches)."""
     out = []
     reach = next((c for c in sim.checks if c.requirement_id == 'reach_max'), None)
     unreachable = [e for e in sim.events if e.kind == 'unreachable']
-    if reach is not None and reach.passed is False:
-        out.append(f'The reach check fails: {reach.detail or "the robot cannot reach every task point"}.')
-    elif unreachable:
-        out.append(f'{len(unreachable)} waypoint(s) cannot be reached by one robot.')
+    if (reach is not None and reach.passed is False) or unreachable:
+        fixable = one_robot_reaches(spec, requirements)
+        if fixable is None:
+            if reach is not None and reach.passed is False:
+                out.append(f'The reach check fails: {reach.detail or "the robot cannot reach every task point"}.')
+            else:
+                out.append(f'{len(unreachable)} waypoint(s) cannot be reached by one robot.')
     fam = families.get(concept.family)
     p = fam.parse(concept.params)
     if concept.family in PRACTICAL_REACH_M:

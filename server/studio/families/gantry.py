@@ -107,13 +107,20 @@ class Gantry:
         p = GantryParams.model_validate(hint or {})
         sf = spec.physics_inputs.safety_factor
         pts = np.array([m.position for m in spec.markers], float)
+        yaw = 0.0
         try:
             from ..physics import place_base
-            b = np.array(place_base(spec).position[:2], float)
+            base = place_base(spec)
+            b, yaw = np.array(base.position[:2], float), float(base.yaw)
         except Exception:                                    # physics not available: bounding-box centre
             b = (pts[:, :2].min(0) + pts[:, :2].max(0)) / 2
         margin = max(0.1, spec.physics_inputs.clearance_m)
-        span = np.abs(pts[:, :2] - b).max(0)
+        # strokes run along the gantry's own axes: the simulator rotates task points into the base frame (sim/task.py
+        # to_base), so the offsets are rotated by -yaw here too (a base facing the first pick is rarely axis-aligned)
+        c, s = math.cos(yaw), math.sin(yaw)
+        d = pts[:, :2] - b
+        local = np.column_stack([c * d[:, 0] + s * d[:, 1], -s * d[:, 0] + c * d[:, 1]])
+        span = np.abs(local).max(0)
         zw_lo, zw_hi, _, _ = ikm.task_extent(spec)
         zlo = min(t('z_min', zw_lo), zw_lo)
         zhi = max(t('z_max', zw_hi), zw_hi)

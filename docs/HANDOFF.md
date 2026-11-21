@@ -1,5 +1,30 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 ~14:40 IST — Multi-robot (fleet) RCA done; fixes 1 and 2 DONE (pytest 531 passed) and committed on local branch `v2` (worktree
+~/Downloads/RoboDE-Studio-google; v2 is pushed at aafc428, these fixes are NOT pushed and NOT on google-gemini/main).**
+Evidence came from project p_b6e8a5f4a1, "Gentle hand-to-hand handover of an open Monster can". The offline repro
+script is in the session scratchpad, so rewrite it if it is gone. It calls `pipeline.fleet.design_fleet` with
+TaskLLMs built from runtime/llm/profiles.json.
+1. **Gantry yaw bug (fix approved, doing now).**
+   - `families/gantry.py::size_from_physics` sizes the X/Y strokes from world-axis offsets to `place_base(spec)`.
+     `sim/task.py::to_base` rotates the waypoints by the base yaw.
+   - `place_base` gives every fixed robot a yaw that faces the first pick, so any yaw other than 0 or π makes the
+     strokes wrong. Example: v2 has a yaw of 1.99 rad, reaches 0 of 9 waypoints, and reaches 9 of 9 with yaw 0.
+   - Fix: rotate (p - b) by -yaw before taking the span, and add a test with a rotated base.
+   - Related, not yet fixed: the sizing uses world z, but the sim subtracts the base z. A gantry on a 0.75 m desk
+     gets a frame 0.75 m too tall.
+2. **False fleet trigger (fix approved, doing now).** `fleet/feasibility.py::single_robot_shortfall` treats any
+   failing reach_max as "one robot is not enough". Fix: count a reach failure only when no fixed-base family
+   (`fleet.assign.FIXED_BASE_FAMILIES`), freshly sized from the spec, reaches every waypoint; use IK on the
+   `sim.task.waypoints` targets. Add a test.
+3. **Not approved yet: the handover station clearance makes the fleet impossible.**
+   - `agents/scene.py::_check_stations` sets STATION_FREE_M = 0.3. For this task the hands are 0.225 m and the
+     desk is 0.24 m from the stand at the midpoint.
+   - The scene agent fails 4 attempts and the fleet_design job errors.
+   - No fleet version exists in any local project.
+4. **Not approved yet: the fleet layout ignores the `robot_base` marker xy and the scene.** Both bases land at
+   y≈0.5, off the desk. The assignment preview says "feasible" anyway.
+
 **2026-11-21 — Submission rule (user): no Claude attribution in this repo.** At the user's request (for the submission), the `Co-Authored-By: Claude …` trailers were removed from all commit messages (history rewritten; the new tip is b6176f0; the backup tag is `pre-coauthor-removal-backup`). Do NOT add Co-Authored-By or "Generated with Claude Code" lines to commits or PRs in this repo until the user says otherwise.
 
 **2026-11-21 — Repo made PUBLIC after a history scrub.** Before going public, the 15-commit history of `main` (local google-gemini) was rewritten with `git filter-branch --tree-filter`:

@@ -11,6 +11,7 @@ from studio.agents.spec import validate_spec
 from studio.fleet import assign, checks, feasibility, geometry, layout, schedule, subspec
 from studio.physics import derive, place_base
 from studio.pipeline.design import size_and_simulate
+from studio.sim import simulate
 from studio.schemas import (BasePose, FleetAssignment, FleetHandover, FleetLimits, FleetMember, FleetMemberAssignment, Frame,
                             Marker, PhysicsInputs, RobotConcept, SceneSpec, SimResult, TaskAction, TaskObject,
                             TechnicalSpec)
@@ -296,3 +297,32 @@ def test_relay_parks_beside_the_line():
     (start, end), base = lay.parks['r2'], lay.bases['r2'].position
     assert start == end and abs(start[0] - base[0]) < 1e-6
     assert abs(start[1] - base[1]) == pytest.approx(layout.POINT_CLEARANCE_M)
+
+
+def _off_line_bottle():
+    """bottle_spec with the robot mounted off the task line, so place_base's yaw (facing the first pick) is ~0.54 rad."""
+    spec = bottle_spec()
+    mount = Marker(id='robot_base', name='Robot base', position=(0.0, 0.0, 0.75))
+    return spec.model_copy(update={'markers': [*spec.markers, mount]})
+
+
+def test_gantry_strokes_follow_a_rotated_base():
+    spec = _off_line_bottle()
+    base = place_base(spec)
+    assert 0.3 < base.yaw < 1.2
+    reqs = derive(spec, base)
+    concept, _, sim = size_and_simulate(spec, reqs, SceneSpec(robot_base=base), RobotConcept(family='gantry', name='g'), base)
+    reach = next(c for c in sim.checks if c.requirement_id == 'reach_max')
+    assert reach.passed is True and not any(e.kind == 'unreachable' for e in sim.events)
+
+
+def test_shortfall_ignores_a_reach_failure_one_robot_can_fix():
+    spec = _off_line_bottle()
+    base = place_base(spec)
+    reqs = derive(spec, base)
+    concept, _, _ = size_and_simulate(spec, reqs, SceneSpec(robot_base=base), RobotConcept(family='serial_arm', name='arm'), base)
+    short = concept.model_copy(update={'params': {**concept.params, 'upper_arm_m': 0.15, 'forearm_m': 0.15}})
+    sim = simulate(spec, reqs, SceneSpec(robot_base=base), short)
+    assert next(c for c in sim.checks if c.requirement_id == 'reach_max').passed is False
+    assert feasibility.one_robot_reaches(spec, reqs) is not None
+    assert feasibility.single_robot_shortfall(spec, reqs, short, sim) == []

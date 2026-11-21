@@ -603,3 +603,31 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
 - `deploy/vm/` added: `startup.sh` (idempotent GCE startup script: JDK 25, Python 3.12, Node 22, Caddy, build, systemd service, Caddy HTTPS on `<ip>.sslip.io`, role profiles on `vertex_*` written only if absent), `create.sh` (gcloud steps), `budget.md`, `README.md`. The existing token mechanism is reused: the server enforces `STUDIO_TOKEN` on every `/api/v1` call even on a loopback bind (covered by ApiSmokeTest), and the client takes `#token=` once and sets the `studio_token` cookie for plain links. No Java or client change was needed.
 - Bug fix: `Credentials.on_cloud` only recognised Cloud Run (`K_SERVICE`) or `GCE_METADATA_HOST`, so a plain Compute Engine VM would have fallen back to gcloud. It now also checks the DMI product name "Google Compute Engine". New test `test_compute_engine_vm_is_detected_without_cloud_run_variables`; tests/test_vertex.py passes (28 passed, fixtures only).
 - Limitations: the scripts were syntax-checked with `bash -n` only (shellcheck not installed); nothing was run on a real VM and no cloud resources were created; no real Vertex inference.
+
+## 2026-11-21 — Fleet suggestion: gantry sizing on a rotated base and the single-robot reach test
+
+- Applications: Studio server (`server/studio/families/gantry.py`, `server/studio/fleet/feasibility.py`); tests in
+  `tests/test_fleet_planner.py`.
+- Root cause analysis of "multi-robot orchestration is not working well". It used a local project (a hand-to-hand
+  handover of an open can at a desk), saved versions, and an offline run of the fleet pipeline with real model
+  inference on 2026-11-21. Four causes were found:
+  1. The gantry X/Y strokes were sized along the world axes, but the simulator works in the base frame, which
+     `place_base` rotates to face the first pick. A gantry with a base yaw other than 0 or π was mis-sized. In the
+     handover project it reached 0 of 9 waypoints; with yaw 0 it reached 9 of 9.
+  2. Any failed reach check was read as "one robot is not enough", so a sizing error triggered the fleet suggestion.
+  3. (Not fixed yet) The 0.3 m free zone around a handover stand cannot be met when the task points or the mounting
+     desk are closer than that. The scene agent failed 4 attempts and the fleet design job errored.
+  4. (Not fixed yet) The fleet layout ignores the xy of the `robot_base` marker and the scene, so bases can land off
+     the desk.
+- Fixed 1: `Gantry.size_from_physics` rotates the task points into the base frame (by -yaw) before taking the
+  stroke span. The z sizing still uses world heights while the simulator subtracts the base z, so a gantry mounted
+  above the floor is sized too tall (noted, not changed).
+- Fixed 2: `single_robot_shortfall` counts a reach failure only when no fixed-base family, sized in code from the
+  requirements alone, reaches every waypoint (`one_robot_reaches`, a numeric simulation with no model call). The
+  practical-reach, gantry-stroke and cycle-time reasons are unchanged.
+- Checked:
+  - offline, the handover project's gantry, re-sized at the same rotated base, reaches 9 of 9 waypoints;
+  - neither saved version gets a fleet suggestion any more;
+  - the two new tests fail without the fixes and pass with them; the full Python suite passes with fixture models
+    (531 passed, 9 skipped). The Java tests were not re-run because no Java code changed.
+  - These are kinematic and static-load calculations in code, not hardware tests.
