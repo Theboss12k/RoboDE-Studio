@@ -585,3 +585,9 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
 - Checks (fixture tests, no real model, no GPU): pytest 517 passed, 8 skipped, 12 failed (tests/test_scan.py needs the
   optional av, OpenCV and SciPy, which are not installed in the shared venv); Java 88 run, 2 failures (the same missing
   `av` for a scan upload and a phone video); contracts:check, typecheck, build and the core tests (15) pass.
+
+## 2026-11-21 — Merged the AR review branch into the Google edition (final branch)
+
+- `origin/AR_review` was merged into `google-gemini` (cb72f69), keeping both sides. Fixture checks: pytest 529 passed, 8 skipped; Java 88, 0 failures; contracts:check, typecheck and build pass. A browser check on the branch server (8801/5191) showed all stages, the Ask bar and the AR "My site" view, with no console errors.
+- The spin-mill worked example was removed from the spec and checks agent prompts, so it cannot leak into other projects' specs or PDFs. The mill remains only as a test fixture.
+- Vertex AI: the ADC sign-in works, but the real call was refused (403) until billing is enabled on the project. No real Vertex inference yet.

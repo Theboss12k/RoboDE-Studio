@@ -1,5 +1,27 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 ~07:35 IST — AR_review MERGED into google-gemini (cb72f69). google-gemini is the FINAL branch (user decision).**
+- The merge kept both sides: the AR view, calibrator, pairing, site scans and `ar_*` tasks, plus Gemini, Gemini CLI,
+  Antigravity, Vertex, Robot studio, fleets, savings, vendors, the checks agent and the Ask bar. Generated files were
+  regenerated. Fixes in the merge: a pom duplicate, the AR job kinds in the OpenAPI enum, test constructors, the
+  spin-mill example removed from the spec and checks prompts.
+- Checks (fixtures): pytest 529 passed, 8 skipped; Java 88, 0 failures; contracts:check, typecheck and build pass.
+- Scan dependencies (av, opencv-python-headless, scipy) are installed into the shared .venv. open3d was removed: it
+  needs `brew install libusb` (the user decides).
+- INCIDENT (fixed): the merge worker's `npm install` in the worktree emptied 17 packages in MAIN's node_modules
+  (via symlinks). Repaired with `npm ci` in main; main typecheck and contracts pass. The worktree now has its own
+  real node_modules.
+- The branch server runs: API 8801 in terminal tab "google edition server" (java -jar
+  server-java/target/studio-server-0.1.0.jar with STUDIO_PORT=8801), UI 5191 via the Robot_IDE `.claude/launch.json`
+  entry `robode-google`. Browser check: all stages, the Ask bar and the AR "My site" view toggle render, with no
+  console errors.
+- Vertex AI: the user signed in with ADC (quota project nvdiavm) and enabled aiplatform. A real test call was
+  refused with 403 because billing is not enabled on nvdiavm; the user must enable billing, then re-test
+  (gemini-3.5-flash-lite, project nvdiavm, global).
+- Next: re-test Vertex after billing; switch roles to the vertex_* profiles if wanted; AR view on a real phone;
+  the spin-mill v3 record (see older entries); optionally merge google-gemini into main.
+
+
 **2026-11-21 ~03:50 IST — NEXT 1 (real verification) done except one re-run. The Claude CLI 5-hour limit was hit (resets 06:20 IST). Read this first.**
 - Done: (b) the Design "Time saved" working was hand-checked; (c) the preferred vendors robu.in and
   omc-stepperonline.com were added in the UI, and real build b2 ran; (d) the vague brief p_9a798e817e asks the baseline
