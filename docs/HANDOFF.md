@@ -1,5 +1,7 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 — Submission rule (user): no Claude attribution in this repo.** At the user's request (for the submission), the `Co-Authored-By: Claude …` trailers were removed from all commit messages (history rewritten; the new tip is b6176f0; the backup tag is `pre-coauthor-removal-backup`). Do NOT add Co-Authored-By or "Generated with Claude Code" lines to commits or PRs in this repo until the user says otherwise.
+
 **2026-11-21 — Repo made PUBLIC after a history scrub.** Before going public, the 15-commit history of `main` (local google-gemini) was rewritten with `git filter-branch --tree-filter`:
 - the collaborator's personal email and Windows username were redacted in docs/agents/*.md;
 - the personal-machine line was generalised;
