@@ -31,7 +31,7 @@ class ApiSmokeTest {
         mvc.perform(get("/api/v1/health")).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.detail").exists());
         mvc.perform(get("/api/v1/health").header("Authorization", "Bearer nope")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/health").header("Authorization", "Bearer t0ken")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.ok").value(true)).andExpect(jsonPath("$.llm.spec").value("claude_opus"));
+                .andExpect(jsonPath("$.ok").value(true)).andExpect(jsonPath("$.llm.spec").value("gemini_pro"));
 
         String body = mvc.perform(post("/api/v1/projects").header("Authorization", "Bearer t0ken")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"brief\":\"Move a box\"}"))
@@ -45,6 +45,17 @@ class ApiSmokeTest {
         mvc.perform(get("/api/v1/llm/usage").param("period", "bad").header("Authorization", "Bearer t0ken"))
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.detail").value("period is today, 7d, 30d or all"));
         mvc.perform(delete("/api/v1/projects/" + pid).header("Authorization", "Bearer t0ken")).andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void theTokenCookieWorksForPlainLinksButOnlyWithoutAWrongHeader() throws Exception {
+        mvc.perform(get("/api/v1/health").cookie(new jakarta.servlet.http.Cookie("studio_token", "t0ken"))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/health").cookie(new jakarta.servlet.http.Cookie("studio_token", "nope"))).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/health").header("Authorization", "Bearer nope").cookie(new jakarta.servlet.http.Cookie("studio_token", "t0ken")))
+                .andExpect(status().isUnauthorized());
+        // writes never accept the cookie (no cross-site request forgery through it)
+        mvc.perform(post("/api/v1/projects").contentType("application/json").content("{\"brief\":\"a cookie-only write\"}")
+                .cookie(new jakarta.servlet.http.Cookie("studio_token", "t0ken"))).andExpect(status().isUnauthorized());
     }
 
     @Test

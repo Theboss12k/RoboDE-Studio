@@ -97,3 +97,9 @@ Second app (`60`-`75`), using the real `safe_download` for non-vendor URLs:
 
 ## Edits after recording
 - 2026-11-21: `01_health.json`, `03_llm_settings.json`, `10_llm_roles_set.json` and `13_llm_profile_delete.json` were edited by hand to add the `objects` role, the `claude_haiku` default profile and `roles_available`, because a new LLM role was added. Everything else is as recorded from the FastAPI app.
+
+## google-gemini branch (2026-11-21)
+
+Goldens 01, 03, 10 and 13 were edited by hand, not re-recorded: the default profiles and role defaults are Gemini
+(`gemini_pro`, `gemini_flash`, `gemini_flash_lite`, `gemini_cli_pro`, `gemini_cli_flash`), `kinds` and `models` list
+`gemini_cli`, and the roles request in 10 points `analysis` at `gemini_flash`. The scripted LLM answers are unchanged.

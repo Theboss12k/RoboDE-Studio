@@ -144,6 +144,8 @@ public class TaskRunner {
         Map<String, String> env = builder.environment();
         env.put("PYTHONPATH", props.server().toString());
         env.put("PYTHONUNBUFFERED", "1");
+        // keys travel only on stdin: the engine does not inherit this process's key or token variables (Cloud Run mounts them as env)
+        for (String secret : List.of("GEMINI_API_KEY", "GOOGLE_API_KEY", "STUDIO_TOKEN", "STUDIO_CALLBACK_SECRET")) env.remove(secret);
         if (props.allowScripted()) env.put("STUDIO_ALLOW_SCRIPTED", "1"); else env.remove("STUDIO_ALLOW_SCRIPTED");
         // tests only: serve this file for https://acme.example/ downloads so flows run offline (needs allowScripted)
         if (props.allowScripted() && props.fakeDownload() != null) env.put("STUDIO_FAKE_DOWNLOAD", props.fakeDownload().toString());

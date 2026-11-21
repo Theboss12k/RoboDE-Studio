@@ -6,16 +6,16 @@
   "response_body": {
     "ok": true,
     "llm": {
-      "spec": "claude_opus",
-      "scene": "claude_sonnet",
-      "robot": "claude_opus",
-      "revise": "claude_opus",
-      "search": "claude_sonnet",
-      "extract": "claude_sonnet",
-      "analysis": "claude_sonnet",
-      "objects": "claude_haiku",
-      "ask": "claude_sonnet",
-      "checks": "claude_opus"
+      "spec": "gemini_pro",
+      "scene": "gemini_flash",
+      "robot": "gemini_pro",
+      "revise": "gemini_pro",
+      "search": "gemini_flash",
+      "extract": "gemini_flash",
+      "analysis": "gemini_pro",
+      "objects": "gemini_flash_lite",
+      "ask": "gemini_flash",
+      "checks": "gemini_pro"
     }
   }
 }

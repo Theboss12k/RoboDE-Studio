@@ -97,7 +97,7 @@ export default function Usage() {
             <div><span className="muted small">Images sent</span><b>{t.images}</b></div>
             <div><span className="muted small">Estimated cost</span><b>{money(t.cost_usd)}</b></div>
           </div>
-          <p className="small muted">Counts come from the Claude CLI's own report for each call. Input read from the prompt cache costs about a tenth of fresh input. The cost is an estimate at list prices; on a subscription plan it is not a charge.</p>
+          <p className="small muted">Counts come from the provider's own report for each call (Gemini API or Gemini CLI). Input read from the prompt cache costs about a tenth of fresh input. The cost is an estimate at list prices; on a subscription plan it is not a charge.</p>
           {t.calls === 0 ? <p className="muted">No model calls in this period.</p> : (
             <>
               <div className="grid-2">

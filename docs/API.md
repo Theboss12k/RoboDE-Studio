@@ -429,11 +429,11 @@ Connections are global, not per project. API keys are never returned.
 ```bash
 curl -s "$BASE/llm"                          # profiles, role assignment, key status
 curl -s -X PUT "$BASE/llm/roles" -H "Content-Type: application/json" \
-  -d '{"roles": {"spec": "claude_opus", "extract": "claude_sonnet"}}'
+  -d '{"roles": {"spec": "gemini_pro", "extract": "gemini_flash"}}'
 curl -s -X PUT "$BASE/llm/keys/gemini" -H "Content-Type: application/json" \
   -d '{"key": "<your-key>"}'
 curl -s "$BASE/llm/usage?period=7d"          # period: today, 7d, 30d or all
-curl -s -X POST "$BASE/llm/profiles/claude_opus/test?wait=120&expand=resource"
+curl -s -X POST "$BASE/llm/profiles/gemini_pro/test?wait=120&expand=resource"
 ```
 
 A profile that a role uses cannot be deleted (`422`). Roles that are not in the body keep their profile.

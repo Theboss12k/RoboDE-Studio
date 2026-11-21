@@ -133,7 +133,7 @@ def urdf_payload(payload, name):
 
 async def meta(inp, ctx):
     return {'families': families.describe(), 'kinds': sorted(PROVIDERS), 'roles': list(ROLES),
-            'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS)},
+            'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)},
             'default_roles': dict(DEFAULT_ROLES), 'default_profiles': default_profiles()}
 
 

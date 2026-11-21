@@ -113,7 +113,7 @@ paths:
               schema: { $ref: '#/components/schemas/Health' }
               example:
                 ok: true
-                llm: { spec: claude_opus, scene: claude_sonnet, robot: claude_opus, revise: claude_opus, search: claude_sonnet, extract: claude_sonnet, analysis: claude_sonnet, objects: claude_haiku, ask: claude_sonnet, checks: claude_opus }
+                llm: { spec: gemini_pro, scene: gemini_flash, robot: gemini_pro, revise: gemini_pro, search: gemini_flash, extract: gemini_flash, analysis: gemini_pro, objects: gemini_flash_lite, ask: gemini_flash, checks: gemini_pro }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /families:
     get:
@@ -1372,7 +1372,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/LlmProfileInput' }
-            example: { name: Fixture profile, kind: claude_cli, model: claude-sonnet-5-5, effort: low, timeout_s: 240, cli_path: '' }
+            example: { name: Fixture profile, kind: gemini_cli, model: gemini-3.8-flash, effort: low, timeout_s: 240, cli_path: '' }
       responses:
         '200':
           description: The new profile.
@@ -1452,7 +1452,7 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/SetRolesRequest' }
-            example: { roles: { analysis: claude_sonnet } }
+            example: { roles: { analysis: gemini_flash } }
       responses:
         '200':
           description: The profile id of every role.
@@ -2202,8 +2202,8 @@ components:
       type: object
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
-        kind: { type: string, pattern: '^[a-z_]+$', default: claude_cli }
-        model: { type: string, maxLength: 120, default: claude-sonnet-5-5 }
+        kind: { type: string, pattern: '^[a-z_]+$', default: gemini }
+        model: { type: string, maxLength: 120, default: gemini-3.8-flash }
         effort: { type: string, enum: ['', low, medium, high, xhigh, max], default: '' }
         timeout_s: { type: integer, minimum: 10, maximum: 900, default: 240 }
         cli_path: { type: string, maxLength: 1000, default: '' }

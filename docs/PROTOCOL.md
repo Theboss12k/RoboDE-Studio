@@ -15,7 +15,7 @@ and `runtime/llm/**`.
   "task": "design",
   "input": { ...task-specific, see below... },
   "llm": {
-    "roles": {"spec": {"id": "claude_opus", "kind": "claude_cli", "model": "claude-opus-5-5", "effort": "",
+    "roles": {"spec": {"id": "gemini_pro", "kind": "gemini", "model": "gemini-3.1-pro-preview", "effort": "",
                        "timeout_s": 240, "cli_path": "", "api_key": null}, "...": "all 9 roles"},
     "profile": null
   },
@@ -37,7 +37,7 @@ and `runtime/llm/**`.
 At start, Python dups the real stdout fd for protocol lines and points `sys.stdout` at stderr, so a stray print
 can't corrupt the stream. Line types:
 - `{"type":"progress","text":"Running the task: 12 waypoints"}`
-- `{"type":"usage","role":"spec","profile":"claude_opus","entry":{...adapter usage entry, pages_opened removed...}}`
+- `{"type":"usage","role":"spec","profile":"gemini_pro","entry":{...adapter usage entry, pages_opened removed...}}`
   Java appends `{at, role, profile, robot_id: context.project_id, task: context.task, ...entry}` to
   `runtime/llm/usage.jsonl`, the same line format as before.
 - `{"type":"heartbeat"}` every 15 s while running.
@@ -53,7 +53,7 @@ stderr is free text. Java writes it to `runtime/logs/jobs/<job_id>.log` and neve
 - Drain stdout and stderr on separate threads.
 - Idle watchdog: no line for 60 s means kill. Ceiling 45 min.
 - At most 4 Python processes at once (semaphore).
-- Kill = the process plus all `ProcessHandle.descendants()` (the Claude CLI is a grandchild).
+- Kill = the process plus all `ProcessHandle.descendants()` (the Claude CLI or Gemini CLI is a grandchild).
 - Keep usage lines received before a kill.
 
 ## Tasks
@@ -89,8 +89,8 @@ Clarifications (as implemented in `server/studio/tasks/`):
   and returns it as `round` in both result kinds.
 - `design.input.answers` must already be merged (Java merges new answers into the project's answers).
 - Optional `design.input.spec` skips the spec round, for retries.
-- The `objects` role (default profile `claude_haiku`) makes `scene.objects[].model` (primitives, with `name`) for each task object, concurrently with the scene and robot agents. It is never fatal: on failure the keys stay absent and no progress line is written; on success one line `Object models: <n> made`. `revise` reuses models of unchanged objects (same name, size, shape); fleet versions keep the base version's models.
-- The `checks` role (default profile `claude_opus`) plans task-specific checks after the simulation and before the collision repair, in `design` and in `revise` (a repair round re-evaluates the stored plan in code instead of asking again). Its plans are formulas over a code-built catalogue of named quantities; code evaluates them with units and appends them to `sim.checks` as `Check`s with `source: "planned"` (they count toward `sim.ok`; the client and the PDF label them "AI-planned, code-computed"). The accepted plans are stored in `version.check_plan` and the rejected ones in `version.check_plan_rejected` (`[{id, reason}]`); both keys are absent when empty, and `Check.source` is absent when `"sim"`. One progress line `Task-specific checks: <n> planned` on success; when the call itself fails (no adapter, an LLM error, a timeout) no checks, no line and no change. A revised design passes the previous plan to the agent as a hint; when the agent fails on a revise the previous plan is re-evaluated in code.
+- The `objects` role (default profile `gemini_flash_lite`) makes `scene.objects[].model` (primitives, with `name`) for each task object, concurrently with the scene and robot agents. It is never fatal: on failure the keys stay absent and no progress line is written; on success one line `Object models: <n> made`. `revise` reuses models of unchanged objects (same name, size, shape); fleet versions keep the base version's models.
+- The `checks` role (default profile `gemini_pro`) plans task-specific checks after the simulation and before the collision repair, in `design` and in `revise` (a repair round re-evaluates the stored plan in code instead of asking again). Its plans are formulas over a code-built catalogue of named quantities; code evaluates them with units and appends them to `sim.checks` as `Check`s with `source: "planned"` (they count toward `sim.ok`; the client and the PDF label them "AI-planned, code-computed"). The accepted plans are stored in `version.check_plan` and the rejected ones in `version.check_plan_rejected` (`[{id, reason}]`); both keys are absent when empty, and `Check.source` is absent when `"sim"`. One progress line `Task-specific checks: <n> planned` on success; when the call itself fails (no adapter, an LLM error, a timeout) no checks, no line and no change. A revised design passes the previous plan to the agent as a hint; when the agent fails on a revise the previous plan is re-evaluated in code.
 - Optional `design.input.brief_images` (`[{path, name}]`, absolute paths of files validated by `inspect_upload`) are photos
   of the task, objects or workcell. They go to the spec call labelled `brief:<name>`, before the reference and answer
   images, and count toward the same cap of 8 (brief first); dropped with a progress line for adapters without image support.

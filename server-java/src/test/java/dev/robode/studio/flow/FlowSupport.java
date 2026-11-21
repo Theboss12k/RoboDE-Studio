@@ -55,9 +55,9 @@ final class FlowSupport {
     static void writeScriptedProfiles(Path runtime, String rulesFile) {
         ObjectNode data = Json.obj();
         ArrayNode profiles = Json.arr();
-        for (String[] p : new String[][] {{"claude_opus", "Claude Opus 5.5 (Claude Code CLI)", "claude-opus-5-5"},
-                {"claude_sonnet", "Claude Sonnet 5.5 (Claude Code CLI)", "claude-sonnet-5-5"}})
-            profiles.add(Json.obj().put("id", p[0]).put("name", p[1]).put("kind", "claude_cli").put("model", p[2])
+        for (String[] p : new String[][] {{"gemini_pro", "Gemini 3.1 Pro (Gemini API)", "gemini-3.1-pro-preview"},
+                {"gemini_flash", "Gemini 3.8 Flash (Gemini API)", "gemini-3.8-flash"}})
+            profiles.add(Json.obj().put("id", p[0]).put("name", p[1]).put("kind", "gemini").put("model", p[2])
                     .put("effort", "").put("timeout_s", 240).put("cli_path", ""));
         profiles.add(Json.obj().put("id", "fx").put("name", "Scripted fixture").put("kind", "scripted").put("model", "fixture")
                 .put("fixture", RESOURCES.resolve("scripted/" + rulesFile).toString()).put("effort", "").put("timeout_s", 240).put("cli_path", ""));

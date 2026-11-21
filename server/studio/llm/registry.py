@@ -14,8 +14,10 @@ Roles:
 
 Providers are plugged in through PROVIDERS (kind -> factory(profile)). Adding a provider means adding one adapter
 module with `invoke(input, system_prompt)` and one entry here; nothing else in the studio changes.
-- claude_cli: Claude through the Claude Code CLI and its own sign-in (no key).
 - gemini:     Google Gemini through the Gemini API; its key comes from llm/keys.py, never from the profile.
+- gemini_cli: Gemini through the Gemini CLI and the user's own Google sign-in (no key; text only).
+- claude_cli: Claude through the Claude Code CLI and its own sign-in (no key). Kept, but not a default on the
+              google-gemini branch.
 """
 import uuid
 
@@ -24,11 +26,13 @@ from pydantic import BaseModel, Field
 from ..util import atomic_json, read_json
 from . import gemini as gemini_module
 from .claude_cli import MODELS, ClaudeCLI
+from .gemini_cli import GeminiCLI
 from .keys import KeyStore
 from .usage import UsageLedger
 
 ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects', 'ask', 'checks')
-DEFAULT_ROLES = {'spec': 'claude_opus', 'scene': 'claude_sonnet', 'robot': 'claude_opus', 'revise': 'claude_opus', 'search': 'claude_sonnet', 'extract': 'claude_sonnet', 'analysis': 'claude_sonnet', 'objects': 'claude_haiku', 'ask': 'claude_sonnet', 'checks': 'claude_opus'}
+DEFAULT_ROLES = {'spec': 'gemini_pro', 'scene': 'gemini_flash', 'robot': 'gemini_pro', 'revise': 'gemini_pro', 'search': 'gemini_flash',
+                 'extract': 'gemini_flash', 'analysis': 'gemini_pro', 'objects': 'gemini_flash_lite', 'ask': 'gemini_flash', 'checks': 'gemini_pro'}
 
 
 def claude_cli(profile):
@@ -41,23 +45,30 @@ def gemini(profile):
                                    timeout_s=profile.get('timeout_s', 240), api_key=profile.get('api_key', ''))
 
 
-PROVIDERS = {'claude_cli': claude_cli, 'gemini': gemini}
+def gemini_cli(profile):
+    return GeminiCLI(model=profile['model'], effort=profile.get('effort', ''), timeout_s=profile.get('timeout_s', 240),
+                     cli_path=profile.get('cli_path', ''))
+
+
+PROVIDERS = {'claude_cli': claude_cli, 'gemini': gemini, 'gemini_cli': gemini_cli}
 KEYED = {'gemini'}  # providers whose factory receives the saved API key as profile['api_key']
 
 
 class Profile(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    kind: str = Field(default='claude_cli', pattern=r'^[a-z_]+$')
-    model: str = Field(default='claude-sonnet-5-5', max_length=120)
+    kind: str = Field(default='gemini', pattern=r'^[a-z_]+$')
+    model: str = Field(default='gemini-3.8-flash', max_length=120)
     effort: str = Field(default='', pattern=r'^(|low|medium|high|xhigh|max)$')
     timeout_s: int = Field(default=240, ge=10, le=900)
     cli_path: str = Field(default='', max_length=1000)
 
 
 DEFAULTS = [
-    {'id': 'claude_opus', 'name': 'Claude Opus 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-opus-5-5'},
-    {'id': 'claude_sonnet', 'name': 'Claude Sonnet 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-sonnet-5-5'},
-    {'id': 'claude_haiku', 'name': 'Claude Haiku 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-haiku-5-5'},
+    {'id': 'gemini_pro', 'name': 'Gemini 3.1 Pro (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.1-pro-preview'},
+    {'id': 'gemini_flash', 'name': 'Gemini 3.8 Flash (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.8-flash'},
+    {'id': 'gemini_flash_lite', 'name': 'Gemini 3.5 Flash-Lite (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.5-flash-lite'},
+    {'id': 'gemini_cli_pro', 'name': 'Gemini 3.1 Pro (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.1-pro-preview'},
+    {'id': 'gemini_cli_flash', 'name': 'Gemini 3.8 Flash (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.8-flash'},
 ]
 
 
@@ -89,12 +100,12 @@ class LLMRegistry:
 
     def describe(self):
         return {**self.data(), 'kinds': sorted(PROVIDERS), 'roles_available': list(ROLES), 'keys': self.keys.status(),
-                'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS)}}
+                'models': {'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)}}
 
     def upsert(self, profile: Profile, profile_id=None):
         if profile.kind not in PROVIDERS:
             raise ValueError(f'Unknown provider kind {profile.kind}')
-        if profile.kind == 'gemini' and not profile.model.startswith('gemini'):
+        if profile.kind in ('gemini', 'gemini_cli') and not profile.model.startswith('gemini'):
             raise ValueError('A Gemini profile needs a Gemini model name, such as gemini-3.8-flash')
         data = self.data()
         profile_id = profile_id or uuid.uuid4().hex[:10]

@@ -163,7 +163,7 @@ inside the box (2 % tolerance), the parts cover at least 90 % of the box per axi
 success `design` emits `Object models: <n> made`. `revise` reuses the models of objects whose name, size and shape did not change; fleet
 versions keep the base version's models. The client draws `model`, else the keyword models (`objectModels.tsx`), else the primitive.
 
-`agents/checks.py` (role `checks`, default `claude_opus`): `run(adapter, spec, concept, requirements, checks, catalogue, previous=None) ->
+`agents/checks.py` (role `checks`, default `gemini_pro`): `run(adapter, spec, concept, requirements, checks, catalogue, previous=None) ->
 {'plans': [CheckPlan], 'checks': [Check], 'rejected': [{id, reason}]}`. `CheckPlan` = `{id, name, why, expression, unit, comparator ('>=' | '<='),
 limit (an expression), unit_limit, constants: [{name, value, unit, justification}]}`, at most 12 per version. The model proposes; code decides:
 `physics/quantities.py` `catalogue(spec, concept, requirements, sim, scene=None, fleet=None)` builds the named quantities with units (object

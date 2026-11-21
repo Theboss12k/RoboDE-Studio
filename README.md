@@ -43,7 +43,7 @@ Requirements:
 - Node 22 or later;
 - JDK 25 or later (the Maven wrapper `server-java/mvnw` is included; no Maven install needed);
 - Python 3.12 or later (runs the AI and numeric tasks);
-- the Claude Code CLI signed in (the desktop app's bundled copy is found automatically), or a Gemini API key.
+- a Gemini API key (this branch's default), or the Gemini CLI signed in with your Google account; the Claude Code CLI adapter is still in the code but is not a default on this branch.
 
 ```bash
 npm install
@@ -114,18 +114,40 @@ Each role has its own saved profile. Change them under **Settings**.
 
 | Role | Default | Job |
 |---|---|---|
-| spec | Claude Opus 5.5 (CLI) | Brief to technical specification; asks the questions |
-| scene | Claude Sonnet 5.5 (CLI) | Tables, shelves, obstacles, markers, objects |
-| robot | Claude Opus 5.5 (CLI) | Robot type and a rough starting concept |
-| revise | Claude Opus 5.5 (CLI) | Turns a change request into a change to the spec, scene or robot |
-| search | Claude Sonnet 5.5 (CLI) | Web search for real robots and prices |
-| extract | Claude Sonnet 5.5 (CLI) | Reads a datasheet and quotes the values it finds |
-| analysis | Claude Sonnet 5.5 (CLI) | Plain-words impact of each difference |
+| spec | Gemini 3.1 Pro (API) | Brief to technical specification; asks the questions |
+| scene | Gemini 3.8 Flash (API) | Tables, shelves, obstacles, markers, objects |
+| robot | Gemini 3.1 Pro (API) | Robot type and a rough starting concept |
+| revise | Gemini 3.1 Pro (API) | Turns a change request into a change to the spec, scene or robot |
+| search | Gemini 3.8 Flash (API) | Web search (Grounding with Google Search) for real robots and prices |
+| extract | Gemini 3.8 Flash (API) | Reads a datasheet and quotes the values it finds |
+| analysis | Gemini 3.1 Pro (API) | Plain-words impact of each difference |
+| objects | Gemini 3.5 Flash-Lite (API) | Simple 3D models of the task objects |
+| checks | Gemini 3.1 Pro (API) | Plans the task-specific checks; code evaluates them |
+| ask | Gemini 3.8 Flash (API) | Answers the Ask bar's questions |
 
-Two providers are built: the Claude Code CLI (its own sign-in, no key) and Google Gemini (an API key saved in
-Settings, never shown again, kept in `runtime/llm/keys.json`). A provider is one module with
+Three providers are built: Google Gemini (an API key saved in Settings, never shown again, kept in
+`runtime/llm/keys.json`), the Gemini CLI (your own Google sign-in, no key) and the Claude Code CLI (not a default here). A provider is one module with
 `invoke(input, system_prompt)` and one entry in `llm/registry.py`. The Gemini adapter has no tests in this
 repository and no recorded run against Google.
+
+## Google edition (this branch)
+
+The `google-gemini` branch runs entirely on Google for the Startup Buildathon India 2026: Gemini models for every role
+and a Cloud Run deployment. Nothing on this branch has been run against the real Gemini API, the real Gemini CLI or
+Cloud Run; the tests use fake adapters and a fake `gemini` executable.
+
+- **Gemini API (default).** Every role starts on a saved Gemini profile: `gemini_pro` (spec, revise, robot, analysis,
+  checks), `gemini_flash` (scene, search, extract, ask) and `gemini_flash_lite` (objects). Put a key from
+  <https://aistudio.google.com/apikey> in **Settings** or set `GEMINI_API_KEY` before starting. Search uses Grounding
+  with Google Search.
+- **Gemini CLI (local, no key).** `npm install -g @google/gemini-cli`, run `gemini` once and choose "Sign in with
+  Google", then add a "Gemini CLI (Google sign-in)" model under Settings (profiles `gemini_cli_pro` and
+  `gemini_cli_flash` are saved for new installs; assign them to roles to use them). Each call runs in an empty temporary
+  folder with every CLI tool turned off (only Google Search and web fetch for the search role), and the child process
+  gets no `GEMINI_API_KEY` or `GOOGLE_API_KEY`, so the CLI's own login is used. Text only: roles that read images need a Gemini API model.
+  Details are in `server/studio/llm/gemini_cli.py`.
+- **Cloud Run.** `Dockerfile` and `deploy/cloudrun/README.md` (the exact `gcloud` steps, secrets, sizing and storage).
+  The browser opens the deployment once with `/#token=<STUDIO_TOKEN>`.
 
 ## Limits
 

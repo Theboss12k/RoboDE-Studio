@@ -10,7 +10,11 @@ import java.security.MessageDigest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** With STUDIO_TOKEN set, every /api/v1 call needs "Authorization: Bearer <token>" (CORS preflights excepted). */
+/**
+ * With STUDIO_TOKEN set, every /api/v1 call needs "Authorization: Bearer <token>" (CORS preflights excepted). The
+ * same token in the `studio_token` cookie is accepted too, so the browser app's plain image, mesh and download links
+ * (which cannot carry a header) work behind a token, for example on Cloud Run.
+ */
 @Component
 @org.springframework.core.annotation.Order(10)
 public class BearerTokenFilter extends OncePerRequestFilter {
@@ -34,6 +38,18 @@ public class BearerTokenFilter extends OncePerRequestFilter {
                 && MessageDigest.isEqual(header.substring(7).strip().getBytes(StandardCharsets.UTF_8), token)) {
             chain.doFilter(request, response);
             return;
+        }
+        // Cookie only for reads (plain links are GETs); writes always need the header, so a forged cross-site
+        // request cannot change anything even where SameSite=Strict is not enforced.
+        boolean read = "GET".equals(request.getMethod()) || "HEAD".equals(request.getMethod());
+        if (header == null && read && request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                if ("studio_token".equals(cookie.getName()) && cookie.getValue() != null
+                        && MessageDigest.isEqual(cookie.getValue().getBytes(StandardCharsets.UTF_8), token)) {
+                    chain.doFilter(request, response);
+                    return;
+                }
+            }
         }
         response.setStatus(401);
         response.setHeader("WWW-Authenticate", "Bearer");

@@ -24,16 +24,34 @@ class LlmSettingsTest {
     }
 
     @Test
-    void objectsRoleDefaultsToHaiku() {
+    void googleEditionDefaultsUseGeminiForEveryRole() {
         assertThat(LlmSettings.ROLES).containsExactly("spec", "scene", "robot", "revise", "search", "extract", "analysis", "objects", "ask", "checks");
         ObjectNode data = settings().data();
-        assertThat(data.get("roles").get("objects").asString()).isEqualTo("claude_haiku");
-        JsonNode haiku = null;
-        for (JsonNode p : data.get("profiles")) if ("claude_haiku".equals(Json.text(p, "id"))) haiku = p;
-        assertThat(haiku).isNotNull();
-        assertThat(Json.text(haiku, "name")).isEqualTo("Claude Haiku 5.5 (Claude Code CLI)");
-        assertThat(Json.text(haiku, "model")).isEqualTo("claude-haiku-5-5");
-        assertThat(data.get("profiles")).hasSize(3);
+        JsonNode roles = data.get("roles");
+        for (String r : new String[] {"spec", "revise", "checks", "analysis", "robot"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_pro");
+        for (String r : new String[] {"scene", "search", "extract", "ask"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_flash");
+        assertThat(roles.get("objects").asString()).isEqualTo("gemini_flash_lite");
+        assertThat(data.get("profiles")).hasSize(5);
+        JsonNode lite = null;
+        for (JsonNode p : data.get("profiles")) {
+            assertThat(Json.text(p, "kind")).startsWith("gemini");
+            if ("gemini_flash_lite".equals(Json.text(p, "id"))) lite = p;
+        }
+        assertThat(lite).isNotNull();
+        assertThat(Json.text(lite, "kind")).isEqualTo("gemini");
+        assertThat(Json.text(lite, "model")).isEqualTo("gemini-3.5-flash-lite");
+        assertThat(data.toString()).doesNotContain("claude").doesNotContain("api_key");
+        assertThat(Json.text(settings().profile("gemini_cli_pro"), "kind")).isEqualTo("gemini_cli");
+        assertThat(Json.text(settings().profile("gemini_cli_flash"), "kind")).isEqualTo("gemini_cli");
+    }
+
+    @Test
+    void aGeminiCliProfileIsValidWithoutAKey() {
+        ObjectNode p = LlmSettings.validate(Json.parse("{\"name\": \"CLI\", \"kind\": \"gemini_cli\", \"model\": \"gemini-3.8-flash\", \"cli_path\": \"/usr/local/bin/gemini\"}"));
+        assertThat(Json.text(p, "kind")).isEqualTo("gemini_cli");
+        assertThat(Json.text(p, "cli_path")).isEqualTo("/usr/local/bin/gemini");
+        assertThat(p.has("api_key")).isFalse();
+        assertThat(settings().resolved("gemini_cli_flash").get("api_key").isNull()).isTrue();   // keyless kind: no key in the envelope
     }
 
     @Test
@@ -47,8 +65,9 @@ class LlmSettingsTest {
                            "search": "claude_sonnet", "extract": "claude_sonnet", "analysis": "claude_sonnet"}}
                 """);
         LlmSettings s = settings();
-        assertThat(s.roles().get("objects").asString()).isEqualTo("claude_haiku");
-        assertThat(s.profile("claude_haiku").get("model").asString()).isEqualTo("claude-haiku-5-5");
+        assertThat(s.roles().get("objects").asString()).isEqualTo("gemini_flash_lite");
+        assertThat(s.profile("gemini_flash_lite").get("model").asString()).isEqualTo("gemini-3.5-flash-lite");
+        assertThat(s.roles().get("spec").asString()).isEqualTo("claude_opus");   // a saved choice is kept
         // every role resolves, so a task envelope can be built
         assertThat(s.resolveRoles().get("roles").propertyNames()).containsExactlyInAnyOrderElementsOf(LlmSettings.ROLES);
         // a user who points the role at another profile keeps that choice

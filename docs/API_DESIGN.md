@@ -220,4 +220,4 @@ proposals after the job's result arrives and executes them by calling the same J
 - **`navigate`** is passed through to the client unchanged in meaning (stage, and version, build or candidate when valid).
 - **Activity log:** every executed or refused action is appended to `meta.activity` of the project (project.json,
   not exposed in the project view): `{at, source: "ask", kind, ok, job_id?, summary}`, the last 200 kept.
-- **Role `ask`** (default profile `claude_sonnet`) is the ninth LLM role; its cost is in the usage ledger under role `ask`.
+- **Role `ask`** (default profile `gemini_flash`) is the ninth LLM role; its cost is in the usage ledger under role `ask`.

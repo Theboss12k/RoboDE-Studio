@@ -1627,9 +1627,9 @@ export interface components {
         };
         LlmProfileInput: {
             name: string;
-            /** @default claude_cli */
+            /** @default gemini */
             kind: string;
-            /** @default claude-sonnet-5-5 */
+            /** @default gemini-3.8-flash */
             model: string;
             /**
              * @default
@@ -6328,16 +6328,16 @@ export interface operations {
                      * @example {
                      *       "ok": true,
                      *       "llm": {
-                     *         "spec": "claude_opus",
-                     *         "scene": "claude_sonnet",
-                     *         "robot": "claude_opus",
-                     *         "revise": "claude_opus",
-                     *         "search": "claude_sonnet",
-                     *         "extract": "claude_sonnet",
-                     *         "analysis": "claude_sonnet",
-                     *         "objects": "claude_haiku",
-                     *         "ask": "claude_sonnet",
-                     *         "checks": "claude_opus"
+                     *         "spec": "gemini_pro",
+                     *         "scene": "gemini_flash",
+                     *         "robot": "gemini_pro",
+                     *         "revise": "gemini_pro",
+                     *         "search": "gemini_flash",
+                     *         "extract": "gemini_flash",
+                     *         "analysis": "gemini_pro",
+                     *         "objects": "gemini_flash_lite",
+                     *         "ask": "gemini_flash",
+                     *         "checks": "gemini_pro"
                      *       }
                      *     }
                      */
@@ -8135,8 +8135,8 @@ export interface operations {
                 /**
                  * @example {
                  *       "name": "Fixture profile",
-                 *       "kind": "claude_cli",
-                 *       "model": "claude-sonnet-5-5",
+                 *       "kind": "gemini_cli",
+                 *       "model": "gemini-3.8-flash",
                  *       "effort": "low",
                  *       "timeout_s": 240,
                  *       "cli_path": ""
@@ -8278,7 +8278,7 @@ export interface operations {
                 /**
                  * @example {
                  *       "roles": {
-                 *         "analysis": "claude_sonnet"
+                 *         "analysis": "gemini_flash"
                  *       }
                  *     }
                  */

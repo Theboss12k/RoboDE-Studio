@@ -36,20 +36,23 @@ public class LlmSettings {
 
     private static ObjectNode defaultRoles() {
         ObjectNode r = Json.obj();
-        r.put("spec", "claude_opus").put("scene", "claude_sonnet").put("robot", "claude_opus").put("revise", "claude_opus")
-                .put("search", "claude_sonnet").put("extract", "claude_sonnet").put("analysis", "claude_sonnet").put("objects", "claude_haiku").put("ask", "claude_sonnet").put("checks", "claude_opus");
+        r.put("spec", "gemini_pro").put("scene", "gemini_flash").put("robot", "gemini_pro").put("revise", "gemini_pro")
+                .put("search", "gemini_flash").put("extract", "gemini_flash").put("analysis", "gemini_pro").put("objects", "gemini_flash_lite").put("ask", "gemini_flash").put("checks", "gemini_pro");
         return r;
     }
 
-    private static ObjectNode defaultProfile(String id, String name, String model) {
-        return Json.obj().put("id", id).put("name", name).put("kind", "claude_cli").put("model", model)
+    private static ObjectNode defaultProfile(String id, String name, String kind, String model) {
+        return Json.obj().put("id", id).put("name", name).put("kind", kind).put("model", model)
                 .put("effort", "").put("timeout_s", 240).put("cli_path", "");
     }
 
+    /** {id, name, kind, model}: the Google edition's defaults (Gemini API for every role; Gemini CLI profiles for local sign-in). */
     private static final List<String[]> DEFAULT_PROFILES = List.of(
-            new String[] {"claude_opus", "Claude Opus 5.5 (Claude Code CLI)", "claude-opus-5-5"},
-            new String[] {"claude_sonnet", "Claude Sonnet 5.5 (Claude Code CLI)", "claude-sonnet-5-5"},
-            new String[] {"claude_haiku", "Claude Haiku 5.5 (Claude Code CLI)", "claude-haiku-5-5"});
+            new String[] {"gemini_pro", "Gemini 3.1 Pro (Gemini API)", "gemini", "gemini-3.1-pro-preview"},
+            new String[] {"gemini_flash", "Gemini 3.8 Flash (Gemini API)", "gemini", "gemini-3.8-flash"},
+            new String[] {"gemini_flash_lite", "Gemini 3.5 Flash-Lite (Gemini API)", "gemini", "gemini-3.5-flash-lite"},
+            new String[] {"gemini_cli_pro", "Gemini 3.1 Pro (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.1-pro-preview"},
+            new String[] {"gemini_cli_flash", "Gemini 3.8 Flash (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.8-flash"});
 
     /** profiles + roles (profiles.json, or the defaults when it does not exist); later-added roles get their default. */
     public ObjectNode data() {
@@ -58,7 +61,7 @@ public class LlmSettings {
             if (data == null) {
                 data = Json.obj();
                 ArrayNode profiles = Json.arr();
-                DEFAULT_PROFILES.forEach(p -> profiles.add(defaultProfile(p[0], p[1], p[2])));
+                DEFAULT_PROFILES.forEach(p -> profiles.add(defaultProfile(p[0], p[1], p[2], p[3])));
                 data.set("profiles", profiles);
                 data.set("roles", defaultRoles());
             } else {
@@ -73,7 +76,7 @@ public class LlmSettings {
             for (String[] p : DEFAULT_PROFILES) {
                 boolean have = saved.valueStream().anyMatch(n -> p[0].equals(Json.text(n, "id")));
                 boolean used = roles.valueStream().anyMatch(v -> p[0].equals(v.asString()));
-                if (!have && used) saved.add(defaultProfile(p[0], p[1], p[2]));
+                if (!have && used) saved.add(defaultProfile(p[0], p[1], p[2], p[3]));
             }
             return data;
         }
@@ -94,7 +97,7 @@ public class LlmSettings {
 
     private List<String> kinds() {
         JsonNode k = metaOrEmpty().get("kinds");
-        if (k == null || !k.isArray()) return List.of("claude_cli", "gemini");
+        if (k == null || !k.isArray()) return List.of("claude_cli", "gemini", "gemini_cli");
         return k.valueStream().map(JsonNode::asString).sorted().toList();
     }
 
@@ -117,7 +120,7 @@ public class LlmSettings {
         ObjectNode profile = validate(body);
         if (!kinds().contains(profile.get("kind").asString()))
             throw StudioException.value("Unknown provider kind " + profile.get("kind").asString());
-        if (profile.get("kind").asString().equals("gemini") && !profile.get("model").asString().startsWith("gemini"))
+        if (List.of("gemini", "gemini_cli").contains(profile.get("kind").asString()) && !profile.get("model").asString().startsWith("gemini"))
             throw StudioException.value("A Gemini profile needs a Gemini model name, such as gemini-3.8-flash");
         synchronized (lock) {
             ObjectNode data = data();
@@ -139,9 +142,9 @@ public class LlmSettings {
         if (body == null || !body.isObject()) throw StudioException.value("The profile must be a JSON object");
         String name = text(body, "name", null);
         if (name == null || name.isEmpty() || name.length() > 120) throw StudioException.value("name must be 1 to 120 characters");
-        String kind = text(body, "kind", "claude_cli");
+        String kind = text(body, "kind", "gemini");
         if (!kind.matches("^[a-z_]+$")) throw StudioException.value("kind must be lowercase letters and underscores");
-        String model = text(body, "model", "claude-sonnet-5-5");
+        String model = text(body, "model", "gemini-3.8-flash");
         if (model.length() > 120) throw StudioException.value("model must be at most 120 characters");
         String effort = text(body, "effort", "");
         if (!EFFORTS.contains(effort)) throw StudioException.value("effort must be one of: low, medium, high, xhigh, max, or empty");

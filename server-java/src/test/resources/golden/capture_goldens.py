@@ -257,7 +257,7 @@ def run_main(sink, rt):
         s.do('llm_profile_edit', 'PUT', f'/api/llm/profiles/{profile["id"]}',
              {'name': 'Fixture profile', 'kind': 'claude_cli', 'model': 'claude-opus-5-5', 'effort': 'medium',
               'timeout_s': 300, 'cli_path': ''})
-        s.do('llm_roles_set', 'PUT', '/api/llm/roles', {'roles': {'analysis': 'claude_sonnet'}})
+        s.do('llm_roles_set', 'PUT', '/api/llm/roles', {'roles': {'analysis': 'gemini_flash'}})
         s.do('llm_key_save', 'PUT', '/api/llm/keys/gemini', {'key': 'fixture-not-a-real-key'},
              saved_body={'key': '<api_key>'})
         s.do('llm_key_delete', 'DELETE', '/api/llm/keys/gemini')
