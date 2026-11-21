@@ -1,5 +1,8 @@
 # RoboDE Studio
 
+> **Live demo:** https://34-14-181-65.sslip.io/ (temporary, hosted on Google Cloud in Mumbai, models on Vertex AI).
+> The demo needs an access token; ask the team for the link with the token. Source: this repository.
+
 Start from the job, not from a robot. You describe the task in plain words and answer a few questions. Studio then
 generates a rough robot, shows it doing the task in 3D, and lists the requirements the robot must meet, each with
 its pass or fail and its working. You change the design in plain words; every change is a new version. When a
