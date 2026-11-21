@@ -1,5 +1,12 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 ~15:30 IST — Tool speed/acceleration caps added in sim/task.py (`_Run._tool_limits`); see the
+timeline. Local commits on `v2` are NOT pushed (the user said "not yet"). Remaining known bugs:
+- Gemini CLI connection test fails on a settings-folder security warning (`llm/gemini_cli.py`);
+- the gantry z sizing uses world z (too tall when mounted on a desk);
+- the gripper is sized just under the grip check;
+- the auto split always uses at least 2 robots.**
+
 **2026-11-21 ~14:40 IST — Multi-robot (fleet) RCA done; fixes 1 and 2 DONE (pytest 531 passed) and committed on local branch `v2` (worktree
 ~/Downloads/RoboDE-Studio-google; v2 is pushed at aafc428, these fixes are NOT pushed and NOT on google-gemini/main).**
 Evidence came from project p_b6e8a5f4a1, "Gentle hand-to-hand handover of an open Monster can". The offline repro

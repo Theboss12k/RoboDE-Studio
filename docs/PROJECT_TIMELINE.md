@@ -657,3 +657,28 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
     and the fleet and agent test files pass with them (44 passed).
   - These are kinematic and static-load calculations in code, not hardware tests. The fleet design was run offline
     and not saved to the project.
+
+## 2026-11-21 — Simulator: the tool keeps its rated speed and the task's acceleration limit
+
+- Applications: Studio server (`sim/task.py`, `families/serial_arm.py`); test `tests/test_tool_limits.py`.
+- Before: moves were joint-space trapezoids limited only per joint, so the tool centre point could exceed the
+  robot's rated tool speed and the task's "at most" acceleration. The handover arm's tool reached 0.43 m/s against
+  a 0.3 m/s rating. In the fleet, r2's tool reached 1.46 m/s² against the user's 1.0 m/s².
+- Now each joint-linear move samples its tool path (forward kinematics at 21 points). Its path-parameter speed and
+  acceleration are lowered so that the tool speed stays at or below the rated tool speed (`max_tcp_speed_m_s`), and
+  so that |p'|·s'' + |p''|·s'² stays at or below the task's `max_accel` at every sampled point.
+  - The rule-of-thumb rated tool acceleration is not used as a cap.
+  - The caps are divided by the cycle stretch, so a stretched run stays uniform; timed moves pass their stretch too.
+- The arm's cycle-time sizing (`raise_speeds`) now raises the rated tool speed by the same factor as the joints,
+  unless the user gave it, so the new cap does not block speed sizing.
+- Checked:
+  - The handover arm (v1) now has a peak tool speed of 0.26 m/s (rating 0.30) and a peak acceleration of
+    0.64 m/s² (limit 1.0). The fastest feasible run is 8.9 s instead of 3.8 s, so the 10 s cycle still passes.
+  - With real model inference (Model A role profiles, 2026-11-21), the two-robot handover fleet keeps both robots
+    within the limit (0.66 m/s²). It now honestly fails the 10 s cycle (r1 11.2 s, r2 14.6 s). The earlier pass
+    came from breaking the acceleration limit, and one arm is faster than two for this task.
+  - The new test fails without the change (0.42 m/s against a 0.1 m/s rating) and passes with it.
+  - `test_four_second_cycle_passes_after_speed_sizing` failed while the rated tool acceleration was also a cap.
+    It passes now.
+  - Full Python suite with fixture models: 534 passed, 9 skipped.
+  - These are kinematic calculations in code, not dynamics simulation or hardware tests.

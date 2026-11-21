@@ -115,6 +115,8 @@ def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
+TOOL_PATH_SAMPLES = 20       # segments of a move's tool path sampled for its speed and acceleration bounds
+
 class _Run:
     """Timeline builder: rows of (t, q, base pose, wheel angles, holding, phase, boxes to ignore)."""
 
@@ -125,7 +127,33 @@ class _Run:
         self.wheels = [0.0, 0.0]
         self.rows = []
         self.driven = 0.0
+        self.tcp = None                          # (fk position fn, max tool speed, max tool accel) at this run's stretch
         self.add()
+
+    def _tool_limits(self, dq, vf, af, k=1.0):
+        """vf, af (path-parameter speed and acceleration of a joint-linear move by dq) lowered so the tool centre point
+        stays within its speed and acceleration limits (divided by k and k^2 for a stretched timed move). The tool
+        path's first and second derivatives along the move (FK sampled at 21 points) bound the tool speed by
+        |p'| s' and the acceleration by |p'| s'' + |p''| s'^2."""
+        if self.tcp is None:
+            return vf, af
+        fk, vmax, amax = self.tcp
+        n = TOOL_PATH_SAMPLES
+        pts = np.array([fk(self.q + u * dq) for u in np.linspace(0.0, 1.0, n + 1)])
+        d1 = np.linalg.norm(np.diff(pts, axis=0), axis=1) * n               # |p'| on each of the n segments
+        if d1.max() < 1e-9:
+            return vf, af
+        l1 = np.maximum(d1[:-1], d1[1:])                                     # |p'| and |p''| at the inner points
+        l2 = np.linalg.norm(np.diff(pts, n=2, axis=0), axis=1) * n * n
+        if vmax:
+            vf = min(vf, vmax / k / float(d1.max()))
+        if amax:
+            a = amax / k ** 2
+            if l2.max() * vf * vf > 0.5 * a:      # leave at least half the budget for speeding up along the path
+                vf = math.sqrt(0.5 * a / float(l2.max()))
+            # at every point of the path: |p'| s'' + |p''| s'^2 <= a (both terms at the same point)
+            af = min(af, float(np.min((a - l2 * vf * vf) / np.maximum(l1, 1e-9))), a / float(d1.max()))
+        return vf, af
 
     def add(self, q=None):
         self.rows.append(dict(t=self.t, q=np.array(self.q if q is None else q, float), pose=self.pose,
@@ -147,7 +175,8 @@ class _Run:
         mv = np.abs(dq) > 1e-9
         if not mv.any():
             return 0.0
-        return float(motion.trapezoid(1.0, min(vel[mv] / np.abs(dq[mv])), min(acc[mv] / np.abs(dq[mv])))['t_total'])
+        vf, af = self._tool_limits(dq, min(vel[mv] / np.abs(dq[mv])), min(acc[mv] / np.abs(dq[mv])))
+        return float(motion.trapezoid(1.0, vf, af)['t_total'])
 
     def rotate(self, j, travel, omega, alpha):
         """Turn joint j by the signed `travel` (rad) with a trapezoid profile (peak omega, acceleration alpha); no
@@ -165,13 +194,12 @@ class _Run:
         self.dwelled += T
         return T
 
-    def move(self, qt, vel, acc):
+    def move(self, qt, vel, acc, k=1.0):
         dq = np.asarray(qt, float) - self.q
         mv = np.abs(dq) > 1e-9
         if not mv.any():
             return
-        vf = min(vel[mv] / np.abs(dq[mv]))
-        af = min(acc[mv] / np.abs(dq[mv]))
+        vf, af = self._tool_limits(dq, min(vel[mv] / np.abs(dq[mv])), min(acc[mv] / np.abs(dq[mv])), k)
         f = motion.sample(1.0, vf, af, self.dt)
         T = motion.trapezoid(1.0, vf, af)['t_total']
         q0, t0 = self.q.copy(), self.t
@@ -281,6 +309,15 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
         run.holding = attached.id                # held by the tool from t=0: its mass is in every load
     run.rows[0]['holding'] = run.holding
     mv_vel, mv_acc = vel / _slow, acc / _slow ** 2
+    if act:
+        # the tool centre point keeps the robot's rated tool speed and the task's "at most" acceleration limit
+        # (max_accel; the rated tool acceleration is a rule-of-thumb figure, not a cap); a stretched run lowers them
+        # with the joints (uniform stretch)
+        amax = next((r.target for r in requirements if r.id == 'max_accel' and r.target and r.target > 0), None)
+        vmax = caps.max_tcp_speed_m_s if caps.max_tcp_speed_m_s and caps.max_tcp_speed_m_s > 0 else None
+        if vmax or amax:
+            run.tcp = (lambda q: fam.fk(p, q)[:3, 3], vmax / _slow if vmax else None,
+                       amax / _slow ** 2 if amax else None)
     start_q = q0.copy()
     cur_stop = 0
     reach, torque, limits_ok = [], np.zeros(len(act)), True
@@ -369,7 +406,7 @@ def simulate(spec: TechnicalSpec, requirements: list[Requirement], scene: SceneS
                     t_start = run.t
                     if T > 1e-9 and T <= w.limit_s:
                         k = w.limit_s / T
-                        run.move(res.q, vel / k, acc / k ** 2)
+                        run.move(res.q, vel / k, acc / k ** 2, k)
                     else:
                         run.move(res.q, vel, acc)
                         if T > w.limit_s:

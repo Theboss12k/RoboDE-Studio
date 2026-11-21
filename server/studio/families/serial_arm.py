@@ -225,13 +225,22 @@ class SerialArm:
 
     def raise_speeds(self, params: dict, factors: dict[str, float], keep=frozenset()):
         """Raise the speed rating of the joints named in `factors` (joint -> factor > 1), capped at
-        MAX_JOINT_SPEED_DEG_S (accelerations follow: v / ACCEL_TIME_S). Returns (params, notes, capped joint names).
-        Joint speeds in `keep` (explicit user numbers) are left alone."""
+        MAX_JOINT_SPEED_DEG_S (accelerations follow: v / ACCEL_TIME_S), and the rated tool speed by the largest factor.
+        Returns (params, notes, capped joint names). Joint or tool speeds in `keep` (explicit user numbers) are left
+        alone."""
         p = self.parse(params)
+        notes, capped, upd = [], [], {}
+        # the simulator caps the tool centre point at the rated tool speed, so it rises with the joints (same factor,
+        # family caps), unless the user gave it
+        if factors and 'max_tcp_speed_m_s' not in keep:
+            v = p.max_tcp_speed_m_s
+            nv = min(v * max(factors.values()), MAX_TCP_SPEED_M_S, MAX_TCP_ACCEL_M_S2 * ACCEL_TIME_S)
+            if nv > v * 1.001:
+                notes.append(f'tool speed {v:.2f} -> {nv:.2f} m/s')
+                upd['max_tcp_speed_m_s'] = nv
         if 'max_speed_deg_s' in keep:
-            return params, [], []
+            return p.model_copy(update=upd).model_dump(), notes, capped
         speeds = list(p.max_speed_deg_s or DEF_SPEEDS[:p.dof])
-        notes, capped = [], []
         for name, f in factors.items():
             i = int(name[1:]) - 1
             new = min(speeds[i] * f, max(MAX_JOINT_SPEED_DEG_S, speeds[i]))
@@ -240,7 +249,7 @@ class SerialArm:
             if new < speeds[i] * f * 0.999:
                 capped.append(name)
             speeds[i] = new
-        return p.model_copy(update={'max_speed_deg_s': speeds}).model_dump(), notes, capped
+        return p.model_copy(update={**upd, 'max_speed_deg_s': speeds}).model_dump(), notes, capped
 
     # --- URDF ---------------------------------------------------------------------------------------------------
     def add_to_urdf(self, u: U.Urdf, p, root: str):
