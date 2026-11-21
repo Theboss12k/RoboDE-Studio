@@ -102,9 +102,9 @@ def test_meta(tmp_path):
     assert run.code == 0 and run.lines[-1]['type'] == 'result'
     data = run.result
     assert {f['name'] for f in data['families']} >= {'serial_arm', 'gantry', 'mobile_base', 'mobile_manipulator'}
-    assert data['roles'] == list(ROLES) and {'antigravity_cli', 'claude_cli', 'gemini', 'gemini_cli'} <= set(data['kinds']) and 'gemini_cli' in data['models']
+    assert data['roles'] == list(ROLES) and {'antigravity_cli', 'claude_cli', 'gemini', 'gemini_cli', 'vertex_gemini'} <= set(data['kinds']) and 'gemini_cli' in data['models']
     assert data['default_roles']['spec'] == 'gemini_pro' and data['default_roles']['objects'] == 'gemini_flash_lite'
-    assert {p['id'] for p in data['default_profiles']} == {'gemini_pro', 'gemini_flash', 'gemini_flash_lite', 'gemini_cli_pro', 'gemini_cli_flash', 'antigravity_flash_high', 'antigravity_flash_medium', 'antigravity_flash_low'}
+    assert {p['id'] for p in data['default_profiles']} == {'gemini_pro', 'gemini_flash', 'gemini_flash_lite', 'vertex_pro', 'vertex_flash', 'vertex_flash_lite', 'gemini_cli_pro', 'gemini_cli_flash', 'antigravity_flash_high', 'antigravity_flash_medium', 'antigravity_flash_low'}
     assert set(data['default_roles'].values()) <= {p['id'] for p in data['default_profiles']}
 
 

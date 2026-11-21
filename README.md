@@ -136,7 +136,13 @@ The `google-gemini` branch runs entirely on Google for the Startup Buildathon In
 and a Cloud Run deployment. Nothing on this branch has been run against the real Gemini API, the real Gemini CLI or
 Cloud Run; the tests use fake adapters and a fake `gemini` executable.
 
-- **Gemini API (default).** Every role starts on a saved Gemini profile: `gemini_pro` (spec, revise, robot, analysis,
+- **Gemini on Vertex AI (recommended on Cloud Run, no key).** Calls go to Vertex AI and are billed to your Google Cloud
+  project, so Google Cloud credits can apply (check your credit terms). On Cloud Run the service account's token comes
+  from the metadata server; on your computer it comes from `gcloud auth application-default login`. Profiles
+  `vertex_pro`, `vertex_flash` and `vertex_flash_lite` (kind `vertex_gemini`) are saved for new installs, and a new
+  install on Cloud Run (or with `STUDIO_LLM_DEFAULT=vertex`) uses them for every role. Details in `server/studio/llm/vertex.py`
+  and `deploy/cloudrun/README.md`. Tested with fake HTTP and a fake `gcloud` only; no real Vertex call has been made.
+- **Gemini API (default elsewhere).** Every role starts on a saved Gemini profile: `gemini_pro` (spec, revise, robot, analysis,
   checks), `gemini_flash` (scene, search, extract, ask) and `gemini_flash_lite` (objects). Put a key from
   <https://aistudio.google.com/apikey> in **Settings** or set `GEMINI_API_KEY` before starting. Search uses Grounding
   with Google Search.

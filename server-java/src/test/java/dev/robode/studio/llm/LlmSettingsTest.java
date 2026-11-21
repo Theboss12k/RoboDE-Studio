@@ -17,10 +17,12 @@ import tools.jackson.databind.node.ObjectNode;
 class LlmSettingsTest {
     @TempDir Path runtime;
 
-    LlmSettings settings() {
+    LlmSettings settings() { return settings(Map.of()); }
+
+    LlmSettings settings(Map<String, String> env) {
         StudioProperties props = new StudioProperties(runtime, runtime, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null);
-        return new LlmSettings(props, null, new Keys(runtime, Map.of()));
+        return new LlmSettings(props, null, new Keys(runtime, Map.of()), env);
     }
 
     @Test
@@ -31,10 +33,10 @@ class LlmSettingsTest {
         for (String r : new String[] {"spec", "revise", "checks", "analysis", "robot"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_pro");
         for (String r : new String[] {"scene", "search", "extract", "ask"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_flash");
         assertThat(roles.get("objects").asString()).isEqualTo("gemini_flash_lite");
-        assertThat(data.get("profiles")).hasSize(8);
+        assertThat(data.get("profiles")).hasSize(11);
         JsonNode lite = null;
         for (JsonNode p : data.get("profiles")) {
-            assertThat(Json.text(p, "kind")).matches("gemini|gemini_cli|antigravity_cli");
+            assertThat(Json.text(p, "kind")).matches("gemini|gemini_cli|antigravity_cli|vertex_gemini");
             if ("gemini_flash_lite".equals(Json.text(p, "id"))) lite = p;
         }
         assertThat(lite).isNotNull();
@@ -46,6 +48,24 @@ class LlmSettingsTest {
         for (String id : new String[] {"antigravity_flash_high", "antigravity_flash_medium", "antigravity_flash_low"})
             assertThat(Json.text(settings().profile(id), "kind")).isEqualTo("antigravity_cli");
         assertThat(settings().resolved("antigravity_flash_low").get("api_key").isNull()).isTrue();   // keyless kind
+    }
+
+    @Test
+    void vertexProfilesExistAndAreTheRoleDefaultsOnCloudRunOrWhenAsked() {
+        for (Map<String, String> env : java.util.List.of(Map.of("K_SERVICE", "robode-studio"), Map.of("STUDIO_LLM_DEFAULT", "vertex"))) {
+            JsonNode roles = settings(env).data().get("roles");
+            for (String r : new String[] {"spec", "revise", "checks", "analysis", "robot"}) assertThat(roles.get(r).asString()).isEqualTo("vertex_pro");
+            for (String r : new String[] {"scene", "search", "extract", "ask"}) assertThat(roles.get(r).asString()).isEqualTo("vertex_flash");
+            assertThat(roles.get("objects").asString()).isEqualTo("vertex_flash_lite");
+        }
+        ObjectNode flash = settings().profile("vertex_flash");   // the profile exists even when the roles do not use it
+        assertThat(Json.text(flash, "kind")).isEqualTo("vertex_gemini");
+        assertThat(Json.text(flash, "location")).isEqualTo("global");
+        assertThat(settings().resolved("vertex_pro").get("api_key").isNull()).isTrue();   // no key, ever
+        ObjectNode p = LlmSettings.validate(Json.parse("{\"name\": \"V\", \"kind\": \"vertex_gemini\", \"model\": \"gemini-3.8-flash\", \"location\": \"us-central1\", \"project\": \"my-proj-1\"}"));
+        assertThat(Json.text(p, "location")).isEqualTo("us-central1");
+        assertThat(Json.text(p, "project")).isEqualTo("my-proj-1");
+        assertThat(p.has("api_key")).isFalse();
     }
 
     @Test

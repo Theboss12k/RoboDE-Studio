@@ -15,11 +15,13 @@ Roles:
 Providers are plugged in through PROVIDERS (kind -> factory(profile)). Adding a provider means adding one adapter
 module with `invoke(input, system_prompt)` and one entry here; nothing else in the studio changes.
 - gemini:     Google Gemini through the Gemini API; its key comes from llm/keys.py, never from the profile.
+- vertex_gemini: Gemini on Vertex AI, billed to a Google Cloud project; no key (metadata server on Cloud Run, gcloud locally).
 - gemini_cli: Gemini through the Gemini CLI and the user's own Google sign-in (no key; text only).
 - antigravity_cli: Gemini through the Google Antigravity CLI (`agy`) and the user's own Google sign-in (no key; text only).
 - claude_cli: Claude through the Claude Code CLI and its own sign-in (no key). Kept, but not a default on the
               google-gemini branch.
 """
+import os
 import uuid
 
 from pydantic import BaseModel, Field
@@ -31,10 +33,24 @@ from .claude_cli import MODELS, ClaudeCLI
 from .gemini_cli import GeminiCLI
 from .keys import KeyStore
 from .usage import UsageLedger
+from .vertex import VertexGemini
 
 ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects', 'ask', 'checks')
 DEFAULT_ROLES = {'spec': 'gemini_pro', 'scene': 'gemini_flash', 'robot': 'gemini_pro', 'revise': 'gemini_pro', 'search': 'gemini_flash',
                  'extract': 'gemini_flash', 'analysis': 'gemini_pro', 'objects': 'gemini_flash_lite', 'ask': 'gemini_flash', 'checks': 'gemini_pro'}
+
+VERTEX_ROLES = {'spec': 'vertex_pro', 'scene': 'vertex_flash', 'robot': 'vertex_pro', 'revise': 'vertex_pro', 'search': 'vertex_flash',
+                'extract': 'vertex_flash', 'analysis': 'vertex_pro', 'objects': 'vertex_flash_lite', 'ask': 'vertex_flash', 'checks': 'vertex_pro'}
+
+
+def vertex_default(env=None):
+    """New installs on Cloud Run (K_SERVICE) or with STUDIO_LLM_DEFAULT=vertex use the Vertex profiles for every role."""
+    env = os.environ if env is None else env
+    return bool(env.get('K_SERVICE')) or env.get('STUDIO_LLM_DEFAULT', '').strip().lower() == 'vertex'
+
+
+def default_roles(env=None):
+    return dict(VERTEX_ROLES if vertex_default(env) else DEFAULT_ROLES)
 
 
 def claude_cli(profile):
@@ -47,6 +63,11 @@ def gemini(profile):
                                    timeout_s=profile.get('timeout_s', 240), api_key=profile.get('api_key', ''))
 
 
+def vertex_gemini(profile):
+    return VertexGemini(model=profile['model'], effort=profile.get('effort', ''), timeout_s=profile.get('timeout_s', 240),
+                        location=profile.get('location') or 'global', project=profile.get('project') or '')
+
+
 def gemini_cli(profile):
     return GeminiCLI(model=profile['model'], effort=profile.get('effort', ''), timeout_s=profile.get('timeout_s', 240),
                      cli_path=profile.get('cli_path', ''))
@@ -57,7 +78,7 @@ def antigravity_cli(profile):
                           cli_path=profile.get('cli_path', ''))
 
 
-PROVIDERS = {'antigravity_cli': antigravity_cli, 'claude_cli': claude_cli, 'gemini': gemini, 'gemini_cli': gemini_cli}
+PROVIDERS = {'antigravity_cli': antigravity_cli, 'claude_cli': claude_cli, 'gemini': gemini, 'gemini_cli': gemini_cli, 'vertex_gemini': vertex_gemini}
 KEYED = {'gemini'}  # providers whose factory receives the saved API key as profile['api_key']
 
 
@@ -68,12 +89,17 @@ class Profile(BaseModel):
     effort: str = Field(default='', pattern=r'^(|low|medium|high|xhigh|max)$')
     timeout_s: int = Field(default=240, ge=10, le=900)
     cli_path: str = Field(default='', max_length=1000)
+    location: str = Field(default='', max_length=40, pattern=r'^[a-z0-9-]*$')
+    project: str = Field(default='', max_length=100, pattern=r'^[a-z0-9:.\-]*$')
 
 
 DEFAULTS = [
     {'id': 'gemini_pro', 'name': 'Gemini 3.1 Pro (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.1-pro-preview'},
     {'id': 'gemini_flash', 'name': 'Gemini 3.8 Flash (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.8-flash'},
     {'id': 'gemini_flash_lite', 'name': 'Gemini 3.5 Flash-Lite (Gemini API)', 'kind': 'gemini', 'model': 'gemini-3.5-flash-lite'},
+    {'id': 'vertex_pro', 'name': 'Gemini 3.1 Pro (Vertex AI, Google Cloud project)', 'kind': 'vertex_gemini', 'model': 'gemini-3.1-pro-preview'},
+    {'id': 'vertex_flash', 'name': 'Gemini 3.8 Flash (Vertex AI, Google Cloud project)', 'kind': 'vertex_gemini', 'model': 'gemini-3.8-flash'},
+    {'id': 'vertex_flash_lite', 'name': 'Gemini 3.5 Flash-Lite (Vertex AI, Google Cloud project)', 'kind': 'vertex_gemini', 'model': 'gemini-3.5-flash-lite'},
     {'id': 'gemini_cli_pro', 'name': 'Gemini 3.1 Pro (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.1-pro-preview'},
     {'id': 'gemini_cli_flash', 'name': 'Gemini 3.8 Flash (Gemini CLI, Google sign-in)', 'kind': 'gemini_cli', 'model': 'gemini-3.8-flash'},
     {'id': 'antigravity_flash_high', 'name': 'Gemini 3.8 Flash High (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-high'},
@@ -83,7 +109,7 @@ DEFAULTS = [
 
 
 def default_profiles():
-    return [dict(p, effort='', timeout_s=240, cli_path='') for p in DEFAULTS]
+    return [dict(p, effort='', timeout_s=240, cli_path='', **({'location': 'global', 'project': ''} if p['kind'] == 'vertex_gemini' else {})) for p in DEFAULTS]
 
 
 class LLMRegistry:
@@ -97,8 +123,8 @@ class LLMRegistry:
         data = read_json(self.path)
         if data is None:
             data = {'profiles': default_profiles(),
-                    'roles': dict(DEFAULT_ROLES)}
-        data['roles'] = {**DEFAULT_ROLES, **data['roles']}  # roles added later get their default
+                    'roles': default_roles()}
+        data['roles'] = {**default_roles(), **data['roles']}  # roles added later get their default
         have = {p['id'] for p in data['profiles']}
         for default in default_profiles():  # a default profile a role points to (a role added later) is added when missing
             if default['id'] not in have and default['id'] in data['roles'].values():
@@ -110,12 +136,12 @@ class LLMRegistry:
 
     def describe(self):
         return {**self.data(), 'kinds': sorted(PROVIDERS), 'roles_available': list(ROLES), 'keys': self.keys.status(),
-                'models': {'antigravity_cli': list(ANTIGRAVITY_MODELS), 'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS)}}
+                'models': {'antigravity_cli': list(ANTIGRAVITY_MODELS), 'claude_cli': list(MODELS), 'gemini': list(gemini_module.MODELS), 'gemini_cli': list(gemini_module.MODELS), 'vertex_gemini': list(gemini_module.MODELS)}}
 
     def upsert(self, profile: Profile, profile_id=None):
         if profile.kind not in PROVIDERS:
             raise ValueError(f'Unknown provider kind {profile.kind}')
-        if profile.kind in ('gemini', 'gemini_cli', 'antigravity_cli') and not profile.model.startswith('gemini'):
+        if profile.kind in ('gemini', 'gemini_cli', 'antigravity_cli', 'vertex_gemini') and not profile.model.startswith('gemini'):
             raise ValueError('A Gemini profile needs a Gemini model name, such as gemini-3.8-flash')
         data = self.data()
         profile_id = profile_id or uuid.uuid4().hex[:10]

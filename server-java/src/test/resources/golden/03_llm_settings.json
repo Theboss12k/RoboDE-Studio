@@ -33,6 +33,39 @@
         "cli_path": ""
       },
       {
+        "id": "vertex_pro",
+        "name": "Gemini 3.1 Pro (Vertex AI, Google Cloud project)",
+        "kind": "vertex_gemini",
+        "model": "gemini-3.1-pro-preview",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": "",
+        "location": "global",
+        "project": ""
+      },
+      {
+        "id": "vertex_flash",
+        "name": "Gemini 3.8 Flash (Vertex AI, Google Cloud project)",
+        "kind": "vertex_gemini",
+        "model": "gemini-3.8-flash",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": "",
+        "location": "global",
+        "project": ""
+      },
+      {
+        "id": "vertex_flash_lite",
+        "name": "Gemini 3.5 Flash-Lite (Vertex AI, Google Cloud project)",
+        "kind": "vertex_gemini",
+        "model": "gemini-3.5-flash-lite",
+        "effort": "",
+        "timeout_s": 240,
+        "cli_path": "",
+        "location": "global",
+        "project": ""
+      },
+      {
         "id": "gemini_cli_pro",
         "name": "Gemini 3.1 Pro (Gemini CLI, Google sign-in)",
         "kind": "gemini_cli",
@@ -94,7 +127,8 @@
       "antigravity_cli",
       "claude_cli",
       "gemini",
-      "gemini_cli"
+      "gemini_cli",
+      "vertex_gemini"
     ],
     "roles_available": [
       "spec",
@@ -138,6 +172,16 @@
         "gemini-robotics-er-2-preview"
       ],
       "gemini_cli": [
+        "gemini-3.8-flash",
+        "gemini-4-carbon",
+        "gemini-4-argon",
+        "gemini-3.1-pro-preview",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-robotics-er-2-preview"
+      ],
+      "vertex_gemini": [
         "gemini-3.8-flash",
         "gemini-4-carbon",
         "gemini-4-argon",

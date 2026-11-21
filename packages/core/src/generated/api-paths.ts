@@ -1624,6 +1624,10 @@ export interface components {
             effort?: "" | "low" | "medium" | "high" | "xhigh" | "max";
             timeout_s?: number;
             cli_path?: string;
+            /** @description vertex_gemini only: Google Cloud location, global by default. */
+            location?: string;
+            /** @description vertex_gemini only: Google Cloud project id; empty uses the environment or metadata server. */
+            project?: string;
         };
         LlmProfileInput: {
             name: string;
@@ -1640,6 +1644,10 @@ export interface components {
             timeout_s: number;
             /** @default  */
             cli_path: string;
+            /** @default  */
+            location: string;
+            /** @default  */
+            project: string;
         };
         /** @description Key status by provider kind. The key itself is never returned. */
         KeyStatus: {

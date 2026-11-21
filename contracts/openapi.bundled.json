@@ -5004,6 +5004,16 @@
           "cli_path": {
             "type": "string",
             "maxLength": 1000
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "vertex_gemini only: Google Cloud location, global by default."
+          },
+          "project": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "vertex_gemini only: Google Cloud project id; empty uses the environment or metadata server."
           }
         },
         "required": [
@@ -5052,6 +5062,18 @@
           "cli_path": {
             "type": "string",
             "maxLength": 1000,
+            "default": ""
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 40,
+            "pattern": "^[a-z0-9-]*$",
+            "default": ""
+          },
+          "project": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[a-z0-9:.-]*$",
             "default": ""
           }
         },

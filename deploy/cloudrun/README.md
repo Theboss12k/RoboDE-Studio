@@ -1,8 +1,11 @@
 # Deploy RoboDE Studio (Google edition) on Cloud Run
 
 You run these steps; nothing here has been run or tested against a real project (2026-11-21). The container is one
-service: the Spring Boot API, the Python engine and the built web client. Every model role uses Gemini through the
-Gemini API. No key or token is baked into the image: both arrive from Secret Manager at run time.
+service: the Spring Boot API, the Python engine and the built web client. **Recommended: Gemini on Vertex AI.** A new
+install on Cloud Run defaults every role to the `vertex_*` profiles, which call Vertex AI with the Cloud Run service
+account's own token (no API key) and are billed to this Google Cloud project. Google Cloud credits apply to usage billed to
+the project; check your credit terms to see which services your credits cover (nothing here asserts coverage). The Gemini
+API key route still works and is optional (step 2). No key or token is baked into the image.
 
 Replace `PROJECT_ID`, `REGION` (for example `asia-south1`) and the values marked `<...>`.
 
@@ -11,26 +14,37 @@ Replace `PROJECT_ID`, `REGION` (for example `asia-south1`) and the values marked
 ```bash
 gcloud auth login
 gcloud config set project PROJECT_ID
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com aiplatform.googleapis.com
+
+# Let the Cloud Run service account call Vertex AI (the default is the Compute Engine service account)
+PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/aiplatform.user
 gcloud artifacts repositories create studio --repository-format=docker --location=REGION
 ```
 
 ## 2. Secrets (Secret Manager)
 
-The Gemini key comes from <https://aistudio.google.com/apikey>. The studio token protects `/api/v1`; the server
+The `gemini-api-key` secret is **optional** with Vertex AI: create it only if you also want the Gemini API profiles
+(`gemini_*`); then keep `GEMINI_API_KEY=gemini-api-key:latest` in `--set-secrets` and in the loop below, otherwise drop
+both. The Gemini key comes from <https://aistudio.google.com/apikey>. The studio token protects `/api/v1`; the server
 refuses to listen on `0.0.0.0` without it. Use letters and digits only (the hex below is safe in a link and a cookie).
 
 ```bash
-printf '%s' '<your Gemini API key>' | gcloud secrets create gemini-api-key --data-file=-
+# optional (Gemini API profiles only):
+# printf '%s' '<your Gemini API key>' | gcloud secrets create gemini-api-key --data-file=-
 openssl rand -hex 32 | tr -d '\n' | gcloud secrets create studio-token --data-file=-
 
 PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
-for s in gemini-api-key studio-token; do
+for s in studio-token; do   # add gemini-api-key here if you created it
   gcloud secrets add-iam-policy-binding $s \
     --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
     --role=roles/secretmanager.secretAccessor
 done
 ```
+
+Vertex AI needs no secret; only `studio-token` is required.
 
 The Java process reads `GEMINI_API_KEY` as the fallback key (a key saved in Settings wins over it) and sends it to the
 Python engine only on stdin. The engine's own environment does not contain it.
@@ -57,7 +71,8 @@ gcloud run deploy robode-studio \
   --no-cpu-throttling \
   --min-instances 1 --max-instances 1 \
   --concurrency 20 \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest,STUDIO_TOKEN=studio-token:latest \
+  --set-secrets STUDIO_TOKEN=studio-token:latest \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=PROJECT_ID \
   --allow-unauthenticated
 ```
 
@@ -85,8 +100,25 @@ echo "$URL/#token=$TOKEN"
 
 Open that link once in your browser. The page stores the token in the browser's local storage, clears it from the
 address bar and also sets it as a `studio_token` cookie, so API calls (Authorization header) and image, mesh and
-download links (cookie) both work. Under **AI models** every role should show a Gemini profile and the Gemini key as
-"from GEMINI_API_KEY". Use **Test** on a profile to check the key with one small real call (this is a billed Gemini call).
+download links (cookie) both work. Under **AI models** every role should show a "Vertex AI" profile. Use **Test** on a
+profile to check the setup with one small real call (this is a billed Vertex AI call). A 403 means the API is not enabled or
+the service account lacks `roles/aiplatform.user`; a 404 means the model is not available in that location (profiles
+use the `global` location by default). Existing installs keep their saved roles: assign `vertex_pro`, `vertex_flash` and
+`vertex_flash_lite` under Settings (or delete `runtime/llm/profiles.json`).
+
+## Test Vertex AI on your own computer
+
+```bash
+gcloud auth application-default login
+export GOOGLE_CLOUD_PROJECT=PROJECT_ID
+gcloud services enable aiplatform.googleapis.com
+# start the studio as usual, then Settings -> a Vertex profile -> Test.
+# Or: STUDIO_LLM_DEFAULT=vertex before the first start makes every role of a new install use Vertex.
+```
+
+Your own account needs `roles/aiplatform.user` on the project (owners already have it). The studio runs `gcloud` to get a
+short-lived token; nothing is stored. Or add a model under Settings: "Gemini on Vertex AI (Google Cloud project, no key)".
+No real call to Vertex AI has been made by the authors of this guide.
 
 The Gemini CLI and Antigravity CLI profiles (`gemini_cli_*`, `antigravity_*`) do not work on Cloud Run: they need a Google sign-in on the machine that
 runs the CLI, and the image does not contain the CLI. They are for running the studio on your own computer.
@@ -121,5 +153,5 @@ gcloud run services delete robode-studio --region REGION
 ```
 
 With `--min-instances 1` and CPU always allocated the service is billed continuously; delete it or set
-`--min-instances 0` when you are not using it (jobs then stop when the instance scales down). Gemini calls are billed
-to the key's project at Google's current prices; the **Usage** page shows token counts and estimates.
+`--min-instances 0` when you are not using it (jobs then stop when the instance scales down). Vertex AI calls are billed
+to this project (Gemini API key calls to the key's project) at Google's current prices; the **Usage** page shows token counts and estimates.

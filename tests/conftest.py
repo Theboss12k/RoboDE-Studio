@@ -32,5 +32,5 @@ def no_real_model_calls(monkeypatch, request):
     if 'claude' in request.keywords:
         return
     from studio.llm import registry
-    for kind in ('antigravity_cli', 'claude_cli', 'gemini', 'gemini_cli'):
+    for kind in ('antigravity_cli', 'claude_cli', 'gemini', 'gemini_cli', 'vertex_gemini'):
         monkeypatch.setitem(registry.PROVIDERS, kind, lambda profile: _BlockedLLM())

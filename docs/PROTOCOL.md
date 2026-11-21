@@ -27,7 +27,9 @@ and `runtime/llm/**`.
   dict. `api_key` is set only for keyed providers (gemini): the saved key, else the `GEMINI_API_KEY` env fallback.
   Keys travel only on stdin: never in argv, env, logs or stdout.
 - `llm.profile`: a single profile dict (only for `llm_test`).
-- Profile kinds: `gemini` (keyed), `gemini_cli`, `antigravity_cli` (keyless CLIs signed in on the machine; text only, no
+- Profile kinds: `gemini` (keyed), `vertex_gemini` (Gemini on Vertex AI, billed to a Google Cloud project; no key: the engine gets an OAuth access
+  token from the metadata server on Cloud Run or from `gcloud` locally; profile fields `location` (default `global`) and `project` (optional),
+  `effort`, `timeout_s`; new installs on Cloud Run (`K_SERVICE`) or with `STUDIO_LLM_DEFAULT=vertex` default every role to `vertex_pro`/`vertex_flash`/`vertex_flash_lite`), `gemini_cli`, `antigravity_cli` (keyless CLIs signed in on the machine; text only, no
   `api_key`) and `claude_cli`. `antigravity_cli` models: `gemini-3.8-flash-high|medium|low`; `effort` becomes `--effort`;
   `cli_path` defaults to `agy` on PATH, then `~/.gemini/bin/agy`.
 - Profile kind `scripted` (tests only): `{"kind": "scripted", "fixture": "/abs/rules.json"}`. It is accepted only

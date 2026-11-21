@@ -25,8 +25,15 @@ public class LlmSettings {
     private final MetaService meta;
     private final Keys keys;
     private final Object lock = new Object();
+    /** Cloud Run (K_SERVICE) or STUDIO_LLM_DEFAULT=vertex: a new install's roles use the Vertex AI profiles. */
+    private final boolean vertexDefault;
 
-    public LlmSettings(StudioProperties props, MetaService meta, Keys keys) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public LlmSettings(StudioProperties props, MetaService meta, Keys keys) { this(props, meta, keys, System.getenv()); }
+
+    public LlmSettings(StudioProperties props, MetaService meta, Keys keys, java.util.Map<String, String> env) {
+        this.vertexDefault = env.get("K_SERVICE") != null && !env.get("K_SERVICE").isBlank()
+                || "vertex".equalsIgnoreCase(env.getOrDefault("STUDIO_LLM_DEFAULT", "").trim());
         this.path = props.runtime().resolve("llm").resolve("profiles.json");
         this.meta = meta;
         this.keys = keys;
@@ -34,16 +41,23 @@ public class LlmSettings {
 
     public Keys keys() { return keys; }
 
-    private static ObjectNode defaultRoles() {
+    private ObjectNode defaultRoles() {
         ObjectNode r = Json.obj();
+        if (vertexDefault) {
+            r.put("spec", "vertex_pro").put("scene", "vertex_flash").put("robot", "vertex_pro").put("revise", "vertex_pro")
+                    .put("search", "vertex_flash").put("extract", "vertex_flash").put("analysis", "vertex_pro").put("objects", "vertex_flash_lite").put("ask", "vertex_flash").put("checks", "vertex_pro");
+            return r;
+        }
         r.put("spec", "gemini_pro").put("scene", "gemini_flash").put("robot", "gemini_pro").put("revise", "gemini_pro")
                 .put("search", "gemini_flash").put("extract", "gemini_flash").put("analysis", "gemini_pro").put("objects", "gemini_flash_lite").put("ask", "gemini_flash").put("checks", "gemini_pro");
         return r;
     }
 
     private static ObjectNode defaultProfile(String id, String name, String kind, String model) {
-        return Json.obj().put("id", id).put("name", name).put("kind", kind).put("model", model)
+        ObjectNode p = Json.obj().put("id", id).put("name", name).put("kind", kind).put("model", model)
                 .put("effort", "").put("timeout_s", 240).put("cli_path", "");
+        if ("vertex_gemini".equals(kind)) p.put("location", "global").put("project", "");
+        return p;
     }
 
     /** {id, name, kind, model}: the Google edition's defaults (Gemini API for every role; Gemini CLI profiles for local sign-in). */
@@ -51,6 +65,9 @@ public class LlmSettings {
             new String[] {"gemini_pro", "Gemini 3.1 Pro (Gemini API)", "gemini", "gemini-3.1-pro-preview"},
             new String[] {"gemini_flash", "Gemini 3.8 Flash (Gemini API)", "gemini", "gemini-3.8-flash"},
             new String[] {"gemini_flash_lite", "Gemini 3.5 Flash-Lite (Gemini API)", "gemini", "gemini-3.5-flash-lite"},
+            new String[] {"vertex_pro", "Gemini 3.1 Pro (Vertex AI, Google Cloud project)", "vertex_gemini", "gemini-3.1-pro-preview"},
+            new String[] {"vertex_flash", "Gemini 3.8 Flash (Vertex AI, Google Cloud project)", "vertex_gemini", "gemini-3.8-flash"},
+            new String[] {"vertex_flash_lite", "Gemini 3.5 Flash-Lite (Vertex AI, Google Cloud project)", "vertex_gemini", "gemini-3.5-flash-lite"},
             new String[] {"gemini_cli_pro", "Gemini 3.1 Pro (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.1-pro-preview"},
             new String[] {"gemini_cli_flash", "Gemini 3.8 Flash (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.8-flash"},
             new String[] {"antigravity_flash_high", "Gemini 3.8 Flash High (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-high"},
@@ -100,7 +117,7 @@ public class LlmSettings {
 
     private List<String> kinds() {
         JsonNode k = metaOrEmpty().get("kinds");
-        if (k == null || !k.isArray()) return List.of("antigravity_cli", "claude_cli", "gemini", "gemini_cli");
+        if (k == null || !k.isArray()) return List.of("antigravity_cli", "claude_cli", "gemini", "gemini_cli", "vertex_gemini");
         return k.valueStream().map(JsonNode::asString).sorted().toList();
     }
 
@@ -123,7 +140,7 @@ public class LlmSettings {
         ObjectNode profile = validate(body);
         if (!kinds().contains(profile.get("kind").asString()))
             throw StudioException.value("Unknown provider kind " + profile.get("kind").asString());
-        if (List.of("gemini", "gemini_cli", "antigravity_cli").contains(profile.get("kind").asString()) && !profile.get("model").asString().startsWith("gemini"))
+        if (List.of("gemini", "gemini_cli", "antigravity_cli", "vertex_gemini").contains(profile.get("kind").asString()) && !profile.get("model").asString().startsWith("gemini"))
             throw StudioException.value("A Gemini profile needs a Gemini model name, such as gemini-3.8-flash");
         synchronized (lock) {
             ObjectNode data = data();
@@ -140,7 +157,7 @@ public class LlmSettings {
         }
     }
 
-    /** The pydantic Profile model: name 1..120, kind ^[a-z_]+$, model <=120, effort, timeout_s 10..900, cli_path <=1000. */
+    /** The pydantic Profile model: name 1..120, kind ^[a-z_]+$, model <=120, effort, timeout_s 10..900, cli_path <=1000, location and project (Vertex AI; optional). */
     static ObjectNode validate(JsonNode body) {
         if (body == null || !body.isObject()) throw StudioException.value("The profile must be a JSON object");
         String name = text(body, "name", null);
@@ -159,8 +176,14 @@ public class LlmSettings {
         if (timeout < 10 || timeout > 900) throw StudioException.value("timeout_s must be an integer from 10 to 900");
         String cli = text(body, "cli_path", "");
         if (cli.length() > 1000) throw StudioException.value("cli_path must be at most 1000 characters");
-        return Json.obj().put("name", name).put("kind", kind).put("model", model).put("effort", effort)
+        String location = text(body, "location", "");
+        if (location.length() > 40 || !location.matches("^[a-z0-9-]*$")) throw StudioException.value("location must be a Google Cloud location such as global or us-central1");
+        String project = text(body, "project", "");
+        if (project.length() > 100 || !project.matches("^[a-z0-9:.\\-]*$")) throw StudioException.value("project must be a Google Cloud project id");
+        ObjectNode out = Json.obj().put("name", name).put("kind", kind).put("model", model).put("effort", effort)
                 .put("timeout_s", timeout).put("cli_path", cli);
+        if ("vertex_gemini".equals(kind)) out.put("location", location.isEmpty() ? "global" : location).put("project", project);
+        return out;
     }
 
     private static String text(JsonNode body, String field, String fallback) {
