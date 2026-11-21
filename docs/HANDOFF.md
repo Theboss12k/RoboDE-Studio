@@ -1,5 +1,12 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 — Repo made PUBLIC after a history scrub.** Before going public, the 15-commit history of `main` (local google-gemini) was rewritten with `git filter-branch --tree-filter`:
+- the collaborator's personal email and Windows username were redacted in docs/agents/*.md;
+- the personal-machine line was generalised;
+- the accidentally committed generated folders `e2e/.runtime-demo` and `e2e/.runtime-e2e` were removed from all commits.
+
+All commit SHAs changed (the new tip is 7842ea4). It was force-pushed to the new repo only; RoboDE-Studio-old is untouched and private. The local tag `pre-scrub-backup` points at the old tip; delete it once you no longer need it.
+
 **2026-11-21 — Published.** google-gemini is pushed as `main` of the NEW private repo https://github.com/Theboss12k/RoboDE-Studio (remote `origin`). The previous repo was renamed to https://github.com/Theboss12k/RoboDE-Studio-old (remote `old`; it keeps main, AR_review, Front and ui-revamp). The local branch google-gemini tracks origin/main.
 
 **2026-11-21 ~07:35 IST — AR_review MERGED into google-gemini (cb72f69). google-gemini is the FINAL branch (user decision).**
