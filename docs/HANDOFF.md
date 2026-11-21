@@ -17,12 +17,12 @@ TaskLLMs built from runtime/llm/profiles.json.
    failing reach_max as "one robot is not enough". Fix: count a reach failure only when no fixed-base family
    (`fleet.assign.FIXED_BASE_FAMILIES`), freshly sized from the spec, reaches every waypoint; use IK on the
    `sim.task.waypoints` targets. Add a test.
-3. **Not approved yet: the handover station clearance makes the fleet impossible.**
+3. **FIXED (stands stand on the surface below; footprint-based blockers).** Was: the handover station clearance made the fleet impossible.
    - `agents/scene.py::_check_stations` sets STATION_FREE_M = 0.3. For this task the hands are 0.225 m and the
      desk is 0.24 m from the stand at the midpoint.
    - The scene agent fails 4 attempts and the fleet_design job errors.
    - No fleet version exists in any local project.
-4. **Not approved yet: the fleet layout ignores the `robot_base` marker xy and the scene.** Both bases land at
+4. **FIXED (bases keep the robot_base offset; the preview notes a base with no surface).** Was: the fleet layout ignored the `robot_base` marker xy. Both bases land at
    y≈0.5, off the desk. The assignment preview says "feasible" anyway.
 
 **2026-11-21 — Submission rule (user): no Claude attribution in this repo.** At the user's request (for the submission), the `Co-Authored-By: Claude …` trailers were removed from all commit messages (history rewritten; the new tip is b6176f0; the backup tag is `pre-coauthor-removal-backup`). Do NOT add Co-Authored-By or "Generated with Claude Code" lines to commits or PRs in this repo until the user says otherwise.

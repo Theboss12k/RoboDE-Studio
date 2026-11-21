@@ -326,3 +326,26 @@ def test_shortfall_ignores_a_reach_failure_one_robot_can_fix():
     assert next(c for c in sim.checks if c.requirement_id == 'reach_max').passed is False
     assert feasibility.one_robot_reaches(spec, reqs) is not None
     assert feasibility.single_robot_shortfall(spec, reqs, short, sim) == []
+
+
+def test_stand_stands_on_a_lower_box_and_only_taller_boxes_block_it():
+    from studio.agents.scene import station_blockers
+    from studio.schemas import SceneBox
+    low = SceneBox(id='lap', kind='table', center=(0.0, 0.55, 0.325), size=(0.7, 0.3, 0.65))     # top 0.65 under the station
+    desk = SceneBox(id='desk', kind='table', center=(0.0, 0.0, 0.73), size=(1.2, 0.5, 0.04))    # top 0.75, 0.24 m away
+    tall = SceneBox(id='wall', kind='obstacle', center=(0.1, 0.5, 0.5), size=(0.1, 0.1, 1.0))   # rises above the station
+    assert station_blockers([low, desk], 0.0, 0.49, 0.78) == []
+    assert [b.id for b in station_blockers([low, desk, tall], 0.0, 0.49, 0.78)] == ['wall']
+    lay = layout.Layout(bases={}, handovers={'h1': (0.0, 0.49, 0.78)}, parks={})
+    (stand,) = subspec.station_boxes(lay, boxes=[low, desk])
+    assert stand.center[2] - stand.size[2] / 2 == pytest.approx(0.65) and stand.center[2] + stand.size[2] / 2 == pytest.approx(0.78)
+    assert subspec.station_boxes(layout.Layout(bases={}, handovers={'h1': (0.0, 0.0, 0.75)}, parks={}), boxes=[desk]) == []
+
+
+def test_bases_stay_on_the_mount_side_of_the_task():
+    spec = line_spec(-1.6, 1.6)
+    mount = Marker(id='robot_base', name='Robot base', position=(0.0, -0.8, 0.0))
+    spec = spec.model_copy(update={'markers': [*spec.markers, mount]})
+    _, a, lay = plan(spec)
+    assert all(b.position[1] == pytest.approx(-0.8, abs=0.05) for b in lay.bases.values())
+    assert all(abs(h[1]) < 0.05 for h in lay.handovers.values())       # handovers stay on the task line

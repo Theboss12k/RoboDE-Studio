@@ -1,6 +1,7 @@
 """Iterative cell layout of a fleet: robot bases, handover stations and park poses.
 
-Each iteration: (1) bases at the enclosing-circle centre of their member's points (task points and handovers),
+Each iteration: (1) bases at the enclosing-circle centre of their member's points (task points and handovers), shifted
+by the offset of the task's robot_base marker (when it has one) from the centre of all task points,
 (2) every free handover moved along the line between its two bases to balance their reach shares (golden-section
 search), (3) bases pushed apart to MIN_BASE_SPACING_M and away from task points and stations. It stops when nothing
 moves more than CONVERGED_M, or after max_iter iterations.
@@ -128,8 +129,17 @@ def plan_layout(spec: TechnicalSpec, assignment: FleetAssignment, limits: FleetL
     def points(i):
         return [p[:2] for p in own(i)] + [H[h][:2] for h in touch[i]]
 
+    # the user's mounting point (robot_base marker) says on which side of the work the robots stand: every free base
+    # keeps the marker's offset from the centre of the task points, so the bases stay on the mount side (a desk edge)
+    # instead of landing among the task points
+    mount = marks['robot_base'][:2] - _centre([p[:2] for p in task_pts]) if 'robot_base' in marks and task_pts \
+        else np.zeros(2)
+
+    def home(i):
+        return _centre(points(i)) + mount
+
     fixed_base = {i: np.array(mem[i].base, float) for i in ids if mem[i].base is not None}
-    B = {i: fixed_base[i][:2].copy() if i in fixed_base else _centre(points(i)) for i in ids}
+    B = {i: fixed_base[i][:2].copy() if i in fixed_base else home(i) for i in ids}
     log: list[str] = []
     converged, it = False, 0
     for it in range(1, max_iter + 1):
@@ -138,12 +148,12 @@ def plan_layout(spec: TechnicalSpec, assignment: FleetAssignment, limits: FleetL
         # (2) bases at the centre of their member's points
         for i in ids:
             if i not in fixed_base:
-                B[i] = _centre(points(i))
+                B[i] = home(i)
         # (3) free handovers between their two bases, balancing the reach shares
         for h in a.handovers:
             if h.fixed:
                 continue
-            bf, bt = B[h.from_member], B[h.to_member]
+            bf, bt = B[h.from_member] - mount, B[h.to_member] - mount   # between the work areas, not the shifted bases
             rf, rt = R[h.from_member], R[h.to_member]
             if np.linalg.norm(bt - bf) < 1e-9:
                 continue

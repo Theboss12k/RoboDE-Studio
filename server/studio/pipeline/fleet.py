@@ -117,11 +117,27 @@ def assign(version: DesignVersion, limits, assignment=None) -> dict:
         parks[m.id] = {'start': _r3(start), 'end': _r3(end)}
     if not layout.converged:
         notes.append(layout.log[-1])
+    notes += _mount_notes(version.scene, layout)
     notes += [line for line in layout.log if line.startswith(('Bases of', 'The base of'))]
     preview = {'bases': bases, 'handovers': {k: _r3(v) for k, v in sorted(layout.handovers.items())},
                'parks': parks, 'workspace_samples': samples}
     return {'assignment': _with_positions(a, layout).model_dump(mode='json'), 'preview': preview,
             'feasible': bool(feasible), 'notes': notes}
+
+
+def _mount_notes(scene, layout) -> list[str]:
+    """Notes for bases above the floor that stand on no surface of the base version's scene (the fleet's own scene is
+    built around the planned bases, so this is a warning, not a failure)."""
+    out = []
+    for mid, b in sorted(layout.bases.items()):
+        x, y, z = b.position
+        if z <= 0.02:
+            continue
+        if not any(abs(bx.center[2] + bx.size[2] / 2 - z) <= 0.02 and scene_agent.rect_distance(bx, x, y) == 0
+                   for bx in scene.boxes if bx.collides and not bx.id.startswith(STATION_PREFIX)):
+            out.append(f'{mid}: its base at ({x:.2f}, {y:.2f}, {z:.2f}) is on no surface of the current scene; the '
+                       'fleet scene will add a mount there')
+    return out
 
 
 # -- planning a fleet ---------------------------------------------------------------------------------------------------
@@ -148,7 +164,7 @@ def _scene_core(scene: SceneSpec) -> SceneSpec:
 
 
 def _full_scene(core: SceneSpec, task, a, layout, primary) -> SceneSpec:
-    stations = station_boxes(layout)
+    stations = station_boxes(layout, boxes=core.boxes)
     marks = [Marker(id=handover_marker_id(task, h.id), name=f'{STATION_NAME} {h.id}', position=layout.handovers[h.id],
                     note=f'{h.object} from {h.from_member} to {h.to_member}') for h in a.handovers]
     ids = {m.id for m in core.markers}

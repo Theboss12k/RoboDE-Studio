@@ -631,3 +631,29 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
   - the two new tests fail without the fixes and pass with them; the full Python suite passes with fixture models
     (531 passed, 9 skipped). The Java tests were not re-run because no Java code changed.
   - These are kinematic and static-load calculations in code, not hardware tests.
+
+## 2026-11-21 — Fleet: handover stands on the surface below; bases stay on the user's mount side
+
+- Applications: Studio server (`agents/scene.py`, `fleet/subspec.py`, `fleet/layout.py`, `pipeline/fleet.py`);
+  tests in `tests/test_fleet_planner.py`. These fix causes 3 and 4 of the fleet root cause analysis above.
+- **Stands.** The fixed 0.3 m free circle around a handover station is gone. A box now blocks a station only when it
+  lies within the stand's footprint plus 0.03 m (0.18 m from the centre) and rises above the surface the object
+  rests on. The stand code adds now stands on the highest box below it instead of the floor, and no stand is added
+  when a surface is already at the station height. The scene prompt says the same.
+- **Bases.** When the task has a `robot_base` marker, every free base keeps that marker's offset from the centre of
+  the task points, so the robots stay on the user's mount side. Handovers are balanced between the robots' work
+  areas (base minus that offset), so they stay among the task points.
+- **Preview.** The assignment preview adds a note when a base above the floor stands on no surface of the current
+  scene.
+- Checked:
+  - with real model inference (2026-11-21, the saved Model A role profiles), the handover project's two-robot fleet
+    design now completes in about 11 s. Before this change the scene step failed after 4 attempts.
+  - Both bases are on the desk edge at (±0.30, 0.0, 0.75). The 0.13 m stand sits on the hand support, and 5 of 5
+    fleet checks pass.
+  - Robot r2 still fails its own `max_accel` check: the peak tool acceleration is 1.46 m/s² against the user's
+    1.0 m/s². This is the separate motion-limit issue, where the tool's Cartesian speed and acceleration are not
+    capped by the joint profiles. It is not fixed here.
+  - Fixture tests: the full Python suite passes (531 passed, 9 skipped; run before the two new tests were added),
+    and the fleet and agent test files pass with them (44 passed).
+  - These are kinematic and static-load calculations in code, not hardware tests. The fleet design was run offline
+    and not saved to the project.

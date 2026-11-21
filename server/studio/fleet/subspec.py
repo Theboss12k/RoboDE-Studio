@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from ..agents.scene import rect_distance
 from ..schemas import Locomotion, Marker, SceneBox, TaskAction, TechnicalSpec
 from .assign import member_sequence
 from .layout import STATION_SIZE_M, Layout
@@ -135,13 +136,18 @@ def member_spec(task: TechnicalSpec, assignment, layout: Layout, member_id: str)
         reference='')
 
 
-def station_boxes(layout: Layout, size: float = STATION_SIZE_M) -> list[SceneBox]:
-    """One support table per handover station: top face at the station marker z (the surface the object rests on,
-    as for every task marker), footprint `size` x `size` centred on it. Stations at floor level need no box."""
+def station_boxes(layout: Layout, size: float = STATION_SIZE_M, boxes=()) -> list[SceneBox]:
+    """One support stand per handover station: top face at the station marker z (the surface the object rests on, as
+    for every task marker), footprint `size` x `size` centred on it, standing on the highest scene box (`boxes`) under
+    that footprint, else on the floor. No stand when that surface is already at the station height."""
     out = []
     for hid, (x, y, z) in sorted(layout.handovers.items()):
-        if z <= 0.02:
+        under = [b.center[2] + b.size[2] / 2 for b in boxes
+                 if b.collides and not b.id.startswith('station_') and rect_distance(b, x, y) < size / 2
+                 and b.center[2] + b.size[2] / 2 <= z + 0.005]
+        bottom = max(under, default=0.0)
+        if z - bottom <= 0.02:
             continue
-        out.append(SceneBox(id=f'station_{hid}', kind='table', center=(x, y, z / 2), size=(size, size, z),
+        out.append(SceneBox(id=f'station_{hid}', kind='table', center=(x, y, (bottom + z) / 2), size=(size, size, z - bottom),
                             color=STATION_COLOR, collides=True))
     return out

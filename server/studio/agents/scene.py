@@ -108,7 +108,7 @@ async def run(adapter, spec, base, extra_bases=(), stations=None):
         prompt += ('\n\nOther robot bases (several fixed robots share this cell; the same free circle and mounting rules '
                    'apply to each): ' + dumps(list(extra_bases)))
     if stations:
-        prompt += ('\n\nHandover stations (code adds a small stand under each; put nothing within 0.3 m of them): ' +
+        prompt += ('\n\nHandover stations (code adds a 0.3 m square stand under each, standing on whatever surface is below; nothing may rise above the station height within 0.18 m of it): ' +
                    dumps({k: [round(c, 3) for c in v] for k, v in sorted(stations.items())}))
 
     def check(data):
@@ -120,13 +120,24 @@ async def run(adapter, spec, base, extra_bases=(), stations=None):
     return await ask_json(adapter, prompt, SYSTEM, schema=SCHEMA, validate=check)
 
 
-STATION_FREE_M = 0.3
+STATION_FOOTPRINT_M = 0.3    # side of the stand code adds under a handover station (fleet.layout.STATION_SIZE_M)
+STATION_MARGIN_M = 0.03      # extra free space around that footprint
+STATION_SURFACE_TOL_M = 0.005
+
+
+def station_blockers(boxes, x, y, z):
+    """Colliding boxes (not code's stands) that would block a stand at station (x, y, z): inside the stand's footprint
+    plus STATION_MARGIN_M and rising above the surface the object rests on. A lower box there is no blocker: the stand
+    stands on it (fleet.subspec.station_boxes)."""
+    free = STATION_FOOTPRINT_M / 2 + STATION_MARGIN_M
+    return [b for b in boxes if b.collides and not b.id.startswith('station_') and rect_distance(b, x, y) < free
+            and b.center[2] + b.size[2] / 2 > z + STATION_SURFACE_TOL_M]
 
 
 def _check_stations(scene, stations):
-    """No colliding box (a box of the scene agent) may stand on or near a handover station."""
-    for b in scene.boxes:
-        for hid, (x, y, _z) in stations.items():
-            if b.collides and not b.id.startswith('station_') and rect_distance(b, x, y) < STATION_FREE_M:
-                raise ValueError(f'Box "{b.id}" is within {STATION_FREE_M} m of handover station {hid} at ({x:.2f}, {y:.2f}); '
-                                 'keep it free (code adds the stand)')
+    """No colliding box (a box of the scene agent) may rise into a handover station's stand or the object on it."""
+    for hid, (x, y, z) in stations.items():
+        for b in station_blockers(scene.boxes, x, y, z):
+            raise ValueError(f'Box "{b.id}" rises above handover station {hid} at ({x:.2f}, {y:.2f}, {z:.2f}) within '
+                             f'{STATION_FOOTPRINT_M / 2 + STATION_MARGIN_M:.2f} m of it; keep its top at or below '
+                             f'z = {z:.2f} there, or move it (code adds the stand on whatever is below)')
