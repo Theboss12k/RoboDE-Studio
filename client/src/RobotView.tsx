@@ -5,6 +5,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Canvas } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
 import { linkFrames, originMatrix, robotExtent, Z_UP } from "@robode/studio-core";
+import { useResolvedTheme } from "./theme";
 import type { Geometry, Parsed } from "./types";
 
 // The same colours, in the same URDF link order, as the Gazebo twin (twin/sdf_builder.py PALETTE).
@@ -74,12 +75,13 @@ export default function RobotView({ parsed, positions = {}, base, height = 340 }
     const d = radius * 2.6;
     return { target, position: [target[0] + d * 0.75, target[1] + d * 0.6, target[2] + d * 0.9] as [number, number, number], radius };
   }, [parsed]);
+  const dark = useResolvedTheme() === "dark";
   return (
-    <div style={{ height, borderRadius: 8, overflow: "hidden", background: "#dfe6ec" }}>
+    <div style={{ height, borderRadius: 8, overflow: "hidden", background: "var(--scene-bg)" }}>
       <Canvas shadows camera={{ position: view.position, fov: 45, near: view.radius / 50, far: view.radius * 200 }} gl={{ preserveDrawingBuffer: true }}>
         <ambientLight intensity={0.7} />
         <directionalLight position={[3, 5, 2]} intensity={1.2} castShadow />
-        <Grid args={[10, 10]} cellSize={view.radius < 0.3 ? 0.01 : 0.1} sectionSize={view.radius < 0.3 ? 0.1 : 0.5} cellColor="#b5c0ca" sectionColor="#8593a2" fadeDistance={view.radius * 20} infiniteGrid />
+        <Grid args={[10, 10]} cellSize={view.radius < 0.3 ? 0.01 : 0.1} sectionSize={view.radius < 0.3 ? 0.1 : 0.5} cellColor={dark ? "#4a5158" : "#b5c0ca"} sectionColor={dark ? "#6b747d" : "#8593a2"} fadeDistance={view.radius * 20} infiniteGrid />
         <group matrixAutoUpdate={false} matrix={Z_UP}><RobotGeometry parsed={parsed} positions={positions} base={base} /></group>
         <OrbitControls target={view.target} makeDefault />
       </Canvas>

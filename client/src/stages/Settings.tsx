@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, runJob } from "../api";
 import Usage from "../Usage";
 import { StageHead } from "../components/common";
+import ThemeSwitch from "../components/ThemeSwitch";
 import PreferredVendors from "../components/settings/PreferredVendors";
 
 type Profile = { id: string; name: string; kind: string; model: string; effort: string; timeout_s: number; cli_path: string; location?: string; project?: string };
@@ -79,6 +80,11 @@ export default function Settings() {
     <div className="page">
       <StageHead artifact="settings" title="Settings and AI models">Assign models to workflow stages, manage provider connections, and review usage.</StageHead>
       {error && <div className="notice error">{error}</div>}
+      <div className="panel">
+        <h3>Appearance</h3>
+        <p className="muted small">Light, dark, or follow this computer.</p>
+        <ThemeSwitch />
+      </div>
       <Usage />
       <PreferredVendors />
       <div className="panel">

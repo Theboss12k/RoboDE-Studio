@@ -53,6 +53,31 @@
   }
 }
 
+/* Forced dark on a light OS. Keep in sync with the media block above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bench: #1c1c1a;
+  --rail: #211f1d;
+  --panel: #262522;
+  --panel-sunk: #22211e;
+  --ink: #f3f0e9;
+  --steel: #b7b1a5;
+  --rule: #393630;
+  --rule-strong: #565147;
+  --accent: #b54423;
+  --accent-hover: #c04b29;
+  --accent-soft: #39271f;
+  --accent-text: #ffa981;
+  --primary: #ece8df;
+  --primary-hover: #fffcf5;
+  --primary-text: #22221f;
+  --estop: #ff8693;
+  --ok: #8ddab5;
+  --warn: #eab86c;
+  --focus: #89baff;
+  --scene-bg: #2b2d2f;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body { background: var(--bench); color: var(--ink); font: 14px/1.55 var(--font); font-variant-numeric: tabular-nums; }
@@ -425,8 +450,10 @@ tr.unverified td { background: color-mix(in srgb, var(--warn) 7%, transparent); 
 .seg { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--radius-s); overflow: hidden; background: var(--panel-sunk); max-width: 100%; flex-wrap: wrap; }
 .seg button { border: 0; border-radius: 0; background: transparent; color: var(--steel); min-height: 36px; }
 .seg button + button { border-left: 1px solid var(--rule-strong); }
-.seg button[aria-checked="true"] { background: var(--accent); color: #fff; }
-.seg button[aria-checked="true"]:hover:not(:disabled) { background: var(--accent-hover); }
+.seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg button[aria-checked="true"]:hover:not(:disabled), .seg button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent-hover); }
+.theme-switch { margin: 6px 0 4px 11px; }
+.theme-switch button { min-width: 40px; padding: 0 10px; }
 .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .scene.site-tool canvas { cursor: crosshair; }
 .site-label { background: #292925; color: #fff; font: 600 12px var(--font); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }

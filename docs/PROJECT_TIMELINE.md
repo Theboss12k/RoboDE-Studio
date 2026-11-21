@@ -591,3 +591,8 @@ Affected: Python engine (`llm/base.py`, `robot/sizing.py`, `robot/sourcing.py`),
 - `origin/AR_review` was merged into `google-gemini` (cb72f69), keeping both sides. Fixture checks: pytest 529 passed, 8 skipped; Java 88, 0 failures; contracts:check, typecheck and build pass. A browser check on the branch server (8801/5191) showed all stages, the Ask bar and the AR "My site" view, with no console errors.
 - The spin-mill worked example was removed from the spec and checks agent prompts, so it cannot leak into other projects' specs or PDFs. The mill remains only as a test fixture.
 - Vertex AI: the ADC sign-in works, but the real call was refused (403) until billing is enabled on the project. No real Vertex inference yet.
+
+## 2026-11-21 — Light / Dark / System theme switch
+
+- Client: a three-way theme switch (Light, Dark, System) in the rail footer and in Settings → Appearance, kept in sync, remembered per browser (`localStorage` key `robode.theme`) and applied before the first render, with no flash. `:root[data-theme="dark"]` forces the dark tokens on a light OS; `data-theme="light"` forces light on a dark OS; System follows the OS live. The robot and scene 3D views use theme-aware background, floor and grid colours.
+- Checks: typecheck and build pass. In the browser (branch server 5191, macOS in Dark), choosing Light turned the whole app light (page, panels, example tiles, buttons, Design 3D scene) and the choice persisted. The dark hero banner is part of the design.

@@ -9,6 +9,7 @@ import { cameraMatrixWorld, linkFrames, objectCenters, placementMatrix, projecti
 import { RobotGeometry } from "../RobotView";
 import { ObjectModel, objectKind } from "./objectModels";
 import { ModelParts } from "./objectParts";
+import { useResolvedTheme } from "../theme";
 import SiteLayer from "./scan/SiteLayer";
 import type { SiteView } from "./scan/types";
 import type { ArCalibration, ArPlacement, ArScene, BasePose, Frame, Marker, Parsed, SceneObject, SceneSpec, Vec3 } from "../types";
@@ -282,6 +283,7 @@ export default function SceneView({ scene, parsed, frame, frames = [], index = 0
   const target: [number, number, number] = [b.cx, b.cz, -b.cy];
   const d = b.radius * 2.8;
   const robotRef = useRef<Group>(null);
+  const dark = useResolvedTheme() === "dark";
   const cam = site?.mode === "camera" ? site.camera : null;
   // The design's extent as a sphere in the three.js world (for the shadow camera).
   const designCentre = useMemo(() => new Vector3(b.cx, b.cy, b.cz).applyMatrix4(worldMatrix), [b.cx, b.cy, b.cz, worldMatrix]);
@@ -309,9 +311,9 @@ export default function SceneView({ scene, parsed, frame, frames = [], index = 0
         )}
         {useAr && <ArFloor placement={ar!.scene.placement} onPlace={ar!.onPlace} />}
         {site && <SiteLayer site={site} robotRef={robotRef} />}
-        {!useAr && !site && <Grid position={[b.floorX, 0.001, -b.floorY]} args={[b.fx, b.fy]} cellSize={0.1} sectionSize={0.5} cellColor="#b5c0ca" sectionColor="#8593a2" fadeDistance={b.radius * 14} />}
+        {!useAr && !site && <Grid position={[b.floorX, 0.001, -b.floorY]} args={[b.fx, b.fy]} cellSize={0.1} sectionSize={0.5} cellColor={dark ? "#4a5158" : "#b5c0ca"} sectionColor={dark ? "#6b747d" : "#8593a2"} fadeDistance={b.radius * 14} />}
         <group matrixAutoUpdate={false} matrix={worldMatrix}>
-          {!useAr && !site && <mesh position={[b.floorX, b.floorY, -0.002]} receiveShadow><planeGeometry args={[b.fx, b.fy]} /><meshStandardMaterial color="#cfd6dd" /></mesh>}
+          {!useAr && !site && <mesh position={[b.floorX, b.floorY, -0.002]} receiveShadow><planeGeometry args={[b.fx, b.fy]} /><meshStandardMaterial color={dark ? "#3a3f44" : "#cfd6dd"} /></mesh>}
           {(!useAr || ar!.showBoxes) && scene.boxes.map((box) => {
             // A keep-out zone is a collision box drawn see-through, so the scan stays visible behind it.
             const ghost = !box.collides || box.kind === "floor_zone";

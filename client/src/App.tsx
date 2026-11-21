@@ -1,3 +1,4 @@
+import ThemeSwitch from "./components/ThemeSwitch";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { JobsProvider, useJobStore, useRunningJobs } from "./jobs";
 import {
@@ -239,6 +240,7 @@ function Studio() {
           <button className="rail-link" aria-current={stage === "settings" ? "page" : undefined} onClick={() => go("settings")}>
             <SettingsGear size={17} aria-hidden="true" /> Settings
           </button>
+          <ThemeSwitch />
           {project && <button className="rail-link delete-project" disabled={opening} onClick={() => void remove()}><Delete size={16} aria-hidden="true" /> Delete project</button>}
           <div className="rail-status">
             <span className="local-status"><span aria-hidden="true" /> Runs on this computer</span>
