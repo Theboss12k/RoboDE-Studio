@@ -8,11 +8,14 @@ generates a rough robot, shows it doing the task in 3D, and lists the requiremen
 its pass or fail and its working. You change the design in plain words; every change is a new version. When a
 version is right you approve it.
 
+
+
 After that Studio searches the web for real robots that could do the job, with price estimates that carry a date and
 a source. You pick one and Studio analyses it against the manufacturer's own datasheet: the published numbers replace
 the generated ones, the same task is simulated again, and the differences are listed. Then you decide.
 
-Studio started from RoboDE Testbed (LLM adapters, URDF and document
+Studio started from RoboDE Testbed (LLM adapters, URDF and document.
+
 intake) and stands alone. It shares no code with the Testbed or the IDE at run time.
 
 ## How it works
