@@ -38,7 +38,7 @@ def find_cli(configured=''):
     if configured:
         if os.access(configured, os.X_OK):
             return configured
-        raise LLMError(f'Claude CLI not found at {configured}')
+        raise LLMError(f'The local CLI model was not found at {configured}')
     found = shutil.which('claude')
     if found:
         return found
@@ -61,7 +61,7 @@ def find_cli(configured=''):
         return tuple(int(n) for n in parts[0].split('.') if n.isdigit()) if parts else ()
     if candidates:
         return max(candidates, key=version)
-    raise LLMError('Claude CLI not found. Install Claude Code or set the CLI path in the LLM profile.')
+    raise LLMError('The local CLI model was not found. Install its command-line tool or set the CLI path in the model profile.')
 
 
 WINDOWS_ENV = ('SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'USERNAME', 'USERDOMAIN',
@@ -136,7 +136,7 @@ class ClaudeCLI:
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
-                raise LLMError(f'Claude CLI timed out after {self.timeout_s} s')
+                raise LLMError(f'The local CLI model timed out after {self.timeout_s} s')
         result, web_calls, sources = None, 0, []
         for line in stdout.decode(errors='replace').splitlines():
             try:
@@ -165,9 +165,9 @@ class ClaudeCLI:
                 pass
         if result is None or result.get('is_error'):
             detail = (result or {}).get('result') or stderr.decode(errors='replace') or f'exit {process.returncode}'
-            raise LLMError('Claude CLI: ' + str(detail).strip()[:400])
+            raise LLMError('The local CLI model: ' + str(detail).strip()[:400])
         if self.schema is not None and result.get('structured_output') is not None:
             return json.dumps(result['structured_output'])
         if not isinstance(result.get('result'), str):
-            raise LLMError('Claude CLI returned no text')
+            raise LLMError('The local CLI model returned no text')
         return result['result']

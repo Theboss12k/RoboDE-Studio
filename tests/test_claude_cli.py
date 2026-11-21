@@ -66,7 +66,7 @@ def test_find_cli_missing_configured_path_raises(tmp_path):
 
 def test_find_cli_nothing_installed_raises(no_path_cli, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(no_path_cli / 'local'))
-    with pytest.raises(LLMError, match='Claude CLI not found'):
+    with pytest.raises(LLMError, match='local CLI model was not found'):
         find_cli()
 
 

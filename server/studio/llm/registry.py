@@ -18,8 +18,8 @@ module with `invoke(input, system_prompt)` and one entry here; nothing else in t
 - vertex_gemini: Gemini on Vertex AI, billed to a Google Cloud project; no key (metadata server on Cloud Run, gcloud locally).
 - gemini_cli: Gemini through the Gemini CLI and the user's own Google sign-in (no key; text only).
 - antigravity_cli: Gemini through the Google Antigravity CLI (`agy`) and the user's own Google sign-in (no key; text only).
-- claude_cli: Claude through the Claude Code CLI and its own sign-in (no key). Kept, but not a default on the
-              google-gemini branch.
+- claude_cli: the local CLI model ("Model A") through its own command-line sign-in (no key). Its profiles are offered in
+              every install but no role uses them by default.
 """
 import os
 import uuid
@@ -105,7 +105,13 @@ DEFAULTS = [
     {'id': 'antigravity_flash_high', 'name': 'Gemini 3.8 Flash High (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-high'},
     {'id': 'antigravity_flash_medium', 'name': 'Gemini 3.8 Flash Medium (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-medium'},
     {'id': 'antigravity_flash_low', 'name': 'Gemini 3.8 Flash Low (Antigravity CLI)', 'kind': 'antigravity_cli', 'model': 'gemini-3.8-flash-low'},
+    {'id': 'model_a_pro', 'name': 'Model A Pro', 'kind': 'claude_cli', 'model': 'claude-opus-5-5'},
+    {'id': 'model_a_fast', 'name': 'Model A Fast', 'kind': 'claude_cli', 'model': 'claude-sonnet-5-5'},
+    {'id': 'model_a_lite', 'name': 'Model A Lite', 'kind': 'claude_cli', 'model': 'claude-haiku-5-5'},
 ]
+
+
+ALWAYS_OFFERED = {'model_a_pro', 'model_a_fast', 'model_a_lite'}  # selectable in every install, but no role uses them by default
 
 
 def default_profiles():
@@ -127,7 +133,7 @@ class LLMRegistry:
         data['roles'] = {**default_roles(), **data['roles']}  # roles added later get their default
         have = {p['id'] for p in data['profiles']}
         for default in default_profiles():  # a default profile a role points to (a role added later) is added when missing
-            if default['id'] not in have and default['id'] in data['roles'].values():
+            if default['id'] not in have and (default['id'] in data['roles'].values() or default['id'] in ALWAYS_OFFERED):
                 data['profiles'] = [*data['profiles'], default]
         return data
 

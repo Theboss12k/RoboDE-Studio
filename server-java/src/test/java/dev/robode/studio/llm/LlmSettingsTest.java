@@ -33,16 +33,20 @@ class LlmSettingsTest {
         for (String r : new String[] {"spec", "revise", "checks", "analysis", "robot"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_pro");
         for (String r : new String[] {"scene", "search", "extract", "ask"}) assertThat(roles.get(r).asString()).isEqualTo("gemini_flash");
         assertThat(roles.get("objects").asString()).isEqualTo("gemini_flash_lite");
-        assertThat(data.get("profiles")).hasSize(11);
+        assertThat(data.get("profiles")).hasSize(14);
         JsonNode lite = null;
         for (JsonNode p : data.get("profiles")) {
-            assertThat(Json.text(p, "kind")).matches("gemini|gemini_cli|antigravity_cli|vertex_gemini");
+            assertThat(Json.text(p, "kind")).matches("gemini|gemini_cli|antigravity_cli|vertex_gemini|claude_cli");
             if ("gemini_flash_lite".equals(Json.text(p, "id"))) lite = p;
         }
         assertThat(lite).isNotNull();
         assertThat(Json.text(lite, "kind")).isEqualTo("gemini");
         assertThat(Json.text(lite, "model")).isEqualTo("gemini-3.5-flash-lite");
-        assertThat(data.toString()).doesNotContain("claude").doesNotContain("api_key");
+        assertThat(data.toString()).doesNotContain("api_key");
+        assertThat(Json.text(settings().profile("model_a_pro"), "model")).isEqualTo("claude-opus-5-5");
+        assertThat(Json.text(settings().profile("model_a_fast"), "model")).isEqualTo("claude-sonnet-5-5");
+        assertThat(Json.text(settings().profile("model_a_lite"), "model")).isEqualTo("claude-haiku-5-5");
+        assertThat(roles.toString()).doesNotContain("model_a");
         assertThat(Json.text(settings().profile("gemini_cli_pro"), "kind")).isEqualTo("gemini_cli");
         assertThat(Json.text(settings().profile("gemini_cli_flash"), "kind")).isEqualTo("gemini_cli");
         for (String id : new String[] {"antigravity_flash_high", "antigravity_flash_medium", "antigravity_flash_low"})

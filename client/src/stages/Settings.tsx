@@ -3,6 +3,7 @@ import { api, runJob } from "../api";
 import Usage from "../Usage";
 import { StageHead } from "../components/common";
 import ThemeSwitch from "../components/ThemeSwitch";
+import { kindLabel, modelLabel, profileLabel } from "@robode/studio-core";
 import PreferredVendors from "../components/settings/PreferredVendors";
 
 type Profile = { id: string; name: string; kind: string; model: string; effort: string; timeout_s: number; cli_path: string; location?: string; project?: string };
@@ -30,12 +31,13 @@ const PROVIDERS: Record<string, { label: string; note: string }> = {
   gemini: { label: "Google Gemini (API key)", note: "Uses the Gemini API with your key from Google AI Studio. Billed by Google to that key." },
   gemini_cli: { label: "Gemini CLI (Google sign-in)", note: "Uses the Gemini CLI signed in with your Google account on this computer (install it with npm install -g @google/gemini-cli, then run gemini once and sign in). No key needed. Text only: roles that read images need a Gemini API model." },
   antigravity_cli: { label: "Google Antigravity CLI (signed-in, no key)", note: "Uses the Antigravity CLI (agy) signed in with your Google account on this computer (run agy once and sign in). No key needed; calls count against your Antigravity quota, not a price per token. The studio turns every tool off, so it only answers text. Text only: roles that read images need a Gemini API model." },
+  claude_cli: { label: "Model A (local CLI)", note: "Uses the Model A command-line tool signed in on this computer. No key needed. The studio turns every tool off, so it only answers text." },
   vertex_gemini: { label: "Gemini on Vertex AI (Google Cloud project, no key)", note: "Uses Gemini on Vertex AI, billed to your Google Cloud project (and its credits, subject to your credit terms). No key: on Cloud Run it uses the service account (needs roles/aiplatform.user); on this computer it uses `gcloud auth application-default login`. Leave Project empty to use the current Google Cloud project." },
 };
 
-const DEFAULT_MODEL: Record<string, string> = { gemini: "gemini-3.8-flash", gemini_cli: "gemini-3.8-flash", vertex_gemini: "gemini-3.8-flash", antigravity_cli: "gemini-3.8-flash-medium" };
-const isCli = (kind: string) => kind === "gemini_cli" || kind === "antigravity_cli";
-const isGemini = (kind: string) => kind === "gemini" || kind === "vertex_gemini" || isCli(kind);
+const DEFAULT_MODEL: Record<string, string> = { gemini: "gemini-3.8-flash", gemini_cli: "gemini-3.8-flash", vertex_gemini: "gemini-3.8-flash", antigravity_cli: "gemini-3.8-flash-medium", claude_cli: "claude-sonnet-5-5" };
+const isCli = (kind: string) => kind === "gemini_cli" || kind === "antigravity_cli" || kind === "claude_cli";
+const isGemini = (kind: string) => kind === "gemini" || kind === "vertex_gemini" || kind === "gemini_cli" || kind === "antigravity_cli";
 
 export default function Settings() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -58,7 +60,7 @@ export default function Settings() {
   }
   const setRole = (role: string, id: string) => attempt(() => api.put("/llm/roles", { roles: { [role]: id } }));
   const add = () => attempt(async () => {
-    await api.post("/llm/profiles", { ...draft, kind, cli_path: isCli(kind) ? draft.cli_path : "", effort: kind === "gemini" || kind === "vertex_gemini" ? draft.effort : "", ...(kind === "vertex_gemini" ? { location: draft.location || "global", project: draft.project } : { location: undefined, project: undefined }), name: draft.name || draft.model });
+    await api.post("/llm/profiles", { ...draft, kind, cli_path: isCli(kind) ? draft.cli_path : "", effort: kind === "gemini" || kind === "vertex_gemini" ? draft.effort : "", ...(kind === "vertex_gemini" ? { location: draft.location || "global", project: draft.project } : { location: undefined, project: undefined }), name: draft.name || (kind === "claude_cli" ? modelLabel(draft.model) : draft.model) });
     setDraft({ ...draft, name: "" });
   });
   const saveKey = () => attempt(async () => { await api.put("/llm/keys/gemini", { key }); setKey(""); });
@@ -92,16 +94,16 @@ export default function Settings() {
         <table><tbody>{Object.entries(ROLES).map(([role, text]) => (
           <tr key={role}><td><b>{ROLE_LABELS[role] ?? role[0].toUpperCase() + role.slice(1)}</b><div className="small muted">{text}</div>
             {needsKey(profileById[settings.roles[role]]) && <div className="small warn-text">Needs a Gemini API key (below)</div>}</td>
-            <td><select aria-label={`Model for ${role}`} value={settings.roles[role]} onChange={(e) => void setRole(role, e.target.value)}>{settings.profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td></tr>))}</tbody></table>
+            <td><select aria-label={`Model for ${role}`} value={settings.roles[role]} onChange={(e) => void setRole(role, e.target.value)}>{settings.profiles.map((p) => <option key={p.id} value={p.id}>{profileLabel(p)}</option>)}</select></td></tr>))}</tbody></table>
       </div>
       <div className="panel">
         <h3>Saved models</h3>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="Saved models table">
           <table><thead><tr><th>Name</th><th>Provider</th><th>Model</th><th>Effort</th><th /></tr></thead>
           <tbody>{settings.profiles.map((p) => (
-            <tr key={p.id}><td>{p.name}{tests[p.id] && <div className="small muted">{tests[p.id]}</div>}</td>
-              <td><span className={`tag ${isGemini(p.kind) ? "google" : ""}`}>{p.kind === "gemini" ? "Gemini" : p.kind === "vertex_gemini" ? "Vertex AI" : p.kind === "gemini_cli" ? "Gemini CLI" : p.kind === "antigravity_cli" ? "Antigravity CLI" : p.kind === "claude_cli" ? "Claude" : p.kind}</span></td>
-              <td className="mono small">{p.model}</td><td>{p.effort || "default"}</td>
+            <tr key={p.id}><td>{profileLabel(p)}{tests[p.id] && <div className="small muted">{tests[p.id]}</div>}</td>
+              <td><span className={`tag ${isGemini(p.kind) ? "google" : ""}`}>{kindLabel(p.kind)}</span></td>
+              <td className="mono small">{modelLabel(p.model)}</td><td>{p.effort || "default"}</td>
               <td><div className="row"><button disabled={needsKey(p)} title={needsKey(p) ? "Add a Gemini API key first" : undefined} onClick={() => void test(p.id)}>Test</button>
                 <button className="link" onClick={() => void remove(p.id)}>Remove</button></div></td></tr>))}</tbody></table>
         </div>
@@ -131,10 +133,10 @@ export default function Settings() {
           </div>
         )}
         <div className="row">
-          <label className="field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={kind === "gemini" || kind === "vertex_gemini" ? "Gemini search" : kind === "antigravity_cli" ? "Antigravity fast" : "Gemini CLI fast"} /></label>
+          <label className="field">Name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={kind === "gemini" || kind === "vertex_gemini" ? "Gemini search" : kind === "antigravity_cli" ? "Antigravity fast" : kind === "claude_cli" ? "Model A fast" : "Gemini CLI fast"} /></label>
           <label className="field">Model
             <input list="gemini-models" value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} spellCheck={false} />
-            <datalist id="gemini-models">{(settings.models[kind] ?? settings.models.gemini ?? []).map((m) => <option key={m} value={m} />)}</datalist>
+            <datalist id="gemini-models">{(settings.models[kind] ?? settings.models.gemini ?? []).map((m) => <option key={m} value={m} label={kind === "claude_cli" ? modelLabel(m) : undefined} />)}</datalist>
           </label>
           {(kind === "gemini" || kind === "vertex_gemini") && <label className="field">Thinking
             <select value={draft.effort} onChange={(e) => setDraft({ ...draft, effort: e.target.value })}>

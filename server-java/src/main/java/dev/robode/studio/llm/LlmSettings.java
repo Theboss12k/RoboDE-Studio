@@ -72,7 +72,13 @@ public class LlmSettings {
             new String[] {"gemini_cli_flash", "Gemini 3.8 Flash (Gemini CLI, Google sign-in)", "gemini_cli", "gemini-3.8-flash"},
             new String[] {"antigravity_flash_high", "Gemini 3.8 Flash High (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-high"},
             new String[] {"antigravity_flash_medium", "Gemini 3.8 Flash Medium (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-medium"},
-            new String[] {"antigravity_flash_low", "Gemini 3.8 Flash Low (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-low"});
+            new String[] {"antigravity_flash_low", "Gemini 3.8 Flash Low (Antigravity CLI)", "antigravity_cli", "gemini-3.8-flash-low"},
+            new String[] {"model_a_pro", "Model A Pro", "claude_cli", "claude-opus-5-5"},
+            new String[] {"model_a_fast", "Model A Fast", "claude_cli", "claude-sonnet-5-5"},
+            new String[] {"model_a_lite", "Model A Lite", "claude_cli", "claude-haiku-5-5"});
+
+    /** Offered in every install although no role uses them by default (the Python side has the same set). */
+    private static final java.util.Set<String> ALWAYS_OFFERED = java.util.Set.of("model_a_pro", "model_a_fast", "model_a_lite");
 
     /** profiles + roles (profiles.json, or the defaults when it does not exist); later-added roles get their default. */
     public ObjectNode data() {
@@ -96,7 +102,7 @@ public class LlmSettings {
             for (String[] p : DEFAULT_PROFILES) {
                 boolean have = saved.valueStream().anyMatch(n -> p[0].equals(Json.text(n, "id")));
                 boolean used = roles.valueStream().anyMatch(v -> p[0].equals(v.asString()));
-                if (!have && used) saved.add(defaultProfile(p[0], p[1], p[2], p[3]));
+                if (!have && (used || ALWAYS_OFFERED.contains(p[0]))) saved.add(defaultProfile(p[0], p[1], p[2], p[3]));
             }
             return data;
         }

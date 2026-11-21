@@ -1,5 +1,6 @@
 // Token usage for every model call, on the AI models page: totals, per role, per job, per project and the latest calls.
 import { useEffect, useState } from "react";
+import { modelLabel } from "@robode/studio-core";
 import { api } from "./api";
 
 type Bucket = { calls: number; input: number; cache_write: number; cache_read: number; output: number; cost_usd: number; seconds: number; images: number };
@@ -106,7 +107,7 @@ export default function Usage() {
               </div>
               <div className="grid-2">
                 <Table title="By project" rows={summary.by_robot_id ?? {}} />
-                <Table title="By model" rows={summary.by_model} />
+                <Table title="By model" rows={summary.by_model} names={Object.fromEntries(Object.keys(summary.by_model).map((m) => [m, modelLabel(m)]))} />
               </div>
               <details>
                 <summary><b>Latest calls</b></summary>
@@ -116,7 +117,7 @@ export default function Usage() {
                     <tr key={i} className={e.ok ? "" : "off"}>
                       <td className="small">{new Date(e.at).toLocaleTimeString()}</td>
                       <td className="small">{TASK_NAMES[e.task ?? "other"] ?? e.task}{e.robot_id ? " (" + e.robot_id + ")" : ""}</td>
-                      <td className="small">{e.model.replace("claude-", "")}</td><td>{tokens(inputOf(e))}</td><td>{tokens(e.cache_read)}</td>
+                      <td className="small">{modelLabel(e.model)}</td><td>{tokens(inputOf(e))}</td><td>{tokens(e.cache_read)}</td>
                       <td>{tokens(e.output)}</td><td>{e.images || ""}</td><td className="small">{e.seconds}s</td>
                     </tr>))}</tbody>
                 </table>

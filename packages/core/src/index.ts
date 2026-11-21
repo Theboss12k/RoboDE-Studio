@@ -11,3 +11,4 @@ export * from "./twin";
 export * from "./savings";
 export * from "./ar";
 export * from "./scan";
+export * from "./modelLabels";

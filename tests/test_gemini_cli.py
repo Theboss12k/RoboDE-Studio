@@ -170,4 +170,5 @@ def test_registered_with_defaults():
     assert {ids[i]['kind'] for i in ('gemini_pro', 'gemini_flash', 'gemini_flash_lite')} == {'gemini'}
     assert {ids[i]['kind'] for i in ('gemini_cli_pro', 'gemini_cli_flash')} == {'gemini_cli'}
     assert set(registry.DEFAULT_ROLES.values()) <= set(ids) and registry.DEFAULT_ROLES['objects'] == 'gemini_flash_lite'
-    assert not any(p['kind'] == 'claude_cli' for p in ids.values())
+    assert {ids[i]['kind'] for i in ('model_a_pro', 'model_a_fast', 'model_a_lite')} == {'claude_cli'}
+    assert not set(registry.DEFAULT_ROLES.values()) & {'model_a_pro', 'model_a_fast', 'model_a_lite'}
