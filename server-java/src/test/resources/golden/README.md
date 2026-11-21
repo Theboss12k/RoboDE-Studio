@@ -94,6 +94,3 @@ Second app (`60`-`75`), using the real `safe_download` for non-vendor URLs:
 - The 64 MB body limit (413), the static client catch-all (no built client in the backup run), and the
   unsupported-family candidate test.
 - Per-poll job progress; only the final record of each job is saved.
-
-## Edits after recording
-- 2026-11-21: `01_health.json`, `03_llm_settings.json`, `10_llm_roles_set.json` and `13_llm_profile_delete.json` were edited by hand to add the `objects` role, the `claude_haiku` default profile and `roles_available`, because a new LLM role was added. Everything else is as recorded from the FastAPI app.

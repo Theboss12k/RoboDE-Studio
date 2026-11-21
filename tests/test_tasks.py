@@ -22,7 +22,7 @@ from studio.tasks.llms import TaskLLMs
 from studio_scripts import ROBOT, llms as scripted_llms, scene_dict, spec_dict
 
 ROOT = Path(__file__).resolve().parents[1]
-ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects')
+ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis')
 KEY = 'SECRET-API-KEY-abc123'
 
 
@@ -103,7 +103,7 @@ def test_meta(tmp_path):
     data = run.result
     assert {f['name'] for f in data['families']} >= {'serial_arm', 'gantry', 'mobile_base', 'mobile_manipulator'}
     assert data['roles'] == list(ROLES) and 'claude_cli' in data['kinds'] and 'claude_cli' in data['models']
-    assert data['default_roles']['spec'] == 'claude_opus' and {p['id'] for p in data['default_profiles']} == {'claude_opus', 'claude_sonnet', 'claude_haiku'}
+    assert data['default_roles']['spec'] == 'claude_opus' and {p['id'] for p in data['default_profiles']} == {'claude_opus', 'claude_sonnet'}
 
 
 def test_design_protocol_lines(v1):

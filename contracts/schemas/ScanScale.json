@@ -1,0 +1,115 @@
+{
+  "properties": {
+    "method": {
+      "enum": [
+        "sheet",
+        "distance"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "factor": {
+      "exclusiveMinimum": 0,
+      "title": "Factor",
+      "type": "number"
+    },
+    "residual": {
+      "title": "Residual",
+      "type": "number"
+    },
+    "frame": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frame"
+    },
+    "corners_px": {
+      "anyOf": [
+        {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Corners Px"
+    },
+    "size_m": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Size M"
+    },
+    "p1": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P1"
+    },
+    "p2": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "P2"
+    },
+    "distance_m": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Distance M"
+    }
+  },
+  "required": [
+    "method",
+    "factor",
+    "residual"
+  ],
+  "title": "ScanScale",
+  "type": "object"
+}

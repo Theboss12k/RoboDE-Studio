@@ -16,14 +16,14 @@ and `runtime/llm/**`.
   "input": { ...task-specific, see below... },
   "llm": {
     "roles": {"spec": {"id": "claude_opus", "kind": "claude_cli", "model": "claude-opus-5-5", "effort": "",
-                       "timeout_s": 240, "cli_path": "", "api_key": null}, "...": "all 8 roles"},
+                       "timeout_s": 240, "cli_path": "", "api_key": null}, "...": "all 7 roles"},
     "profile": null
   },
   "context": {"project_id": "p_ab12cd34ef", "task": "design"},
   "out_dir": "/abs/path/runtime/tmp/jobs/<job_id>"
 }
 ```
-- `llm.roles`: every role (spec, scene, robot, revise, search, extract, analysis, objects) resolved by Java to its profile
+- `llm.roles`: every role (spec, scene, robot, revise, search, extract, analysis) resolved by Java to its profile
   dict. `api_key` is set only for keyed providers (gemini): the saved key, else the `GEMINI_API_KEY` env fallback.
   Keys travel only on stdin: never in argv, env, logs or stdout.
 - `llm.profile`: a single profile dict (only for `llm_test`).
@@ -64,34 +64,19 @@ placeholders (`version: 0`).
 | task | input | result |
 |---|---|---|
 | `meta` | `{}` | `{families: [...describe()], kinds, models: {kind: [..]}, roles, default_roles, default_profiles}` |
-| `design` | `{brief, reference: {text, files: [{path, kind: image\|urdf}]} \| null, answers, round, comments?, notes?, answer_images?, brief_images?}` | `{status: "questions", questions, round}` or `{status: "designed", version: DesignVersion, parsed}` |
+| `design` | `{brief, reference: {text, files: [{path, kind: image\|urdf}]} \| null, answers, round, comments?, notes?, answer_images?}` | `{status: "questions", questions, round}` or `{status: "designed", version: DesignVersion, parsed}` |
 | `revise` | `{base: DesignVersion, request, t: number \| null}` | `{version: DesignVersion, parsed}` (`parent_version` = base.version) |
 | `find` | `{version: DesignVersion, limit: 6}` | `{candidates: [Candidate], dropped: {reason: n}}` (images filled) |
 | `analyse` | `{version: DesignVersion, candidate: Candidate, datasheet_url: str \| null, document_path: str \| null}` | `{analysis: Analysis, parsed, document: {file: "document.txt", url, title} \| null}`. A failed download is error code `datasheet_download`. |
-| `fleet_assign` | `{version: DesignVersion, limits: FleetLimits, assignment: FleetAssignment \| null}` | `{assignment, preview: {bases, handovers, parks, workspace_samples}, feasible: bool, notes: [str]}`. No LLM, runs synchronously; an invalid user assignment is error kind `value`. |
-| `fleet_design` | `{base: DesignVersion, limits: FleetLimits, assignment: FleetAssignment, primary?, trigger?, auto_repair?}` | `{version: DesignVersion (with fleet), parsed, fleet_parsed: {rid: parsed}}` (`parent_version` = base.version). LLM job. Optional inputs: `primary` (member id whose design fills the version's top-level robot, scene and files; default `r1`, else the first member, and an unknown id falls back the same way), `trigger` (list of strings recorded as `fleet.trigger`, why the fleet was planned; default the base fleet's trigger, else `["user"]`), `auto_repair` (bool; run the automatic collision repair on the new version; default true). |
-| `studio_build` | `{version: DesignVersion, member: str \| null, base_build: StudioBuild \| null, request: str, pinned: {joint: alternative_id}, build: int}` | `{build: StudioBuild, parsed}` plus files in out_dir: `assembly.step`, `parts/<id>.step`, `parts/<id>.stl`, `urdf/robot.urdf`, `urdf/meshes/<link>.stl`. LLM job (search role with web for shops, robot role for the structure style). With `base_build` and only `pinned` changed, the shop search is not repeated: alternatives come from the base build. `build` is the number Java will store it as. Planned (Robot studio); see `docs/STUDIO_ROBOT_DESIGN.md`. |
-| `studio_twin_move` | `{build: StudioBuild, version: DesignVersion, request: TwinMoveRequest}` | `TwinMoveResult`. No LLM, synchronous, deterministic. The twin rebuilds its kinematic chain from the design version, so `version` is required (as for `studio_run_task`). Planned. |
-| `studio_run_task` | `{build: StudioBuild, version: DesignVersion, speed_scale: number}` | `TwinMoveResult` (the design's waypoints replayed under the build's limits). No LLM, synchronous. Planned. |
-| `studio_pdf` | `{build: StudioBuild, version: DesignVersion, project: {id, title, brief}, build_dir: str, snapshots: [{view: iso\|front\|side\|top, path}]}` | `{pdf: "manufacturer.pdf", package: "package.zip", files: [BuildFile]}` written to out_dir, together with `bom.csv` (`files` lists the PDF, `bom.csv` and the package). `build_dir` is only read: its `assembly.step`, `parts/` and `urdf/` are staged with `bom.csv` in `out_dir/_stage` (removed afterwards) so that the package holds `bom.csv`. Job (no LLM). Planned. |
 | `inspect_upload` | `{path, kind: urdf\|datasheet\|image}` | `{ok, summary \| text_chars \| mime}` (validates an upload; a bad file is a value error) |
 | `export_assets` | `{urdf, want: ["parsed","glb","stl"]}` | `{parsed?}` plus files `design.glb` / `design.stl` in out_dir |
 | `llm_test` | `{}` (uses `llm.profile`) | `{ok, answer, seconds}` |
-
-Fleet additions: `design` and `revise` results may carry `fleet_advice: {robots_needed, reasons: [str], source: "spec" \| "code" \| "both"}`
-(only when one robot may not be enough); `revise` results may carry `fleet_parsed: {rid: parsed}` when the new version has a fleet.
-`find` and `analyse` inputs may carry `member: str` (a fleet member id; the version's member is then analysed). A fleet
-version is an ordinary DesignVersion for its primary member plus an optional `fleet` object (FleetPlan).
 
 Clarifications (as implemented in `server/studio/tasks/`):
 - `design.input.round` is the number of spec rounds already completed (project.json `round`). Python runs round+1
   and returns it as `round` in both result kinds.
 - `design.input.answers` must already be merged (Java merges new answers into the project's answers).
 - Optional `design.input.spec` skips the spec round, for retries.
-- The `objects` role (default profile `claude_haiku`) makes `scene.objects[].model` (primitives, with `name`) for each task object, concurrently with the scene and robot agents. It is never fatal: on failure the keys stay absent and no progress line is written; on success one line `Object models: <n> made`. `revise` reuses models of unchanged objects (same name, size, shape); fleet versions keep the base version's models.
-- Optional `design.input.brief_images` (`[{path, name}]`, absolute paths of files validated by `inspect_upload`) are photos
-  of the task, objects or workcell. They go to the spec call labelled `brief:<name>`, before the reference and answer
-  images, and count toward the same cap of 8 (brief first); dropped with a progress line for adapters without image support.
 - Optional `design.input.comments` (`{question_id: text}`, cumulative), `notes` (`[{round, text}]`, one general note
   per round) and `answer_images` (`[{path, question: question id | "_general"}]`, files already validated by
   `inspect_upload`) are the user's additions to their answers. They go to the spec call only (`answer_comments`,
@@ -122,7 +107,7 @@ cut-over), plus:
 - `POST /projects/{id}/revise {request, base_version, t}`, which answers 422 for an unknown base or a `t` outside
   0..duration;
 - `GET /projects/{id}/versions/{n}/assets/{design.urdf|design.glb|frames.json}`;
-- `GET /api/v1/openapi.json` (the bundled OpenAPI spec, `contracts/openapi.bundled.json`; the spec is `contracts/openapi.yaml`).
+- `GET /v3/api-docs` (springdoc OpenAPI).
 
 The server binds to 127.0.0.1. A non-loopback `STUDIO_HOST` requires `STUDIO_TOKEN`, and then every `/api/v1`
 call needs `Authorization: Bearer <token>`.

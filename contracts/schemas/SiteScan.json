@@ -1,0 +1,491 @@
+{
+  "$defs": {
+    "ArPlacement": {
+      "properties": {
+        "x": {
+          "default": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "yaw_deg": {
+          "default": 0.0,
+          "title": "Yaw Deg",
+          "type": "number"
+        }
+      },
+      "title": "ArPlacement",
+      "type": "object"
+    },
+    "ScanCamera": {
+      "description": "ONE camera for the whole clip, at keyframe resolution (OpenCV convention).",
+      "properties": {
+        "model": {
+          "const": "SIMPLE_RADIAL",
+          "default": "SIMPLE_RADIAL",
+          "title": "Model",
+          "type": "string"
+        },
+        "fx": {
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        },
+        "k1": {
+          "title": "K1",
+          "type": "number"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "undistorted": {
+          "default": false,
+          "title": "Undistorted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy",
+        "k1",
+        "width",
+        "height"
+      ],
+      "title": "ScanCamera",
+      "type": "object"
+    },
+    "ScanFrame": {
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "t_s": {
+          "title": "T S",
+          "type": "number"
+        },
+        "image": {
+          "title": "Image",
+          "type": "string"
+        },
+        "world_from_camera": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "World From Camera"
+        }
+      },
+      "required": [
+        "index",
+        "t_s",
+        "image"
+      ],
+      "title": "ScanFrame",
+      "type": "object"
+    },
+    "ScanMesh": {
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "vertices": {
+          "title": "Vertices",
+          "type": "integer"
+        },
+        "triangles": {
+          "title": "Triangles",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file",
+        "vertices",
+        "triangles"
+      ],
+      "title": "ScanMesh",
+      "type": "object"
+    },
+    "ScanPlane": {
+      "properties": {
+        "normal": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Normal",
+          "type": "array"
+        },
+        "d": {
+          "title": "D",
+          "type": "number"
+        }
+      },
+      "required": [
+        "normal",
+        "d"
+      ],
+      "title": "ScanPlane",
+      "type": "object"
+    },
+    "ScanScale": {
+      "properties": {
+        "method": {
+          "enum": [
+            "sheet",
+            "distance"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "factor": {
+          "exclusiveMinimum": 0,
+          "title": "Factor",
+          "type": "number"
+        },
+        "residual": {
+          "title": "Residual",
+          "type": "number"
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame"
+        },
+        "corners_px": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Corners Px"
+        },
+        "size_m": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size M"
+        },
+        "p1": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P1"
+        },
+        "p2": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P2"
+        },
+        "distance_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distance M"
+        }
+      },
+      "required": [
+        "method",
+        "factor",
+        "residual"
+      ],
+      "title": "ScanScale",
+      "type": "object"
+    },
+    "ScanStats": {
+      "properties": {
+        "frames_total": {
+          "title": "Frames Total",
+          "type": "integer"
+        },
+        "frames_registered": {
+          "title": "Frames Registered",
+          "type": "integer"
+        },
+        "reproj_px": {
+          "title": "Reproj Px",
+          "type": "number"
+        },
+        "points3d": {
+          "title": "Points3D",
+          "type": "integer"
+        },
+        "extent": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Extent",
+          "type": "array"
+        }
+      },
+      "required": [
+        "frames_total",
+        "frames_registered",
+        "reproj_px",
+        "points3d",
+        "extent"
+      ],
+      "title": "ScanStats",
+      "type": "object"
+    },
+    "ScanVideo": {
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "duration_s": {
+          "title": "Duration S",
+          "type": "number"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "fps": {
+          "title": "Fps",
+          "type": "number"
+        },
+        "rotation_deg": {
+          "title": "Rotation Deg",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file",
+        "bytes",
+        "duration_s",
+        "width",
+        "height",
+        "fps",
+        "rotation_deg"
+      ],
+      "title": "ScanVideo",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "created": {
+      "title": "Created",
+      "type": "string"
+    },
+    "video": {
+      "$ref": "#/$defs/ScanVideo"
+    },
+    "status": {
+      "enum": [
+        "uploaded",
+        "reconstructing",
+        "reconstructed",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "camera": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanCamera"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "frames": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ScanFrame"
+      },
+      "title": "Frames",
+      "type": "array"
+    },
+    "floor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanPlane"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "alignment": {
+      "anyOf": [
+        {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Alignment"
+    },
+    "scale": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanScale"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mesh": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanMesh"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "placement": {
+      "$ref": "#/$defs/ArPlacement",
+      "default": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw_deg": 0.0
+      }
+    },
+    "stats": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanStats"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "created",
+    "video",
+    "status"
+  ],
+  "title": "SiteScan",
+  "type": "object"
+}

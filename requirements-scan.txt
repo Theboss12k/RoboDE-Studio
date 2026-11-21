@@ -1,0 +1,13 @@
+# OPTIONAL: only for site scans (video AR: scan_probe, scan_reconstruct). Without these, the scan tasks fail with
+# scan_backend_unavailable, and the rest of Studio (including photo AR) works as before.
+# Also needs the depth backend in requirements-ar.txt (torch + MoGe); a CUDA GPU is strongly recommended.
+#
+# Verified on Windows 11 / Python 3.12, 2026-11-21. Notes:
+# - Structure-from-motion is our own code (OpenCV + SciPy), not pycolmap: Windows Application Control (Smart App
+#   Control) blocked pycolmap's native DLL on the development machine.
+# - open3d imports dash/plotly at import time, so it must be installed WITH its dependencies.
+#   pip install -r requirements-scan.txt
+av==19.0.2
+open3d==0.20.0
+opencv-python-headless
+scipy>=1.8

@@ -1,0 +1,28 @@
+{
+  "description": "A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.",
+  "properties": {
+    "corners_px": {
+      "items": {
+        "items": {
+          "type": "number"
+        },
+        "type": "array"
+      },
+      "title": "Corners Px",
+      "type": "array"
+    },
+    "size_m": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Size M",
+      "type": "array"
+    }
+  },
+  "required": [
+    "corners_px",
+    "size_m"
+  ],
+  "title": "ArReference",
+  "type": "object"
+}

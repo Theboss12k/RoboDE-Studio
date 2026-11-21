@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Serves client/dist with the single-page-app fallback; anything under api/ that is not a route is a 404. */
+/** Serves client/dist with the single-page-app fallback; anything under api/ or v3/ that is not a route is a 404. */
 @RestController
 class SpaController {
     private final Path dist;
@@ -23,7 +23,7 @@ class SpaController {
     @GetMapping({"/", "/{*path}"})
     ResponseEntity<?> client(@PathVariable(required = false) String path) {
         String p = path == null ? "" : path.replaceFirst("^/+", "");
-        if (p.startsWith("api/")) throw StudioException.notFound("Not found");
+        if (p.startsWith("api/") || p.startsWith("v3/")) throw StudioException.notFound("Not found");
         Path file = dist.resolve(p).normalize();
         if (!p.isEmpty() && file.startsWith(dist) && Files.isRegularFile(file)) return file(file);
         Path index = dist.resolve("index.html");

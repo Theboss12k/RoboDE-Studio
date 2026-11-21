@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "ArCalibration": {
+      "properties": {
+        "intrinsics": {
+          "$ref": "#/$defs/ArIntrinsics"
+        },
+        "world_from_camera": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "World From Camera",
+          "type": "array"
+        },
+        "scale_source": {
+          "enum": [
+            "reference",
+            "estimate"
+          ],
+          "title": "Scale Source",
+          "type": "string"
+        },
+        "focal_source": {
+          "enum": [
+            "reference",
+            "estimate",
+            "default"
+          ],
+          "title": "Focal Source",
+          "type": "string"
+        },
+        "residual_px": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residual Px"
+        },
+        "camera_height_m": {
+          "title": "Camera Height M",
+          "type": "number"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "intrinsics",
+        "world_from_camera",
+        "scale_source",
+        "focal_source",
+        "camera_height_m"
+      ],
+      "title": "ArCalibration",
+      "type": "object"
+    },
+    "ArIntrinsics": {
+      "description": "Pinhole camera in pixels of the stored photo (top-left origin, no distortion).",
+      "properties": {
+        "fx": {
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy",
+        "width",
+        "height"
+      ],
+      "title": "ArIntrinsics",
+      "type": "object"
+    },
+    "ArPlacement": {
+      "properties": {
+        "x": {
+          "default": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "yaw_deg": {
+          "default": 0.0,
+          "title": "Yaw Deg",
+          "type": "number"
+        }
+      },
+      "title": "ArPlacement",
+      "type": "object"
+    },
+    "ArReference": {
+      "description": "A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.",
+      "properties": {
+        "corners_px": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "Corners Px",
+          "type": "array"
+        },
+        "size_m": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Size M",
+          "type": "array"
+        }
+      },
+      "required": [
+        "corners_px",
+        "size_m"
+      ],
+      "title": "ArReference",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "image": {
+      "title": "Image",
+      "type": "string"
+    },
+    "width": {
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "title": "Height",
+      "type": "integer"
+    },
+    "created": {
+      "title": "Created",
+      "type": "string"
+    },
+    "reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArReference"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "calibration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArCalibration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "estimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArCalibration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "placement": {
+      "$ref": "#/$defs/ArPlacement",
+      "default": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw_deg": 0.0
+      }
+    }
+  },
+  "required": [
+    "id",
+    "image",
+    "width",
+    "height",
+    "created"
+  ],
+  "title": "ArScene",
+  "type": "object"
+}

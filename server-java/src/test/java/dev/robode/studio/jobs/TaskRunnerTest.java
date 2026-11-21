@@ -40,7 +40,7 @@ class TaskRunnerTest {
 
     TaskRunner runner(Duration idle) {
         return new TaskRunner(new StudioProperties(repo, runtime, Path.of(python()), "127.0.0.1", 0, null, true, null,
-                idle, Duration.ofMinutes(5), 4, false, false, null));
+                idle, Duration.ofMinutes(5), 4, false, false, null, null));
     }
 
     static String python() {

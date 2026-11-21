@@ -12,7 +12,7 @@ Imports inside the package are relative (`from ..schemas import ...`); tests imp
 ## Flow
 brief (+ optional reference) -> `spec` agent asks questions (<= 6 per round, <= 3 rounds) -> `TechnicalSpec`
 -> `physics.place_base(spec)` -> `physics.derive(spec, base)` -> `list[Requirement]`
--> `asyncio.gather(scene agent, robot agent, objects agent)` -> `SceneSpec`, `RobotConcept(family, hint params)`
+-> `asyncio.gather(scene agent, robot agent)` -> `SceneSpec`, `RobotConcept(family, hint params)`
 -> `family.size_from_physics(requirements, spec, hint)` -> params -> `build_urdf`
 -> `sim.simulate(...)` -> `SimResult` (frames + checks) -> `DesignVersion` v1.
 `revise` agent: change request -> patch of spec/scene/robot -> re-run affected steps -> v(n+1). v(n) is kept.
@@ -145,16 +145,9 @@ boxes (0.1 m for tables holding a marker);
 only; numbers unchanged — validator rejects changed generated/candidate strings).
 All use `llm.base.ask_json` with pydantic validation and one repair turn.
 
-`agents/objects.py`: `run(adapter, objects, summary) -> {object id: ObjectModel}` (role `objects`, Haiku; needs only the spec). `SceneObject` has
-optional `name` and `model` (`ObjectModel`: 1..24 `ObjectModelPart` primitives box/cylinder/sphere/cone/capsule/torus in the object's own
-frame, origin at the centre of its box, z up); both keys are absent from JSON when empty. Code validates: one model per object, every part
-inside the box (2 % tolerance), the parts cover at least 90 % of the box per axis. Failure is never fatal (no model, no progress line); on
-success `design` emits `Object models: <n> made`. `revise` reuses the models of objects whose name, size and shape did not change; fleet
-versions keep the base version's models. The client draws `model`, else the keyword models (`objectModels.tsx`), else the primitive.
-
 ## API (Java, 127.0.0.1:8800, `/api/v1`; long work = job: POST returns `Job`, poll `GET /api/v1/jobs/{id}`)
 Full wire protocol between the Java server and the Python tasks: [PROTOCOL.md](PROTOCOL.md). The OpenAPI document is
-at `GET /api/v1/openapi.json` (source `contracts/openapi.yaml`, bundled `contracts/openapi.bundled.json`). Errors are `{detail: string}`: 422 value, 404 not found, 409 conflict, 502 model failure, 413
+at `GET /v3/api-docs`. Errors are `{detail: string}`: 422 value, 404 not found, 409 conflict, 502 model failure, 413
 body too large. With a non-loopback `STUDIO_HOST`, `STUDIO_TOKEN` is required and every call needs a bearer token.
 - `GET /api/v1/health`, `GET /api/v1/families`, LLM settings: `GET /api/v1/llm`, `PUT /api/v1/llm/profiles/{id}`,
   `POST /api/v1/llm/profiles`, `DELETE /api/v1/llm/profiles/{id}`, `PUT /api/v1/llm/roles`, `PUT/DELETE /api/v1/llm/keys/{kind}`,

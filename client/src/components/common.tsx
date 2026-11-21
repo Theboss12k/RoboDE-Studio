@@ -1,6 +1,5 @@
 // Small shared pieces: job runner hook, progress lines, chips, number formatting, and the dictation text box.
 import { useId, useState } from "react";
-import RobotArtifact, { type ArtifactPage } from "./RobotArtifact";
 import { Dictate, Fail, NoVerdict, NotPublished, Pass, StopDictation } from "./icons";
 import { runJob, type Job } from "../api";
 import { useVoice } from "../useVoice";
@@ -74,17 +73,12 @@ export function Dictation({ value, onChange, placeholder, rows = 4, label, disab
   );
 }
 
-export function StageHead({ step, title, artifact, children }: {
-  step?: string; title: string; artifact: ArtifactPage; children?: React.ReactNode;
-}) {
+export function StageHead({ step, title, children }: { step?: string; title: string; children?: React.ReactNode }) {
   return (
     <header className="page-head">
-      <div className="page-heading">
-        {step && <p className="stage-step">{step}</p>}
-        <h1>{title}</h1>
-        {children && <p className="page-intro">{children}</p>}
-      </div>
-      <RobotArtifact page={artifact} />
+      {step && <p className="stage-step">{step}</p>}
+      <h1>{title}</h1>
+      {children && <p className="page-intro">{children}</p>}
     </header>
   );
 }

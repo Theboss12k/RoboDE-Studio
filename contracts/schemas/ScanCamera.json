@@ -1,0 +1,55 @@
+{
+  "description": "ONE camera for the whole clip, at keyframe resolution (OpenCV convention).",
+  "properties": {
+    "model": {
+      "const": "SIMPLE_RADIAL",
+      "default": "SIMPLE_RADIAL",
+      "title": "Model",
+      "type": "string"
+    },
+    "fx": {
+      "title": "Fx",
+      "type": "number"
+    },
+    "fy": {
+      "title": "Fy",
+      "type": "number"
+    },
+    "cx": {
+      "title": "Cx",
+      "type": "number"
+    },
+    "cy": {
+      "title": "Cy",
+      "type": "number"
+    },
+    "k1": {
+      "title": "K1",
+      "type": "number"
+    },
+    "width": {
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "title": "Height",
+      "type": "integer"
+    },
+    "undistorted": {
+      "default": false,
+      "title": "Undistorted",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "fx",
+    "fy",
+    "cx",
+    "cy",
+    "k1",
+    "width",
+    "height"
+  ],
+  "title": "ScanCamera",
+  "type": "object"
+}

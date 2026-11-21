@@ -3,7 +3,7 @@ import math
 
 from ..llm.base import ask_json
 from ..schemas import BasePose, SceneSpec, TechnicalSpec
-from .common import dumps, finite, parse, without_object_models
+from .common import dumps, finite, parse
 
 SYSTEM = """You build the 3D scene for a robot task: the furniture and obstacles around the robot. World frame, metres, z up, floor at z = 0. Sizes are full extents; "center" is the middle of the box.
 
@@ -18,7 +18,7 @@ Rules:
 - Ids are lowercase letters, digits and underscores. Colours are #rrggbb.
 Answer with one JSON object that is the scene."""
 
-SCHEMA = without_object_models(SceneSpec.model_json_schema())
+SCHEMA = SceneSpec.model_json_schema()
 TOP_KINDS = ('table', 'shelf', 'conveyor', 'pallet', 'box', 'obstacle')
 
 
@@ -30,29 +30,8 @@ def rect_distance(box, x, y):
     return math.hypot(max(abs(lx) - box.size[0] / 2, 0), max(abs(ly) - box.size[1] / 2, 0))
 
 
-def _check_base(scene, spec, base, several=False):
-    """A mounted base needs a surface under it; colliding boxes keep 0.3 m (0.1 m for marker surfaces) from it."""
-    where = f'({base.position[0]:.2f}, {base.position[1]:.2f}, {base.position[2]:.2f})'
-    if base.position[2] > 0.02 and not any(abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02
-                                           and rect_distance(b, base.position[0], base.position[1]) == 0 for b in scene.boxes):
-        raise ValueError(f'The robot base {"at " if several else "is mounted at "}{where}{" is mounted" if several else ""} '
-                         'with nothing under it: add a table, plinth or plate whose top is at that height and whose footprint '
-                         'contains the base x, y (join the tables if there is a gap)')
-    for b in scene.boxes:
-        # A surface holding a marker may come closer: the task itself puts the marker near the base.
-        holds = any(m.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - m.position[2]) <= 0.02
-                    and rect_distance(b, m.position[0], m.position[1]) == 0 for m in spec.markers)
-        free = 0.1 if holds else 0.3
-        mount = base.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02 \
-            and rect_distance(b, base.position[0], base.position[1]) == 0      # the robot is mounted on this surface
-        if b.collides and not mount and rect_distance(b, base.position[0], base.position[1]) < free and b.center[2] - b.size[2] / 2 < 2.0:
-            raise ValueError(f'Box "{b.id}" is within {free} m of the robot base at ({base.position[0]:.2f}, {base.position[1]:.2f}); keep it free')
-
-
-def validate_scene(scene: SceneSpec, spec: TechnicalSpec, base: BasePose, extra_bases=()) -> SceneSpec:
-    """Raises ValueError (message for the LLM) when the scene does not fit the spec. `extra_bases` are the bases of
-    the other robots of a fleet: each gets the same mounting and free-circle rules as `base`."""
-    bases = [base, *extra_bases]
+def validate_scene(scene: SceneSpec, spec: TechnicalSpec, base: BasePose) -> SceneSpec:
+    """Raises ValueError (message for the LLM) when the scene does not fit the spec."""
     placed = {m.id: m for m in scene.markers}
     for m in spec.markers:
         s = placed.get(m.id)
@@ -87,46 +66,35 @@ def validate_scene(scene: SceneSpec, spec: TechnicalSpec, base: BasePose, extra_
                                             and rect_distance(b, m.position[0], m.position[1]) == 0 for b in scene.boxes):
             raise ValueError(f'Marker "{m.id}" is at z = {m.position[2]} with nothing under it: add a table or shelf whose top is at that height '
                              'and whose footprint contains the marker')
-    for base in bases:
-        _check_base(scene, spec, base, several=len(bases) > 1)
-    xs = [m.position[0] for m in spec.markers] + [b.position[0] for b in bases] + [p[0] for p in spec.locomotion.path]
-    ys = [m.position[1] for m in spec.markers] + [b.position[1] for b in bases] + [p[1] for p in spec.locomotion.path]
+    if base.position[2] > 0.02 and not any(abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02
+                                           and rect_distance(b, base.position[0], base.position[1]) == 0 for b in scene.boxes):
+        raise ValueError(f'The robot base is mounted at ({base.position[0]:.2f}, {base.position[1]:.2f}, {base.position[2]:.2f}) '
+                         'with nothing under it: add a table, plinth or plate whose top is at that height and whose footprint '
+                         'contains the base x, y (join the tables if there is a gap)')
+    for b in scene.boxes:
+        # A surface holding a marker may come closer: the task itself puts the marker near the base.
+        holds = any(m.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - m.position[2]) <= 0.02
+                    and rect_distance(b, m.position[0], m.position[1]) == 0 for m in spec.markers)
+        free = 0.1 if holds else 0.3
+        mount = base.position[2] > 0.02 and abs(b.center[2] + b.size[2] / 2 - base.position[2]) <= 0.02 \
+            and rect_distance(b, base.position[0], base.position[1]) == 0      # the robot is mounted on this surface
+        if b.collides and not mount and rect_distance(b, base.position[0], base.position[1]) < free and b.center[2] - b.size[2] / 2 < 2.0:
+            raise ValueError(f'Box "{b.id}" is within {free} m of the robot base at ({base.position[0]:.2f}, {base.position[1]:.2f}); keep it free')
+    xs = [m.position[0] for m in spec.markers] + [base.position[0]] + [p[0] for p in spec.locomotion.path]
+    ys = [m.position[1] for m in spec.markers] + [base.position[1]] + [p[1] for p in spec.locomotion.path]
     need = (max(xs) - min(xs) + 0.5, max(ys) - min(ys) + 0.5)
     if min(scene.floor_size_m) <= 0 or scene.floor_size_m[0] < need[0] or scene.floor_size_m[1] < need[1]:
         raise ValueError(f'floor_size_m {list(scene.floor_size_m)} is too small; the layout spans at least {need[0]:.1f} x {need[1]:.1f} m')
     return scene
 
 
-async def run(adapter, spec, base, extra_bases=(), stations=None):
-    """The scene for `spec` with the robot at `base`. A fleet passes the other robots' bases (`extra_bases`, each
-    keeps the same free circle) and its handover stations ({id: xyz}; code adds a stand under each afterwards)."""
+async def run(adapter, spec, base):
     prompt = ('Technical specification (JSON):\n' + dumps({'title': spec.title, 'summary': spec.summary, 'markers': spec.markers,
                                                           'objects': spec.objects, 'environment': spec.environment,
                                                           'locomotion': spec.locomotion}) +
               '\n\nRobot base: ' + dumps(base))
-    if extra_bases:
-        prompt += ('\n\nOther robot bases (several fixed robots share this cell; the same free circle and mounting rules '
-                   'apply to each): ' + dumps(list(extra_bases)))
-    if stations:
-        prompt += ('\n\nHandover stations (code adds a small stand under each; put nothing within 0.3 m of them): ' +
-                   dumps({k: [round(c, 3) for c in v] for k, v in sorted(stations.items())}))
 
     def check(data):
-        scene = validate_scene(parse(SceneSpec, data, 'The scene'), spec, base, extra_bases)
-        if stations:
-            _check_stations(scene, stations)
-        scene = scene.model_copy(update={'robot_base': base})
-        return scene.model_copy(update={'objects': [o.model_copy(update={'name': '', 'model': None}) for o in scene.objects]})
+        scene = validate_scene(parse(SceneSpec, data, 'The scene'), spec, base)
+        return scene.model_copy(update={'robot_base': base})
     return await ask_json(adapter, prompt, SYSTEM, schema=SCHEMA, validate=check)
-
-
-STATION_FREE_M = 0.3
-
-
-def _check_stations(scene, stations):
-    """No colliding box (a box of the scene agent) may stand on or near a handover station."""
-    for b in scene.boxes:
-        for hid, (x, y, _z) in stations.items():
-            if b.collides and not b.id.startswith('station_') and rect_distance(b, x, y) < STATION_FREE_M:
-                raise ValueError(f'Box "{b.id}" is within {STATION_FREE_M} m of handover station {hid} at ({x:.2f}, {y:.2f}); '
-                                 'keep it free (code adds the stand)')

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { JobStatus, StageHead, fmt } from "../components/common";
 import { useProjectJob } from "../jobs";
-import FleetMemberNote from "../components/fleet/FleetMemberNote";
 import Player from "../components/Player";
 import Requirements from "../components/Requirements";
 import { ConceptPanel } from "../components/SpecPanels";
@@ -108,7 +107,7 @@ export default function Analysis({ project, reload, cid, setCid, decide }: {
 
   return (
     <div className="page wide">
-      <StageHead artifact="analysis" step="Step 6 of 7" title="Analysis">
+      <StageHead step="Step 6 of 7" title="Analysis">
         The real robot's published values replace the generated ones, and the same task is simulated again. Kinematic and static-load checks, not dynamics or hardware tests.
       </StageHead>
       <div className="tabs" role="tablist" aria-label="Robots to analyse">
@@ -117,7 +116,6 @@ export default function Analysis({ project, reload, cid, setCid, decide }: {
           return <button key={id} role="tab" aria-selected={cid === id} onClick={() => setCid(id)}>{c ? `${c.manufacturer} ${c.model}` : id}</button>;
         })}
       </div>
-      <FleetMemberNote project={project} />
       {!cid && <div className="notice">Choose a robot on the Robot options page and press Analyse.</div>}
       {cid && (
         <div className="panel">

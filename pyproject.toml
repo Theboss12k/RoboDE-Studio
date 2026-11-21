@@ -4,5 +4,6 @@ pythonpath = ["server"]
 asyncio_mode = "auto"
 markers = [
     "claude: calls the real Claude Code CLI; run with STUDIO_CLAUDE=1",
+    "gpu: needs a CUDA GPU and the cached MoGe weights (site scan end-to-end)",
     "web: real web search or download; run with STUDIO_WEB=1",
 ]

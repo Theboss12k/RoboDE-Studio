@@ -24,7 +24,7 @@ export default function Reference({ project, reload, next }: { project: Project;
   const clear = () => attempt(async () => { await api.del(`/projects/${project.id}/reference`); setText(""); });
   return (
     <div className="page narrow">
-      <StageHead artifact="reference" step="Step 2 of 7 (optional)" title="Reference">
+      <StageHead step="Step 2 of 7 (optional)" title="Reference">
         Is there a robot or a similar setup you already have in mind? Add photos, a URDF or zip, or describe it. You can skip this.
       </StageHead>
       <div className="panel">

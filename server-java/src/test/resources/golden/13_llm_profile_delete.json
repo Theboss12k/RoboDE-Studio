@@ -22,15 +22,6 @@
         "effort": "",
         "timeout_s": 240,
         "cli_path": ""
-      },
-      {
-        "id": "claude_haiku",
-        "name": "Claude Haiku 5.5 (Claude Code CLI)",
-        "kind": "claude_cli",
-        "model": "claude-haiku-5-5",
-        "effort": "",
-        "timeout_s": 240,
-        "cli_path": ""
       }
     ],
     "roles": {
@@ -40,8 +31,7 @@
       "revise": "claude_opus",
       "search": "claude_sonnet",
       "extract": "claude_sonnet",
-      "analysis": "claude_sonnet",
-      "objects": "claude_haiku"
+      "analysis": "claude_sonnet"
     },
     "kinds": [
       "claude_cli",
@@ -54,8 +44,7 @@
       "revise",
       "search",
       "extract",
-      "analysis",
-      "objects"
+      "analysis"
     ],
     "keys": {
       "gemini": {

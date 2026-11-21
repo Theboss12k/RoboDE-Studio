@@ -49,8 +49,7 @@ class ApiSmokeTest {
 
     @Test
     void openApiDocumentIsServed() throws Exception {
-        mvc.perform(get("/api/v1/openapi.json").header("Authorization", "Bearer t0ken")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.openapi").value("3.1.0")).andExpect(jsonPath("$.paths['/projects']").exists());
-        mvc.perform(get("/api/v1/openapi.json")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andExpect(jsonPath("$.openapi").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/projects']").exists());
     }
 }

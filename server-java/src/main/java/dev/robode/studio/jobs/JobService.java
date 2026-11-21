@@ -33,15 +33,8 @@ public class JobService {
 
     public JobService(UsageLedger ledger) { this.ledger = ledger; }
 
-    private static final Set<String> EXCLUSIVE = Set.of("design", "revise", "fleet_design");
-    /** Kinds that exclude only themselves within a project (a studio build does not block design or revise). */
-    private static final Set<String> SELF_EXCLUSIVE = Set.of("studio_build", "studio_pdf");
+    private static final Set<String> EXCLUSIVE = Set.of("design", "revise", "fleet_design", "apply_scene");
     private static final int LIST_MAX = 20;
-
-    /** True while a design, revise or fleet_design job of the project is running. */
-    public synchronized boolean busy(String projectId) {
-        return jobs.values().stream().anyMatch(j -> projectId.equals(j.robotId()) && j.running() && EXCLUSIVE.contains(j.kind()));
-    }
 
     public ObjectNode start(String kind, String projectId, Work work) { return start(kind, projectId, null, work); }
 
@@ -55,10 +48,6 @@ public class JobService {
             if (projectId != null && EXCLUSIVE.contains(kind)
                     && jobs.values().stream().anyMatch(j -> projectId.equals(j.robotId()) && j.running() && EXCLUSIVE.contains(j.kind())))
                 throw StudioException.conflict("This project is still working on another design step");
-            if (projectId != null && SELF_EXCLUSIVE.contains(kind)
-                    && jobs.values().stream().anyMatch(j -> projectId.equals(j.robotId()) && j.running() && j.kind().equals(kind)))
-                throw StudioException.conflict(kind.equals("studio_build") ? "This project is still running a studio build"
-                        : "This project is still preparing a studio approval");
             if (projectId != null && (kind.equals("search") || kind.equals("analyse"))) {
                 Job same = jobs.values().stream().filter(j -> projectId.equals(j.robotId()) && j.running() && j.kind().equals(kind)
                         && (kind.equals("search") || java.util.Objects.equals(subject, j.subject()))).findFirst().orElse(null);
@@ -70,8 +59,6 @@ public class JobService {
         }
         Job running = job;
         executor.execute(() -> {
-            running.worker(Thread.currentThread());
-            if (!running.running()) return; // cancelled before it started
             try {
                 running.done(work.run(running));
             } catch (StudioException e) {
@@ -81,33 +68,6 @@ public class JobService {
                 running.failed(e.getClass().getSimpleName() + ": " + e.getMessage(), null);
             }
         });
-        return job.json();
-    }
-
-    /** The job object (for waiting and callbacks); 404 when unknown. */
-    public Job job(String id) {
-        Job job = jobs.get(id);
-        if (job == null) throw StudioException.notFound("Job not found");
-        return job;
-    }
-
-    /**
-     * Cancels a running job: the record turns "cancelled" at once, then the worker is interrupted so the TaskRunner kills
-     * the task's process tree. Usage already streamed stays in the ledger; the worker's late outcome is ignored.
-     * 404 for an unknown job, 409 when it has already finished.
-     */
-    public ObjectNode cancel(String id) {
-        Job job = job(id);
-        if (!job.cancel()) throw StudioException.conflict("The job has already finished");
-        Thread worker = job.worker();
-        if (worker != null) {
-            worker.interrupt();
-            try {
-                worker.join(java.time.Duration.ofSeconds(10));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
         return job.json();
     }
 
@@ -121,9 +81,9 @@ public class JobService {
     public List<ObjectNode> list(String projectId) {
         List<Job> mine = jobs.values().stream().filter(j -> projectId.equals(j.robotId())).toList();
         List<Job> out = new java.util.ArrayList<>(mine.stream().filter(Job::running)
-                .sorted(java.util.Comparator.comparing((Job j) -> j.json().get("started").asString()).thenComparingLong(Job::seq)).toList());
+                .sorted(java.util.Comparator.comparing((Job j) -> j.json().get("started").asString()).thenComparing(Job::id)).toList());
         out.addAll(mine.stream().filter(j -> !j.running())
-                .sorted(java.util.Comparator.comparing((Job j) -> String.valueOf(j.finishedAt())).thenComparingLong(Job::seq).reversed()).toList());
+                .sorted(java.util.Comparator.comparing((Job j) -> String.valueOf(j.finishedAt())).reversed().thenComparing(Job::id)).toList());
         return out.stream().limit(LIST_MAX).map(Job::summary).toList();
     }
 

@@ -1,0 +1,17 @@
+# OPTIONAL: only for "Estimate automatically" in the photo-AR view (task ar_estimate). Without these packages the
+# task fails with the code ar_estimator_unavailable, and calibrating with a reference rectangle still works.
+#
+# Verified on Windows 11 / Python 3.12 / RTX 4050 (driver CUDA 13.0), 2026-11-20:
+#   1. PyTorch with CUDA (about 1.9 GB; pick the index for your driver, or omit --index-url for the CPU build):
+#        pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cu130
+#      If pip reports a sha256 mismatch, the download was cut off: fetch the wheel with a resumable download
+#      (curl -C -), check its sha256, and pip install the local file.
+#   2. MoGe and its git-only helpers, WITHOUT their declared dependencies (MoGe also pulls gradio, matplotlib,
+#      a newer trimesh and FlexGEMM/Triton, which inference does not need and which conflict with requirements.txt):
+#        pip install --no-deps -r requirements-ar.txt
+#   3. The runtime packages MoGe inference imports:
+#        pip install opencv-python-headless "scipy>=1.8" pillow huggingface-hub click tqdm requests
+#   The first estimate downloads the MoGe-2 ViT-L weights (1.32 GB, MIT licence) into the Hugging Face cache.
+moge @ git+https://github.com/microsoft/MoGe.git
+utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37
+pipeline @ git+https://github.com/EasternJournalist/pipeline.git@1c511390d90226c00c101f34b84df26a0f8789b4

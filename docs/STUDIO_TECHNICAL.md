@@ -541,7 +541,7 @@ be cancelled.
 ## 10. API
 
 Spring Boot on `127.0.0.1:8800` (`STUDIO_HOST`, `STUDIO_PORT`). All routes are under `/api/v1`; the OpenAPI document
-is at `GET /api/v1/openapi.json` (source `contracts/openapi.yaml`, bundled `contracts/openapi.bundled.json`). Request bodies up to 64 MB (413 beyond that). The server refuses a non-loopback
+is at `GET /v3/api-docs`. Request bodies up to 64 MB (413 beyond that). The server refuses a non-loopback
 `STUDIO_HOST` unless `STUDIO_TOKEN` is set, and then every `/api/v1` call needs `Authorization: Bearer <token>`.
 Without a token there is no login. Errors have the body `{"detail": "<message>"}`: a value error is 422, a missing
 item 404, a model failure 502, a conflict 409.
@@ -573,7 +573,7 @@ error_code, started}`; the client polls `GET /api/v1/jobs/{id}` every 0.7 s. A d
 | `POST /api/v1/projects/{id}/decision {candidate_id, action}` with action `approve` or `robot_studio` | Record; the candidate must have an analysis |
 | `GET /api/v1/projects/{id}/export` | ZIP (section 12) |
 
-Anything else not under `/api/v1` serves `client/dist` (with `index.html` as the fallback), or a plain note when the
+Anything else not under `/api/v1` or `/v3` serves `client/dist` (with `index.html` as the fallback), or a plain note when the
 client is not built.
 
 ---

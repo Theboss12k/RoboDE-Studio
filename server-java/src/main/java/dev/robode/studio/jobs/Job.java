@@ -14,8 +14,6 @@ public final class Job {
     private final String id;
     private final String kind;
     private final String robotId;
-    private static final java.util.concurrent.atomic.AtomicLong SEQUENCE = new java.util.concurrent.atomic.AtomicLong();
-    private final long seq = SEQUENCE.incrementAndGet();
     private final String started = Time.now();
     private final String subject;
     private final List<String> progress = new ArrayList<>();
@@ -25,11 +23,6 @@ public final class Job {
     private String error;
     private String errorCode;
     private String finished;
-    private final java.util.concurrent.CompletableFuture<Void> ended = new java.util.concurrent.CompletableFuture<>();
-    private volatile Thread worker;
-    private String callbackUrl;
-    private boolean callbackDelivered;
-    private int callbackAttempts;
 
     Job(String id, String kind, String robotId, String subject, UsageLedger ledger) {
         this.id = id;
@@ -48,56 +41,15 @@ public final class Job {
     /** What the job works on: a candidate id for analyse, "v&lt;n&gt;" for revise, otherwise null. */
     public String subject() { return subject; }
 
-    /** Creation order; breaks ties between jobs whose second-resolution timestamps are equal. */
-    long seq() { return seq; }
-
     synchronized String finishedAt() { return finished; }
 
     public synchronized boolean running() { return status.equals("running"); }
 
     public synchronized void progress(String text) { progress.add(text); }
 
-    /** Completes when the job is done, failed or cancelled (never exceptionally); waiting needs no polling. */
-    public java.util.concurrent.CompletableFuture<Void> ended() { return ended; }
+    synchronized void done(JsonNode value) { result = value; status = "done"; finished = Time.now(); }
 
-    void worker(Thread thread) { this.worker = thread; }
-
-    Thread worker() { return worker; }
-
-    void done(JsonNode value) {
-        synchronized (this) {
-            if (!running()) return; // cancelled meanwhile
-            result = value; status = "done"; finished = Time.now();
-        }
-        ended.complete(null);
-    }
-
-    void failed(String message, String code) {
-        synchronized (this) {
-            if (!running()) return;
-            error = message; errorCode = code; status = "error"; finished = Time.now();
-        }
-        ended.complete(null);
-    }
-
-    /** Marks the job cancelled; false when it had already finished. */
-    boolean cancel() {
-        synchronized (this) {
-            if (!running()) return false;
-            error = "Cancelled by the caller"; errorCode = "cancelled"; status = "cancelled"; finished = Time.now();
-        }
-        ended.complete(null);
-        return true;
-    }
-
-    /** Sets the callback URL once; false when one is already set. */
-    public synchronized boolean callbackUrl(String url) {
-        if (callbackUrl != null) return false;
-        callbackUrl = url;
-        return true;
-    }
-
-    public synchronized void callbackResult(boolean delivered, int attempts) { callbackDelivered = delivered; callbackAttempts = attempts; }
+    synchronized void failed(String message, String code) { error = message; errorCode = code; status = "error"; finished = Time.now(); }
 
     /** The task listener: progress lines go to the record, usage lines to the ledger as they arrive. */
     public TaskRunner.Listener listener() {
@@ -123,7 +75,6 @@ public final class Job {
         if (error == null) out.putNull("error"); else out.put("error", error);
         if (errorCode == null) out.putNull("error_code"); else out.put("error_code", errorCode);
         out.put("started", started);
-        if (callbackUrl != null) out.set("callback", Json.obj().put("url", callbackUrl).put("delivered", callbackDelivered).put("attempts", callbackAttempts));
         return out;
     }
 

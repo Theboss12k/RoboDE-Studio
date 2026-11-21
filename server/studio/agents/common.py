@@ -26,25 +26,3 @@ def parse(model, data, what):
         return model.model_validate(data)
     except ValueError as error:  # pydantic.ValidationError is a ValueError
         raise ValueError(f'{what} is invalid: {str(error)[:900]}') from error
-
-
-def without_object_models(schema):
-    """A JSON schema of a model that holds a SceneSpec, minus SceneObject's `name` and `model` (the objects agent's
-    output, attached by code): the scene and revise agents are not asked for them."""
-    import copy
-    out = copy.deepcopy(schema)
-    defs = out.get('$defs', {})
-    for key in ('name', 'model'):
-        defs.get('SceneObject', {}).get('properties', {}).pop(key, None)
-    for key in ('ObjectModel', 'ObjectModelPart'):
-        defs.pop(key, None)
-    return out
-
-
-def scene_view(scene):
-    """A scene as JSON for a prompt, without the objects' names and models (models are large and not the agent's concern)."""
-    out = scene.model_dump(mode='json')
-    for o in out['objects']:
-        o.pop('name', None)
-        o.pop('model', None)
-    return out

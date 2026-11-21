@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "file": {
+      "title": "File",
+      "type": "string"
+    },
+    "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+    },
+    "duration_s": {
+      "title": "Duration S",
+      "type": "number"
+    },
+    "width": {
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "title": "Height",
+      "type": "integer"
+    },
+    "fps": {
+      "title": "Fps",
+      "type": "number"
+    },
+    "rotation_deg": {
+      "title": "Rotation Deg",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file",
+    "bytes",
+    "duration_s",
+    "width",
+    "height",
+    "fps",
+    "rotation_deg"
+  ],
+  "title": "ScanVideo",
+  "type": "object"
+}

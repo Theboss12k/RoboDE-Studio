@@ -9,21 +9,17 @@ import asyncio
 import hashlib
 import json
 import math
-import re
 
 from .. import families
 from ..agents import revise as revise_agent
 from ..agents.revise import BASE_MOVE_M
 from ..agents import robot as robot_agent
 from ..agents import scene as scene_agent
-from . import object_models
 from ..agents import spec as spec_agent
 from ..llm.base import LLMError, supports_images
 from ..llm.usage import set_context
-from ..fleet.assign import auto_assign
-from ..fleet.feasibility import single_robot_shortfall
 from ..physics import derive, place_base
-from ..schemas import DesignVersion, FleetLimits, RepairAttempt, RepairLog
+from ..schemas import DesignVersion, RepairAttempt, RepairLog
 from ..sim.report import episodes_from
 from ..sim.task import simulate
 from ..util import now, slug
@@ -125,13 +121,13 @@ def size_and_simulate(spec, requirements, scene, concept, base, explicit=None):
     return sized, urdf, sim
 
 
-MAX_SPEC_IMAGES = 8      # the Claude CLI cap; brief images first, then reference photos, then answer images
+MAX_SPEC_IMAGES = 8      # the Claude CLI cap; reference photos first, then answer images
 
 
 async def specify(llms, brief, reference, answers, round_, progress, extras=None):
     """One spec round, from plain inputs: `reference` is the agent's view ({'text', 'urdf', 'images': [Image]} or
     None), `answers` all answers so far, `round_` the number of this round (1 for the first). `extras` is optional
-    {'comments': {qid: text}, 'notes': [{round, text}], 'answer_images': [Image], 'brief_images': [Image]} from the user's answers.
+    {'comments': {qid: text}, 'notes': [{round, text}], 'answer_images': [Image]} from the user's answers.
     Returns {'status': 'questions', 'questions': [dict], 'round'} or {'status': 'spec', 'spec': TechnicalSpec, 'round'}."""
     progress('Reading your brief' if round_ == 1 else f'Updating the specification (round {round_})')
     set_context(task='spec')
@@ -139,30 +135,23 @@ async def specify(llms, brief, reference, answers, round_, progress, extras=None
     extras = dict(extras) if extras else None
     ref_images = list(reference['images']) if reference and reference['images'] else []
     answer_images = list(extras.get('answer_images') or []) if extras else []
-    brief_images = list(extras.get('brief_images') or []) if extras else []
-    total = len(brief_images) + len(ref_images) + len(answer_images)
-    if total and not supports_images(adapter):
+    if (ref_images or answer_images) and not supports_images(adapter):
         progress('The spec LLM cannot read images; the photos are not used')
-        brief_images, ref_images, answer_images = [], [], []
-    elif total > MAX_SPEC_IMAGES:
-        progress(f'Only {MAX_SPEC_IMAGES} images can be sent to the spec LLM; {total - MAX_SPEC_IMAGES} not used')
-        brief_images = brief_images[:MAX_SPEC_IMAGES]
-        ref_images = ref_images[:MAX_SPEC_IMAGES - len(brief_images)]
-        answer_images = answer_images[:MAX_SPEC_IMAGES - len(brief_images) - len(ref_images)]
+        ref_images, answer_images = [], []
+    elif len(ref_images) + len(answer_images) > MAX_SPEC_IMAGES:
+        dropped = len(ref_images) + len(answer_images) - MAX_SPEC_IMAGES
+        progress(f'Only {MAX_SPEC_IMAGES} images can be sent to the spec LLM; {dropped} not used')
+        ref_images = ref_images[:MAX_SPEC_IMAGES]
+        answer_images = answer_images[:MAX_SPEC_IMAGES - len(ref_images)]
     if reference and reference['images']:
         reference = {**reference, 'images': ref_images}
     if extras and 'answer_images' in extras:
         extras['answer_images'] = answer_images
-    if extras and 'brief_images' in extras:
-        extras['brief_images'] = brief_images
     result = await spec_agent.run(adapter, brief, reference, answers, round_, extras)
     if 'questions' in result:
         return {'status': 'questions', 'questions': [q.model_dump(mode='json') for q in result['questions']],
                 'round': round_}
-    out = {'status': 'spec', 'spec': result['spec'], 'round': round_}
-    if result.get('fleet') is not None:          # the spec agent's proposal of several robots (FleetHint)
-        out['fleet'] = result['fleet']
-    return out
+    return {'status': 'spec', 'spec': result['spec'], 'round': round_}
 
 
 async def design(llms, spec, progress, auto_repair=True):
@@ -179,49 +168,13 @@ async def design(llms, spec, progress, auto_repair=True):
     async def robot_task():
         set_context(task='robot')
         return await robot_agent.run(llms.for_role('robot'), spec, requirements, families.describe())
-    async def objects_task():
-        return await object_models.make_models(llms, spec)       # never fails: {} when no model could be made
-    scene, concept, models = await asyncio.gather(scene_task(), robot_task(), objects_task())
-    if models:
-        progress(f'Object models: {len(models)} made')
-    scene = object_models.attach(scene, spec, models)
+    scene, concept = await asyncio.gather(scene_task(), robot_task())
     progress(f'Sizing the {concept.family.replace("_", " ")} from the requirements')
     concept, urdf, sim = await asyncio.to_thread(size_and_simulate, spec, requirements, scene, concept, base)
     progress(f'Task simulated: {sum(c.passed is True for c in sim.checks)} of {len(sim.checks)} checks pass')
     version = DesignVersion(version=0, created=now(), spec=spec, requirements=requirements, scene=scene, robot=concept,
                             urdf=urdf, sim=sim)
     return await repair_collisions(llms, version, progress) if auto_repair else version
-
-
-FLEET_ROBOT_ESTIMATE_MAX = 3
-
-
-def fleet_advice(version, hint=None, progress=None):
-    """{robots_needed, reasons, source} when one robot looks not enough for the version's task, else None (and no
-    progress line). Sources: the spec agent's FleetHint (a proposal) and/or code (single_robot_shortfall of the sized
-    and simulated robot). Mobile tasks and fleet versions get no advice: fleets are fixed-base robots."""
-    if version.fleet is not None or version.spec.locomotion.required:
-        return None
-    reasons, source = [], []
-    if hint is not None and hint.robots_needed > 1:
-        reasons.append(f'Spec agent (a proposal): {hint.reason}')
-        source.append('spec')
-    code = single_robot_shortfall(version.spec, version.requirements, version.robot, version.sim)
-    if code:
-        reasons += [f'Code: {r}' for r in code]
-        source.append('code')
-    if not reasons:
-        return None
-    needed = hint.robots_needed if 'spec' in source else 2
-    if code:
-        try:
-            needed = max(needed, len(auto_assign(version.spec, FleetLimits(max_robots=FLEET_ROBOT_ESTIMATE_MAX)).members))
-        except ValueError:
-            pass
-    if progress is not None:
-        more = f' (and {len(reasons) - 1} more)' if len(reasons) > 1 else ''
-        progress(f'One robot may not be enough: {reasons[0]}{more}')
-    return {'robots_needed': int(needed), 'reasons': reasons, 'source': 'both' if len(source) == 2 else source[0]}
 
 
 def markers_moved(old, new):
@@ -234,15 +187,9 @@ def check_moment(base, t):
     """ValueError unless `t` (None = no moment) lies within the base version's simulation."""
     if t is None:
         return None
-    duration = run_length(base)
-    if isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) or not 0 <= t <= duration:
-        raise ValueError(f'The moment t must be between 0 and {duration:g} s (the length of version {base.version})')
+    if isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) or not 0 <= t <= base.sim.duration_s:
+        raise ValueError(f'The moment t must be between 0 and {base.sim.duration_s:g} s (the length of version {base.version})')
     return float(t)
-
-
-def run_length(v):
-    """Length of the version's run on screen: the shared fleet clock for several robots, else the robot's run."""
-    return v.fleet.duration_s if getattr(v, 'fleet', None) is not None else v.sim.duration_s
 
 
 CHECKED_PREFIX = 'Checked in code after the change:'
@@ -277,9 +224,6 @@ async def _revise_core(llms, base_version, request, t, progress):
     if not request:
         raise ValueError('Say what to change')
     t = check_moment(old, t)
-    if old.fleet is not None:                     # several robots: the fleet pipeline re-plans them
-        from . import fleet as fleet_pipeline
-        return await fleet_pipeline.revise_fleet(llms, old, request, t, progress)
     progress('Working out what the change touches')
     set_context(task='revise')
     patch = await revise_agent.run(llms.for_role('revise'), old, request, t)
@@ -299,7 +243,6 @@ async def _revise_core(llms, base_version, request, t, progress):
         set_context(task='scene')
         scene = await scene_agent.run(llms.for_role('scene'), spec, base)
     scene = scene.model_copy(update={'robot_base': base})
-    scene = await object_models.models_for(llms, spec, scene, old, progress)
     explicit = None
     if patch.robot:
         if patch.robot.family == old.robot.family:
@@ -328,43 +271,24 @@ MAX_REPAIR_EVENTS = 8
 
 
 def collision_events(v):
-    """The collision events of the version's run, in time order. A fleet version: every member's scene collisions
-    on the shared clock (prefixed with the member id) plus the robot-robot events."""
-    if getattr(v, 'fleet', None) is None:
-        return sorted([e for e in v.sim.events if e.kind == 'collision'], key=lambda e: e.t)
-    events = [e.model_copy(update={'t': e.t + m.t_offset_s, 'text': f'{m.id}: {e.text}'})
-              for m in v.fleet.members for e in m.sim.events if e.kind == 'collision']
-    events += [e for e in v.fleet.events if e.kind == 'collision']
+    """The collision events of the version's run (plus robot-robot events of a fleet plan), in time order."""
+    events = [e for e in v.sim.events if e.kind == 'collision']
+    if getattr(v, 'fleet', None):
+        events += [e for e in v.fleet.events if e.kind == 'collision']
     return sorted(events, key=lambda e: e.t)
 
 
-_CONTACTS = re.compile(r'^\s*(\d+) contact episode')
-
-
 def collision_episodes(v):
-    """Collision episodes in the version: the `collision_free` check's count; a fleet version adds up its members'
-    counts and the robot-robot episodes (the fleet_robot_clearance check, else the robot-robot events)."""
-    if getattr(v, 'fleet', None) is None:
-        return episodes_from(next((c for c in v.sim.checks if c.requirement_id == 'collision_free'), None))
-    total = sum(episodes_from(next((c for c in m.sim.checks if c.requirement_id == 'collision_free'), None))
-                for m in v.fleet.members)
-    rr = next((c for c in v.fleet.checks if c.requirement_id == 'fleet_robot_clearance'), None)
-    hit = _CONTACTS.match(rr.detail or '') if rr is not None else None
-    return total + (int(hit.group(1)) if hit else sum(e.kind == 'collision' for e in v.fleet.events))
-
-
-def _all_checks(v):
-    if getattr(v, 'fleet', None) is None:
-        return v.sim.checks
-    return [*v.fleet.checks, *[c for m in v.fleet.members for c in (*m.sim.checks, *m.limit_checks)]]
+    """Collision episodes in the version: the `collision_free` check's count plus fleet robot-robot episodes."""
+    check = next((c for c in v.sim.checks if c.requirement_id == 'collision_free'), None)
+    total = episodes_from(check)
+    if getattr(v, 'fleet', None):
+        total += sum(e.kind == 'collision' for e in v.fleet.events)
+    return total
 
 
 def checks_passed(v):
-    return sum(c.passed is True for c in _all_checks(v))
-
-
-def checks_total(v):
-    return len(_all_checks(v))
+    return sum(c.passed is True for c in v.sim.checks)
 
 
 def repair_request(v, attempts):
@@ -376,10 +300,6 @@ def repair_request(v, attempts):
     levers = ('Allowed changes: move the "robot_base" marker (the robot stands elsewhere); change the robot family or its '
               'dimensions; raise physics_inputs.approach_height_m; move or resize scene boxes that hold no task marker. '
               'Forbidden: moving any other marker, and changing objects, actions or the cycle time.')
-    if getattr(v, 'fleet', None) is not None:
-        levers = ('Allowed changes (target "fleet" or "scene"): move a robot\'s base (fleet members[].base); change a '
-                  'robot\'s family or dimensions; move a handover station; move or resize scene boxes that hold no task '
-                  'marker. Forbidden: changing the task (spec: markers, objects, actions, cycle time).')
     tail = []
     if attempts:
         tail.append('Earlier attempts (the model\'s own summaries; do something different):')
@@ -396,7 +316,7 @@ def repair_request(v, attempts):
             break
         shown = shown[:-1]
     first = events[0].t if events else None
-    t = None if first is None else min(max(float(first), 0.0), float(run_length(v)))
+    t = None if first is None else min(max(float(first), 0.0), float(v.sim.duration_s))
     return text[:REQUEST_BUDGET], t
 
 
@@ -434,11 +354,6 @@ def design_fingerprint(v):
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def task_of(v):
-    """The task a repair must keep: the full task of a fleet version, else the spec."""
-    return v.fleet.task if getattr(v, 'fleet', None) is not None else v.spec
-
-
 def _quiet(_line):
     """Progress sink for the inner revise rounds of a repair (their lines would hide the repair's own)."""
 
@@ -471,15 +386,14 @@ async def repair_collisions(llms, version, progress, revise_fn=None):
         text, t = repair_request(best, attempts)
         progress(f'Collisions found ({collision_episodes(best)}): automatic fix, attempt {i} of {MAX_REPAIR_ATTEMPTS}')
         att = {'attempt': i, 'request': text, 't': t}
-        inner = _quiet if getattr(best, 'fleet', None) is None else (lambda line, i=i: progress(f'Attempt {i}: {line}'))
         try:
-            cand = await revise_fn(llms, best, text, t, inner)   # a fleet round is long: its lines keep the job alive
+            cand = await revise_fn(llms, best, text, t, _quiet)
         except (ValueError, LLMError) as error:
             attempts.append(RepairAttempt(**att, outcome='invalid', note=str(error)[:600]))
             progress(f'Attempt {i}: the proposed change was not usable')
             continue
         att['summary'] = cand.change_summary.split(CHECKED_PREFIX)[0].strip()[:600]
-        why = task_unchanged(task_of(version), task_of(cand))
+        why = task_unchanged(version.spec, cand.spec)
         if why:
             attempts.append(RepairAttempt(**att, outcome='changed_task', note=why[:600]))
             progress(f'Attempt {i}: discarded, {why}')
@@ -492,8 +406,8 @@ async def repair_collisions(llms, version, progress, revise_fn=None):
             break
         seen.add(print_)
         c, p = collision_episodes(cand), checks_passed(cand)
-        att.update(collisions=c, checks_passed=p, checks_total=checks_total(cand))
-        progress(f'Attempt {i}: {c} collision(s) left, {p} of {checks_total(cand)} checks pass')
+        att.update(collisions=c, checks_passed=p, checks_total=len(cand.sim.checks))
+        progress(f'Attempt {i}: {c} collision(s) left, {p} of {len(cand.sim.checks)} checks pass')
         score = (c, -p, i)
         better = score < best_score
         if better:

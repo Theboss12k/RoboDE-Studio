@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import families
+from ..ar import geometry as ar_geometry
 from ..catalog.fetch import safe_download
 from ..ingest import images as image_intake
 from ..ingest import urdf as urdf_intake
@@ -17,9 +18,7 @@ from ..llm.claude_cli import MODELS
 from ..llm.registry import DEFAULT_ROLES, PROVIDERS, ROLES, default_profiles
 from ..pipeline import catalog as catalog_pipeline
 from ..pipeline import design as design_pipeline
-from ..pipeline import fleet as fleet_pipeline
-from ..pipeline import studio as studio_pipeline
-from ..schemas import Candidate, DesignVersion, StudioBuild, TechnicalSpec, TwinMoveRequest
+from ..schemas import ArCalibration, ArIntrinsics, ArReference, Candidate, DesignVersion, TechnicalSpec
 from .llms import TaskLLMs
 
 TEST_PNG = ('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR42u3NsQkAAAzDsPz/dHpDxoLAo0FpMjXuDQAAAAAAAAAAAPgCHDaH/C4jlqxWAAAAAElFTkSuQmCC')
@@ -94,25 +93,10 @@ def answer_images(items):
     return images
 
 
-def brief_images(items):
-    """Input `brief_images` ([{path, name}]) -> [Image] labelled 'brief:<name>'."""
-    images = []
-    for item in items or []:
-        path = Path(item['path'])
-        try:
-            payload = path.read_bytes()
-        except OSError as error:
-            raise ValueError(f'Cannot read the brief image {path.name}: {error.strerror or error}') from error
-        images.append(Image(base64.b64encode(payload).decode(), image_intake.image_type(payload) or 'image/jpeg',
-                            f'brief:{item.get("name") or path.name}'))
-    return images
-
-
 def _answer_extras(inp):
-    """Input `comments`, `notes`, `answer_images`, `brief_images` -> extras for the spec round (only non-empty parts) or None."""
+    """Input `comments`, `notes`, `answer_images` -> extras for the spec round (only non-empty parts) or None."""
     extras = {'comments': inp.get('comments') or None, 'notes': inp.get('notes') or None,
-              'answer_images': answer_images(inp.get('answer_images')) or None,
-              'brief_images': brief_images(inp.get('brief_images')) or None}
+              'answer_images': answer_images(inp.get('answer_images')) or None}
     return {k: v for k, v in extras.items() if v} or None
 
 
@@ -138,7 +122,6 @@ async def design(inp, ctx):
     the spec round (design retry)."""
     progress = ctx.progress
     round_ = int(inp.get('round') or 0) + 1
-    hint = None
     if inp.get('spec'):
         spec = TechnicalSpec.model_validate(inp['spec'])
     else:
@@ -149,50 +132,21 @@ async def design(inp, ctx):
                                              round_, progress, _answer_extras(inp))
         if step['status'] == 'questions':
             return {'status': 'questions', 'questions': step['questions'], 'round': round_}
-        spec, hint = step['spec'], step.get('fleet')
+        spec = step['spec']
     version = await design_pipeline.design(ctx.llms, spec, progress, auto_repair=_auto_repair(inp))
-    out = {'status': 'designed', 'version': version_json(version), 'parsed': _parsed(version.urdf), 'round': round_}
-    advice = design_pipeline.fleet_advice(version, hint, progress)
-    if advice:                                   # only when flagged: the single-robot result is otherwise unchanged
-        out['fleet_advice'] = advice
-    return out
+    return {'status': 'designed', 'version': version_json(version), 'parsed': _parsed(version.urdf), 'round': round_}
 
 
 async def revise(inp, ctx):
     base = _version(inp.get('base'), 'base')
     version = await design_pipeline.revise(ctx.llms, base, inp.get('request'), inp.get('t'), ctx.progress,
                                               auto_repair=_auto_repair(inp))
-    out = {'version': version_json(version), 'parsed': _parsed(version.urdf)}
-    if version.fleet is not None:
-        out['fleet_parsed'] = fleet_pipeline.fleet_parsed(version)
-    else:
-        advice = design_pipeline.fleet_advice(version, None, ctx.progress)
-        if advice:
-            out['fleet_advice'] = advice
-    return out
-
-
-async def fleet_assign(inp, ctx):
-    """No LLM: the automatic or the user's (validated) assignment of a version's task to several robots, with a
-    layout preview. An assignment that does not fit the task is a value error."""
-    version = _version(inp.get('version'))
-    return await asyncio.to_thread(fleet_pipeline.assign, version, inp.get('limits'), inp.get('assignment'))
-
-
-async def fleet_design(inp, ctx):
-    """A multi-robot version of `base`'s task for the user's limits and assignment (null = automatic)."""
-    base = _version(inp.get('base'), 'base')
-    version = await fleet_pipeline.design_fleet(ctx.llms, base, inp.get('limits'), inp.get('assignment'), ctx.progress,
-                                                primary=inp.get('primary'), trigger=inp.get('trigger'),
-                                                auto_repair=_auto_repair(inp))
-    return {'version': version_json(version), 'parsed': _parsed(version.urdf),
-            'fleet_parsed': fleet_pipeline.fleet_parsed(version)}
+    return {'version': version_json(version), 'parsed': _parsed(version.urdf)}
 
 
 async def find(inp, ctx):
     version = _version(inp.get('version'))
-    result = await catalog_pipeline.find(ctx.llms, version, ctx.progress, ctx.download, limit=int(inp.get('limit') or 6),
-                                         member=inp.get('member'))
+    result = await catalog_pipeline.find(ctx.llms, version, ctx.progress, ctx.download, limit=int(inp.get('limit') or 6))
     return {'candidates': [c.model_dump(mode='json') for c in result['candidates']], 'dropped': result['dropped']}
 
 
@@ -205,7 +159,7 @@ async def analyse(inp, ctx):
         stored = extract_text(document_file.read_bytes(), document_file.name)
         source = inp.get('document_source') or 'uploaded document'
     result = await catalog_pipeline.analyse(ctx.llms, version, candidate, inp.get('datasheet_url'), ctx.progress, ctx.download,
-                                            stored=stored, stored_source=source, member=inp.get('member'))
+                                            stored=stored, stored_source=source)
     analysis = result['analysis']
     document = result['document']
     if document:
@@ -272,90 +226,207 @@ async def llm_test(inp, ctx):
     return result
 
 
-# -- robot studio ----------------------------------------------------------------------------------------------------
-
-def _studio_build(data, what='build'):
-    if not isinstance(data, dict):
-        raise ValueError(f'input.{what} is required')
-    return StudioBuild.model_validate(data)
-
-
-async def studio_build(inp, ctx):
-    """Size, source, style and CAD an approved design (see pipeline/studio.py). Files go to out_dir."""
-    version = _version(inp.get('version'))
-    base = _studio_build(inp['base_build'], 'base_build') if inp.get('base_build') else None
-    number = inp.get('build')
-    if not isinstance(number, int) or isinstance(number, bool) or number < 1:
-        raise ValueError('input.build must be a positive integer')
-    pinned = inp.get('pinned') or {}
-    if not isinstance(pinned, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in pinned.items()):
-        raise ValueError('input.pinned must be an object {joint: alternative_id}')
-    result = await studio_pipeline.build(ctx.llms, version, inp.get('member'), base, str(inp.get('request') or ''), pinned,
-                                         number, ctx.out_dir, ctx.progress, download=ctx.download)
-    return {'build': result.model_dump(mode='json'), 'parsed': _parsed(result.urdf)}
+def _ar_photo(inp) -> Path:
+    """Input `image.path` -> the photo path, after the intake check (size and PNG/JPEG/WebP signature)."""
+    image = inp.get('image')
+    path = Path((image or {}).get('path') or '') if isinstance(image, dict) else Path('')
+    if not path.is_file():
+        raise FileNotFoundError('The photo was not found')
+    image_intake.check_image(path.read_bytes())
+    return path
 
 
-async def studio_twin_move(inp, ctx):
-    """One twin move under the build's limits. Needs the design version (the twin rebuilds the kinematic chain)."""
-    from ..robot import twin
-    build, version = _studio_build(inp.get('build')), _version(inp.get('version'))
-    if not isinstance(inp.get('request'), dict):
-        raise ValueError('input.request is required')
-    req = TwinMoveRequest.model_validate(inp['request'])
-    return (await asyncio.to_thread(twin.move, build, version, req)).model_dump(mode='json')
+async def ar_calibrate(inp, ctx):
+    """Camera and floor from a photographed reference rectangle (docs/AR_PHOTO.md)."""
+    path = _ar_photo(inp)
+    reference = ArReference.model_validate(inp.get('reference'))
+    intrinsics = ArIntrinsics.model_validate(inp['intrinsics']) if inp.get('intrinsics') else None
+    width, height = ar_geometry.image_size(path)
+    ctx.progress('Calibrating the camera')
+    result = ar_geometry.calibrate(width, height, reference.corners_px, reference.size_m,
+                                   intrinsics.model_dump() if intrinsics else None)
+    return ArCalibration.model_validate(result).model_dump(mode='json')
 
 
-async def studio_run_task(inp, ctx):
-    """The design's waypoints replayed under the build's limits."""
-    from ..robot import twin
-    build, version = _studio_build(inp.get('build')), _version(inp.get('version'))
-    scale = inp.get('speed_scale', 1.0)
-    if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not 0 < scale <= 2.0:
-        raise ValueError('input.speed_scale must be a number above 0 and at most 2')
-    return (await asyncio.to_thread(twin.run_task, build, version, float(scale))).model_dump(mode='json')
-
-
-async def studio_pdf(inp, ctx):
-    """manufacturer.pdf, bom.csv and package.zip into out_dir. `build_dir` (read only) holds the CAD files; they are
-    staged with bom.csv in out_dir/_stage so the package holds bom.csv too, and the stage is removed afterwards."""
-    import shutil
-
-    from ..robot import report
-    build, version = _studio_build(inp.get('build')), _version(inp.get('version'))
-    project, build_dir = inp.get('project') or {}, Path(inp.get('build_dir') or '')
-    if not build_dir.is_dir():
-        raise FileNotFoundError('input.build_dir is not a folder')
-    snapshots = inp.get('snapshots') or []
-    out = ctx.out_dir
-
-    def work():
-        ctx.progress('Writing the bill of materials')
-        bom = report.write_bom_csv(build, out / 'bom.csv')
-        ctx.progress('Writing the manufacturer PDF')
-        pdf = report.write_pdf(build, version, project, build_dir, snapshots, out / 'manufacturer.pdf')
-        ctx.progress('Writing the build package')
-        stage = out / '_stage'
-        shutil.rmtree(stage, ignore_errors=True)
-        try:
-            stage.mkdir()
-            for name in ('assembly.step', 'parts', 'urdf'):
-                src = build_dir / name
-                if src.is_dir():
-                    shutil.copytree(src, stage / name)
-                elif src.is_file():
-                    shutil.copy2(src, stage / name)
-            shutil.copy2(out / 'bom.csv', stage / 'bom.csv')
-            package = report.write_package(stage, out / 'manufacturer.pdf', out / 'package.zip')
-        finally:
-            shutil.rmtree(stage, ignore_errors=True)
-        return pdf, bom, package
-
-    pdf, bom, package = await asyncio.to_thread(work)
-    return {'pdf': 'manufacturer.pdf', 'package': 'package.zip',
-            'files': [f.model_dump(mode='json') for f in (pdf, bom, package)]}
+async def ar_estimate(inp, ctx):
+    """Camera and floor from the photo alone, with the optional depth model (torch + MoGe)."""
+    path = _ar_photo(inp)
+    ctx.progress('Estimating the camera and floor')
+    from ..ar import estimate as ar_estimate_module      # lazy: the module itself imports torch only inside estimate()
+    result = await asyncio.to_thread(ar_estimate_module.estimate, path)
+    return ArCalibration.model_validate(result).model_dump(mode='json')
 
 
 HANDLERS = {'meta': meta, 'design': design, 'revise': revise, 'find': find, 'analyse': analyse,
             'inspect_upload': inspect_upload, 'export_assets': export_assets, 'llm_test': llm_test,
-            'fleet_assign': fleet_assign, 'fleet_design': fleet_design, 'studio_build': studio_build,
-            'studio_twin_move': studio_twin_move, 'studio_run_task': studio_run_task, 'studio_pdf': studio_pdf}
+            'ar_calibrate': ar_calibrate, 'ar_estimate': ar_estimate}
+
+
+async def apply_scene(inp, ctx):
+    """The user's scene edits (docs/SITE_SCAN.md) as a new version, computed in code; no LLM unless auto_repair is set."""
+    from ..pipeline import apply_scene as apply_scene_pipeline
+    from ..schemas import SceneSpec
+    base = _version(inp.get('base'), 'base')
+    if not isinstance(inp.get('scene'), dict):
+        raise ValueError('input.scene is required')
+    scene = SceneSpec.model_validate(inp['scene'])
+    markers = inp.get('markers') or []
+    if not isinstance(markers, list):
+        raise ValueError('input.markers must be a list of {id, position}')
+    auto_repair = bool(inp.get('auto_repair'))
+    version = await apply_scene_pipeline.apply_scene(base, scene, markers, auto_repair, inp.get('note') or '', ctx.progress,
+                                                     ctx.llms if auto_repair else None)
+    return {'version': version_json(version), 'parsed': _parsed(version.urdf)}
+
+
+HANDLERS['apply_scene'] = apply_scene
+
+
+# -- site scan (docs/SITE_SCAN.md) ----------------------------------------------------------------------------------------
+
+def _scan_unavailable(error):
+    from ..scan import ScanError
+    return ScanError('scan_backend_unavailable', 'The site scan needs the optional backend (av, OpenCV, SciPy, Open3D, '
+                                                 f'torch, MoGe and trimesh); one of them is missing or blocked ({error})')
+
+
+def _scan_video(inp) -> Path:
+    """Input `video.path` -> the video file path."""
+    video = inp.get('video')
+    path = Path((video or {}).get('path') or '') if isinstance(video, dict) else Path('')
+    if not path.is_file():
+        raise FileNotFoundError('The video was not found')
+    return path
+
+
+def _scan_out_path(ctx, value, what) -> Path:
+    """An output path of the request: relative paths are under the job's output folder; absolute ones must lie in it."""
+    if not value:
+        raise ValueError(f'input.out.{what} is required')
+    root = ctx.out_dir.resolve()
+    path = Path(value)
+    path = (path if path.is_absolute() else root / path).resolve()
+    if path != root and root not in path.parents:
+        raise ValueError(f'input.out.{what} must be inside the job output folder')
+    return path
+
+
+async def scan_probe(inp, ctx):
+    """Container header of an uploaded video: bytes, duration_s, width, height, fps, rotation_deg."""
+    path = _scan_video(inp)
+    try:
+        from ..scan import video as scan_video
+        info = await asyncio.to_thread(scan_video.probe, path)
+    except ImportError as error:
+        raise _scan_unavailable(error) from error
+    return {'bytes': path.stat().st_size, **info}
+
+
+async def scan_reconstruct(inp, ctx):
+    """Keyframes, one shared camera, poses, floor and a mesh from a walk-around video."""
+    from ..scan import ScanError
+    path = _scan_video(inp)
+    frames_dir = _scan_out_path(ctx, (inp.get('out') or {}).get('frames_dir'), 'frames_dir')
+    mesh_path = _scan_out_path(ctx, (inp.get('out') or {}).get('mesh_path'), 'mesh_path')
+    rotation = int(inp.get('rotation_deg') or 0)
+    try:
+        import av, cv2, open3d, scipy.optimize, torch, trimesh  # noqa: E401,F401  (availability check)
+        from moge.model.v2 import MoGeModel  # noqa: F401
+        from ..scan import dense, floor, sfm
+        from ..scan import video as scan_video
+    except (ImportError, OSError) as error:
+        raise _scan_unavailable(error) from error
+    import numpy as np
+    progress = ctx.progress
+    hint = 'Move slower, use more light and film textured surfaces.'
+    timings = {}
+
+    def work():
+        t0 = time.monotonic()
+        kept = scan_video.extract_keyframes(path, rotation, frames_dir, progress)
+        frames = kept['frames']
+        timings['frames_s'] = time.monotonic() - t0
+        if len(frames) < 20:
+            raise ScanError('scan_failed', f'Only {len(frames)} usable frames (at least 20 are needed). ' + hint)
+        width, height = kept['width'], kept['height']
+        files = [frames_dir / Path(f['image']).name for f in frames]
+
+        def color(i):
+            return cv2.imread(str(files[i]), cv2.IMREAD_COLOR)
+
+        def gray(i):
+            return cv2.cvtColor(color(i), cv2.COLOR_BGR2GRAY)
+
+        rec = sfm.reconstruct(gray, color, len(frames), width, height, progress)
+        timings.update(rec.timings)
+        registered = sum(p is not None for p in rec.poses)
+        if registered < 20 or registered < 0.5 * len(frames):
+            raise ScanError('scan_failed', f'Only {registered} of {len(frames)} frames could be placed. ' + hint)
+        t1 = time.monotonic()
+        dense.undistort_frames(files, rec.poses, rec.camera, progress)       # frames become pure pinhole images
+        timings['undistort_s'] = time.monotonic() - t1
+        vertices, faces, colours, info = dense.fuse(rec, color, progress)
+        timings.update(depth_s=info['depth_s'], fusion_s=info['fusion_s'])
+        dense.write_glb(mesh_path, vertices, faces, colours, info['normals'])
+        # floor: RANSAC over the sparse points and a sample of the fused vertices
+        up, right = floor.camera_up(rec.poses)
+        centres = np.array([p[:3, 3] for p in rec.poses if p is not None])
+        sample = vertices[np.random.default_rng(0).choice(len(vertices), min(len(vertices), 40000), replace=False)]
+        n, d = floor.find_floor(np.vstack([rec.points, sample]), up, centres)
+        origin = centres.mean(axis=0)
+        A = floor.alignment(n, d, x_hint=right, origin=origin)
+        aligned = floor.apply(A, vertices)
+        lo, hi = np.percentile(aligned, [0.5, 99.5], axis=0)
+        progress('Floor: found')
+        return kept, frames, rec, (n, d), A, vertices, faces, hi - lo
+
+    kept, frames, rec, (n, d), A, vertices, faces, extent = await asyncio.to_thread(work)
+    camera = {'model': 'SIMPLE_RADIAL', **rec.camera, 'undistorted': True}
+    out_frames = [{'index': f['index'], 't_s': f['t_s'], 'image': f['image'],
+                   'world_from_camera': None if p is None else np.asarray(p).tolist()}
+                  for f, p in zip(frames, rec.poses)]
+    return {'camera': camera, 'frames': out_frames,
+            'floor': {'normal': [float(v) for v in n], 'd': float(d)}, 'alignment': A.tolist(),
+            'mesh': {'file': mesh_path.name, 'vertices': int(len(vertices)), 'triangles': int(len(faces))},
+            'stats': {'frames_total': len(frames), 'frames_registered': sum(p is not None for p in rec.poses),
+                      'reproj_px': float(rec.reproj_px), 'points3d': int(len(rec.points)),
+                      'extent': [float(v) for v in extent]},
+            'timings_s': {k: round(v, 1) for k, v in timings.items()}}
+
+
+async def scan_scale(inp, ctx):
+    """ScanScale from a sheet of known size seen in a frame, or from a measured distance."""
+    from ..scan import ScanError, scale
+    from ..schemas import ScanScale
+    method = inp.get('method')
+    if method == 'distance':
+        result = scale.scale_from_distance(inp.get('p1'), inp.get('p2'), inp.get('distance_m'))
+    elif method == 'sheet':
+        scan = inp.get('scan') or {}
+        frames, camera, plane = scan.get('frames') or [], scan.get('camera'), scan.get('floor')
+        index = inp.get('frame')
+        if not camera or not plane:
+            raise ScanError('scan_bad_scale', 'The scan has no camera and floor yet; reconstruct it first')
+        frame = next((f for f in frames if f.get('index') == index), None)
+        if frame is None or not frame.get('world_from_camera'):
+            raise ScanError('scan_bad_scale', 'That frame is not part of the reconstruction; pick another frame')
+        result = scale.scale_from_sheet(camera, frame['world_from_camera'], plane, inp.get('corners_px'), inp.get('size_m'),
+                                        frame=int(index))
+    else:
+        raise ValueError(f'Unknown scale method {method!r}; use sheet or distance')
+    return ScanScale.model_validate(result).model_dump(mode='json')
+
+
+async def scan_floor(inp, ctx):
+    """The floor re-picked from clicked points (>= 3, in R): a least-squares plane and its alignment."""
+    import numpy as np
+    from ..scan import floor
+    n, d = floor.floor_from_points(inp.get('points'), inp.get('camera_up') or [0.0, 0.0, 1.0])
+    A = floor.alignment(n, d, origin=np.asarray(inp['points'], dtype=float).mean(axis=0))
+    return {'floor': {'normal': [float(v) for v in n], 'd': float(d)}, 'alignment': A.tolist()}
+
+
+HANDLERS['scan_probe'] = scan_probe
+HANDLERS['scan_reconstruct'] = scan_reconstruct
+HANDLERS['scan_scale'] = scan_scale
+HANDLERS['scan_floor'] = scan_floor

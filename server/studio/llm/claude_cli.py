@@ -13,15 +13,24 @@ import asyncio
 import glob
 import json
 import os
-import pwd
 import shutil
 import tempfile
 import time
+
+try:
+    import pwd
+except ImportError:  # Windows: no pwd module
+    pwd = None
 
 from .base import Image, LLMError
 
 MODELS = ('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1')
 MAX_IMAGES = 8
+
+
+def _home():
+    """The user's real home directory: from the password database on Unix (ignores a changed HOME), else ~."""
+    return pwd.getpwuid(os.getuid()).pw_dir if pwd else os.path.expanduser('~')
 
 
 def find_cli(configured=''):
@@ -33,11 +42,19 @@ def find_cli(configured=''):
     found = shutil.which('claude')
     if found:
         return found
-    home = pwd.getpwuid(os.getuid()).pw_dir
-    patterns = [os.path.join(home, 'Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude'),
-                os.path.join(home, 'Library/Application Support/Claude/claude-code/*/claude'),
-                os.path.join(home, '.claude/local/claude'), os.path.join(home, '.local/bin/claude')]
-    candidates = [p for pattern in patterns for p in glob.glob(pattern) if os.access(p, os.X_OK)]
+    home = _home()
+    if os.name == 'nt':
+        local, roaming = os.environ.get('LOCALAPPDATA', ''), os.environ.get('APPDATA', '')
+        patterns = [os.path.join(home, '.local', 'bin', 'claude.exe'), os.path.join(home, '.claude', 'local', 'claude.exe'),
+                    os.path.join(local, 'Claude-Data', '*', 'claude-code', '*', '*', 'claude.exe'),
+                    os.path.join(local, 'Claude-Data', '*', 'claude-code', '*', 'claude.exe'),
+                    os.path.join(roaming, 'Claude', 'claude-code', '*', '*', 'claude.exe'),
+                    os.path.join(roaming, 'Claude', 'claude-code', '*', 'claude.exe')]
+    else:
+        patterns = [os.path.join(home, 'Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude'),
+                    os.path.join(home, 'Library/Application Support/Claude/claude-code/*/claude'),
+                    os.path.join(home, '.claude/local/claude'), os.path.join(home, '.local/bin/claude')]
+    candidates = [p for pattern in patterns for p in glob.glob(pattern) if os.path.isfile(p) and os.access(p, os.X_OK)]
 
     def version(path):
         parts = [part for part in path.split(os.sep) if part[:1].isdigit() and '.' in part]
@@ -45,6 +62,25 @@ def find_cli(configured=''):
     if candidates:
         return max(candidates, key=version)
     raise LLMError('Claude CLI not found. Install Claude Code or set the CLI path in the LLM profile.')
+
+
+WINDOWS_ENV = ('SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'USERNAME', 'USERDOMAIN',
+               'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'TEMP', 'TMP',
+               'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE')
+
+
+def cli_environment():
+    """The reduced environment the CLI runs with: enough to find its login and start, nothing from the project.
+    Windows programs need SYSTEMROOT, the profile folders and TEMP to start at all, so those are kept there."""
+    home = _home()
+    if os.name == 'nt':
+        environment = {key: os.environ[key] for key in WINDOWS_ENV if key in os.environ}
+        root = environment.get('SYSTEMROOT', r'C:\Windows')
+        environment['PATH'] = os.pathsep.join([os.path.join(root, 'System32'), root, os.path.join(root, 'System32', 'Wbem')])
+        environment['HOME'] = home
+        return environment
+    return {'HOME': home, 'USER': os.environ.get('USER', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
+            'TMPDIR': os.environ.get('TMPDIR', '/tmp')}
 
 
 class ClaudeCLI:
@@ -73,9 +109,7 @@ class ClaudeCLI:
 
     async def _run(self, text, system_prompt, images):
         cli = find_cli(self.cli_path)
-        home = pwd.getpwuid(os.getuid()).pw_dir
-        environment = {'HOME': home, 'USER': os.environ.get('USER', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
-                       'TMPDIR': os.environ.get('TMPDIR', '/tmp')}
+        environment = cli_environment()
         content = []
         for image in images:
             if image.label:
@@ -86,7 +120,7 @@ class ClaudeCLI:
         started = time.monotonic()
         with tempfile.TemporaryDirectory(prefix='studio-claude-') as empty:
             system_file = os.path.join(empty, '.system-prompt')
-            with open(system_file, 'w') as f:
+            with open(system_file, 'w', encoding='utf-8') as f:
                 f.write(system_prompt or 'You are a helpful assistant.')
             tools = ['--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch'] if self.web else ['--tools', '']
             command = [cli, '-p', '--system-prompt-file', system_file, *tools, '--input-format', 'stream-json',

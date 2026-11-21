@@ -18,7 +18,7 @@ export function useJobStore(): JobStore {
 }
 
 /** Design steps that exclude each other on one project (the server answers a second one with 409). */
-const EXCLUSIVE = ["design", "revise", "fleet_design"];
+const EXCLUSIVE = ["design", "revise", "fleet_design", "apply_scene"];
 
 /**
  * The newest job of `kind` (and `subject`, when given) for a project, in the shape the stages used from `useJob`.

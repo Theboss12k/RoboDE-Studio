@@ -7,13 +7,11 @@ from pydantic import BaseModel
 from .. import families
 from ..llm.base import ask_json
 from ..physics import place_base
-from ..fleet import patch as fleet_patch
-from ..fleet.patch import FleetPatch
 from ..schemas import DesignVersion, Marker, RobotConcept, SceneSpec, TechnicalSpec
 from . import robot as robot_agent
 from . import scene as scene_agent
 from . import spec as spec_agent
-from .common import UNTRUSTED, dumps, parse, scene_view, without_object_models
+from .common import UNTRUSTED, dumps, parse
 
 SYSTEM = f"""You change an existing robot design because the user asked for something different. You get the version the user is looking at (its specification, scene, robot family and parameters, the robot's computed capabilities, the requirement targets and every check with its result) and, when the user paused the playback, the moment on screen (the nearest simulation frame: time, phase, joint positions, tool position, what is held, and the events around it). Then you get the user's request.
 
@@ -42,7 +40,7 @@ class Patch(BaseModel):
     summary: str = ''
 
 
-SCHEMA = without_object_models(Patch.model_json_schema())
+SCHEMA = Patch.model_json_schema()
 
 
 BASE_MOVE_M = 0.01     # a patched robot.base further than this from the current one is a request to move the robot
@@ -134,118 +132,13 @@ def view(version: DesignVersion, t: float | None = None):
              'params': version.robot.params, 'base': version.robot.base.model_dump(mode='json'),
              'capabilities': capabilities(version.robot)}
     out = {'version': version.version, 'spec': version.spec.model_dump(mode='json'),
-           'scene': scene_view(version.scene), 'robot': robot, 'requirement_targets': targets,
+           'scene': version.scene.model_dump(mode='json'), 'robot': robot, 'requirement_targets': targets,
            'checks': checks, 'duration_s': version.sim.duration_s}
     if t is not None:
         out['moment'] = moment(version, t)
     return out
 
 
-# -- fleet versions (several robots) --------------------------------------------------------------------------------
-
-FLEET_SYSTEM = """
-
-This version has several robots ("fleet"). Its "spec" is the whole task; every robot ("member") does the task actions listed for it, objects pass between robots through handover stations (code places a stand under each), and code lays out the cell, sizes every robot and checks it.
-- To change robots use target "fleet" with {"members": [{"id": "r2", "family": ..., "params": {...}, "actions": [...], "base": [x, y, z]}], "handovers": [{"id": "h1", "position": [x, y, z]}], "max_robots": n}. List only the members, fields and handovers that change. "actions" are 0-based indices of the task's actions. A base or station you move stays where you put it. A member's family is serial_arm or gantry (fixed bases only); put exactly the numbers the user asked for into params.
-- There is no "robot" target here: one robot's object would not say which member. Use "fleet".
-- "spec" changes the whole task (positions, payloads, cycle time); "scene" is the shared furniture (leave the handover stands out, code adds them)."""
-
-
-class FleetRevise(BaseModel):
-    targets: list[Literal['spec', 'scene', 'robot', 'fleet']]
-    spec: TechnicalSpec | None = None
-    scene: SceneSpec | None = None
-    robot: RobotConcept | None = None
-    fleet: FleetPatch | None = None
-    summary: str = ''
-
-
-FLEET_SCHEMA = without_object_models(FleetRevise.model_json_schema())
-
-
-def check_fleet(data, version: DesignVersion):
-    """Validate a patch of a fleet version; the planner inputs it leads to must fit (ValueError for the model)."""
-    from ..pipeline.fleet import _scene_core
-    patch = parse(FleetRevise, data, 'The patch')
-    targets = list(dict.fromkeys(patch.targets))
-    if not targets:
-        raise ValueError('"targets" is empty: say what you changed')
-    if 'robot' in targets:
-        raise ValueError('This design has several robots: change them under "fleet" (members by id), not "robot"')
-    for t in targets:
-        if getattr(patch, t) is None:
-            raise ValueError(f'"{t}" is in targets but its object is missing')
-    f = version.fleet
-    spec = patch.spec if 'spec' in targets else f.task
-    if 'spec' in targets:
-        spec_agent.validate_spec(spec)
-    if 'scene' in targets:
-        bases = {m.id: m.robot.base for m in f.members}
-        primary = bases.get(f.primary) or next(iter(bases.values()))
-        patch.scene = _scene_core(patch.scene)
-        scene_agent.validate_scene(patch.scene, spec, primary, [b for k, b in bases.items() if k != f.primary])
-    fleet_patch.apply(spec, f.limits, f.assignment, {m.id: m.robot for m in f.members},
-                      patch.fleet if 'fleet' in targets else FleetPatch(), task_changed='spec' in targets)
-    for t in ('spec', 'scene', 'robot', 'fleet'):
-        if t not in targets:
-            setattr(patch, t, None)
-    patch.targets = targets
-    patch.summary = patch.summary.strip()[:400] or 'Design changed as requested'
-    return patch
-
-
-def _frame(f):
-    return {'t': _r(f.t), 'phase': f.phase, 'holding': f.holding or None, 'joints': {k: _r(v) for k, v in f.joints.items()},
-            'tcp': [_r(c) for c in f.tcp] if f.tcp else None}
-
-
-def fleet_moment(version: DesignVersion, t: float):
-    """Every member at shared time `t` (its frame nearest t - its start offset) and the events within +-0.5 s."""
-    f = version.fleet
-    members, events = {}, []
-    for m in f.members:
-        if not m.sim.frames:
-            continue
-        tau = min(max(t - m.t_offset_s, 0.0), m.sim.duration_s)
-        members[m.id] = _frame(min(m.sim.frames, key=lambda fr: abs(fr.t - tau)))
-        events += [{'t': _r(e.t + m.t_offset_s), 'robot': m.id, 'kind': e.kind, 'text': e.text} for e in m.sim.events
-                   if abs(e.t + m.t_offset_s - t) <= MOMENT_EVENT_WINDOW_S]
-    events += [{'t': _r(e.t), 'robot': 'fleet', 'kind': e.kind, 'text': e.text} for e in f.events
-               if abs(e.t - t) <= MOMENT_EVENT_WINDOW_S]
-    return {'requested_t': _r(t), 'members': members, 'events': sorted(events, key=lambda e: e['t'])}
-
-
-def _checks(checks):
-    return [{'id': c.requirement_id, 'name': c.name, 'passed': c.passed, 'required': c.required, 'actual': c.actual,
-             'unit': c.unit, 'detail': c.detail} for c in checks]
-
-
-def fleet_view(version: DesignVersion, t: float | None = None):
-    """What the model sees of a fleet version: the whole task, the shared scene, every member and the fleet checks."""
-    f = version.fleet
-    acts = {m.id: m.actions for m in f.assignment.members}
-    members = [{'id': m.id, 'name': m.name, 'actions': acts.get(m.id, []),
-                'action_labels': [f.task.actions[i].description or f.task.actions[i].verb for i in acts.get(m.id, [])
-                                  if 0 <= i < len(f.task.actions)],
-                'robot': {'family': m.robot.family, 'name': m.robot.name, 'params': m.robot.params,
-                          'base': m.robot.base.model_dump(mode='json'), 'capabilities': capabilities(m.robot)},
-                't_offset_s': _r(m.t_offset_s), 'duration_s': _r(m.sim.duration_s),
-                'checks': _checks(m.sim.checks), 'limit_checks': _checks(m.limit_checks)} for m in f.members]
-    out = {'version': version.version, 'spec': f.task.model_dump(mode='json'), 'scene': scene_view(version.scene),
-           'fleet': {'limits': f.limits.model_dump(mode='json'), 'primary': f.primary, 'members': members,
-                     'handovers': [h.model_dump(mode='json') for h in f.assignment.handovers],
-                     'checks': _checks(f.checks), 'events': [{'t': _r(e.t), 'kind': e.kind, 'text': e.text}
-                                                            for e in f.events[:20]],
-                     'duration_s': _r(f.duration_s), 'period_s': _r(f.period_s)}}
-    if t is not None:
-        out['moment'] = fleet_moment(version, t)
-    return out
-
-
 async def run(adapter, version, request, t=None):
-    if getattr(version, 'fleet', None) is not None:
-        prompt = 'Version on screen (JSON):\n' + dumps(fleet_view(version, t)) + '\n\nUser request:\n' + request.strip()[:2000]
-        return await ask_json(adapter, prompt, SYSTEM + FLEET_SYSTEM, schema=FLEET_SCHEMA,
-                              validate=lambda d: check_fleet(d, version))
     prompt = 'Version on screen (JSON):\n' + dumps(view(version, t)) + '\n\nUser request:\n' + request.strip()[:2000]
     return await ask_json(adapter, prompt, SYSTEM, schema=SCHEMA, validate=lambda d: check(d, version))

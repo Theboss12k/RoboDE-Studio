@@ -1,0 +1,36 @@
+{
+  "properties": {
+    "frames_total": {
+      "title": "Frames Total",
+      "type": "integer"
+    },
+    "frames_registered": {
+      "title": "Frames Registered",
+      "type": "integer"
+    },
+    "reproj_px": {
+      "title": "Reproj Px",
+      "type": "number"
+    },
+    "points3d": {
+      "title": "Points3D",
+      "type": "integer"
+    },
+    "extent": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Extent",
+      "type": "array"
+    }
+  },
+  "required": [
+    "frames_total",
+    "frames_registered",
+    "reproj_px",
+    "points3d",
+    "extent"
+  ],
+  "title": "ScanStats",
+  "type": "object"
+}

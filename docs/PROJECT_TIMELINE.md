@@ -161,128 +161,167 @@ Dated record of changes to this repository. Newest entries are added at the bott
 - Checked after the change (2026-11-20): `./mvnw test` 23 tests, 0 failures (run as `test`, not `verify`, so the jar used by the running dev server was not rebuilt); pytest 131 passed, 4 skipped; `npm run contracts:check` up to date; `scripts/export_schemas.py --check` exit 0; `npm run typecheck` and `npm run build` pass.
 - Not checked: `./mvnw verify` and `npm test` as one command (the running server's jar was not repackaged); the running Java server was not restarted (not needed, the Python tasks run from source). No revise was sent after the summary change with a real model, only scripted fixtures. Dobot CR3A was not analysed. The Gemini adapter remains untested against Google.
 
-## 2026-11-20 — Collision auto-repair, question comments and images, background jobs, fleet planner (built; results in the entry "Real-model verification of the five features")
+## 2026-11-20 — IN PROGRESS: collision auto-repair, question comments and images, background jobs, fleet planner
 
 - Plan: an automatic LLM revise loop for collisions, at most 3 attempts verified in code, keeping the best attempt with an attempt log; per-question comments and a note for each round; images attached to answers and sent to the spec agent; jobs that survive stage and project switches; a multi-robot fleet planner for the Design stage (fixed-base members, handover stations, 2–3 robots).
-- Status (2026-11-20 ~19:55 IST): all five parts are coded. Fixture tests only: `./mvnw test` 36 tests, 0 failures (golden contract test unchanged); pytest 182 passed, 4 skipped; contracts check, client typecheck and build pass. Not yet done: a Java full-flow fleet test on the real Python tasks, any real-model run (the one attempt failed on the Claude CLI 5-hour usage limit, not on code), and any browser check beyond one: a job error stays visible after switching stages. Robot checks are kinematic and static-load calculations in code. Work handed over in `docs/HANDOFF.md`.
+- Status: started. This entry is updated as each part lands; results are recorded in separate dated entries.
 
-## 2026-11-20 — Callable API: OpenAPI 3.1 spec, results in responses, callbacks, cancel, idempotency
+## 2026-11-20 — Photo AR ("View in my space"), first delivery
 
-- Applications: Studio server (Java), contracts, `packages/core`, docs, examples. Design: [docs/API_DESIGN.md](API_DESIGN.md); caller guide: [docs/API.md](API.md).
-- Every feature is callable by another application under `/api/v1`: projects, reference, question rounds with comments, notes and answer images, design, versions and assets, revise (base version, moment, auto repair), fleet, approve, search, analyse, datasheet, decision, export, jobs, LLM settings and usage.
-- Spec: `contracts/openapi.yaml` (OpenAPI 3.1, 43 operations; domain types `$ref` the pydantic-generated JSON Schemas), bundled to `contracts/openapi.bundled.json` and served at `GET /api/v1/openapi.json`. springdoc removed. TS path types are generated into `packages/core`. `contracts:check` fails on lint errors or stale outputs.
-- Results in responses: `?wait=0..600` and `expand=resource` on job-starting calls and `GET /jobs/{id}` (200 when done, 202 plus `Location` when still running; the resource is the version, candidate list, analysis or questions). Signed callbacks via `X-Studio-Callback` (host allowlist, HMAC-SHA256, retries). `DELETE /jobs/{id}` cancels a job (kills the process tree). `Idempotency-Key` makes starts safe to retry. Errors are `{detail, error_code?}`.
-- Tests (fixture: scripted LLMs, real Python tasks, no network): `./mvnw test` 40 passed. They include `OpenApiContractTest` (route parity in both directions), a spec validator applied to every JSON response of the flow tests, and `ApiCallableTest` (wait, expand, callback signature, 202 then poll, cancel, idempotent replay, 422 cases). `GoldenContractTest` passes with no new allow-list entries. pytest 182 passed, 4 skipped; typecheck and build pass.
-- `examples/api_flow.py` (standard library only) ran end to end against a separately built jar (port 8801, its own runtime, scripted profiles): create, a question round with a comment, design, revise from v1 at t = 3.0 s, approve, search, analyse (4 verified values, differences), decision, export ZIP. Exit 0. Fixture run, not a real model.
-- Not covered: a real-model run through the API, and the 64 MB body limit. The user's dev server (8800) still runs the older jar; it gets these routes after `npm run setup` rebuilds the jar.
+- Applications: Python tasks (`server/studio/ar/`, `ar_calibrate`, `ar_estimate`), schemas and contracts (`ArScene` and related models), Java routes and store (`/api/v1/projects/{pid}/ar/scenes`, `runtime/projects/<pid>/ar/`), `packages/core` (`ar.ts`), client Design stage ("View in my space").
+- Plan: the user uploads a site photo; code finds the camera from a known-size floor rectangle (homography, numpy) or, optionally, a depth-model estimate (torch + MoGe, an optional install). The robot, task objects and playback render over the photo at true scale. Contract: `docs/AR_PHOTO.md`.
+- This is a visual overlay only: no checks against the real room, and pass/fail numbers still come from the existing kinematic checks.
+- Calibration: the focal length comes from the reference homography, using whichever of the two constraints is well-conditioned, so a sheet square or at 45° to the camera still solves. Otherwise it falls back to the estimate, else a default 60° horizontal field of view, with a warning.
+- Windows support (not AR): `server/studio/llm/claude_cli.py` imported the Unix-only `pwd` module, which stopped every task import on Windows. It now falls back to `~` when `pwd` is absent; behaviour on macOS and Linux is unchanged.
+- Checked so far (2026-11-20, Windows 11, Python 3.12.10, Node 26.13.1; fixture tests only, no real model):
+  - pytest with `PYTHONUTF8=1`: 181 passed, 4 skipped, including 29 new AR tests. The synthetic camera recovers its pose within 1 mm and 0.1° and its focal length within 1%. Without UTF-8 mode, `test_catalog.py::test_extract_verifies_quotes` fails on Windows; this is pre-existing and not related to AR.
+  - `scripts/export_schemas.py --check` and `npm run contracts:check`: up to date.
+  - `npm run typecheck` (core and client): passes.
+  - Core `node --test`: 4 of 4 pass; the GL projection matches the OpenCV pinhole within 0.5 px.
+- Java fix (not AR): `ProjectService` used `ProjectStore.BUDGET_MESSAGE`, which was package-private, so `main` as downloaded did not compile. It is now `public`.
+- Java (`mvnw test`, JDK 25.0.5, with `STUDIO_PYTHON=.venv\Scripts\python.exe` and `PYTHONUTF8=1`): 36 run, 1 error, 7 skipped. New tests: `ArScenesFlowTest` (upload, list, photo, `ar_calibrate` through Python, placement, the 10-scene limit, delete) and `ImageSizeTest`. The one error is `KeysAndUsageTest.keyFileIsOwnerOnlyAndKeysAreNeverReturned`, which sets POSIX file permissions and is unsupported on Windows; it is pre-existing and not related to AR.
+- Browser check (built-in browser pane, scripted fixture model, no real model):
+  - Test photo: a synthetic 1600×1200 floor photo with an A4 sheet, rendered from a known camera (f = 1200 px, 1.3 m high, 40° pitch, 15° yaw).
+  - Calibration from the sheet corners gave f = 1201 px, a camera height of 1.3002 m and a residual of 0.05 px, through the API and through the UI calibrator.
+  - With the design placed so the robot base sits on the sheet centre, the base drew on the sheet at the canvas centre, as the maths requires.
+  - Playback ran over the photo with shadows, and there were no console errors.
+  - "Estimate automatically" showed the error that the optional backend is missing.
+- Not checked: uploading a photo through the file picker (the browser pane cannot pick a local file, so the upload used the same API route), dragging to move the design, the PNG snapshot, a real phone photo, and `ar_estimate` with a real depth model (torch and MoGe are not installed; that code path is untested).
+- The local repo was created from a ZIP of `main` (no git history); see `docs/agents/merge-ar-photo.md`.
 
-## 2026-11-20 — Animated 3D page artwork
+## 2026-11-20 — Photo AR: GPU depth estimate, phone link and end-to-end test
 
-- Studio client: added eight page-specific robotics illustrations with embedded GLB motion and matching WebP previews in `client/public/robotics-artifacts/`. Each page starts with a still and loads the 3D view through its play control. The Brief uses the pick-and-place cell in the hero.
-- Asset source: `scripts/robotics-artifacts.mjs` regenerates the geometry, materials and embedded clips. The asset folder describes where each model is used.
-- Verification: client typecheck and production build passed. Three.js loaded all eight GLBs and verified that each clip moves and loops. Chrome on an isolated fixture server checked all eight page placements, playback, pause, and the headers at 320 pixels. The running Java app served all 16 GLB and WebP files byte-for-byte. The previews illustrate motion for the UI.
+- Applications:
+  - Python: `.venv` and `requirements-ar.txt`.
+  - Java: the `pairing` package; `StudioProperties.pairPort`; zxing 3.5.3 in `pom.xml`; the `/api/v1/projects/{pid}/ar/pairing` routes.
+  - Client: `PhoneLink.tsx` and `ArPanel.tsx`.
+  - `packages/core`: the pairing API functions.
+  - Playwright end-to-end test: `e2e/`, `npm run e2e`.
+- Automatic estimate: installed into `.venv`. It follows the recipe now in `requirements-ar.txt`; MoGe's other declared dependencies (gradio, FlexGEMM/Triton, newer trimesh) are not installed.
+  - PyTorch 2.14.1+cu130 and torchvision 0.29.1.
+  - MoGe 3.0.0 (MIT), using the MoGe-2 ViT-L weights (1.32 GB, MIT) in the Hugging Face cache.
+  - OpenCV headless, SciPy and Pillow.
+- Real depth-model run (MoGe-2 ViT-L on an RTX 4050, 2026-11-20) on the synthetic A4 photo: about 12–17 s per estimate, including model load. It estimated a focal length of 1147–1171 px (true 1200) and a camera height of about 2.1 m (true 1.3 m). The scale is approximate, as the UI says; a flat rendered checkerboard is a poor input for a depth model, and real photos were not tried.
+- Phone link:
+  - The desktop shows a QR code. A phone on the same Wi-Fi opens a page that takes a photo with its camera app, or picks one from its gallery, and the photo arrives as an AR scene.
+  - The phone talks to a separate JDK HttpServer on 0.0.0.0:8801 (`STUDIO_PAIR_PORT`), started only while a link is active. It serves exactly `GET /p/{code}` and `POST /p/{code}/photo`; everything else returns 404.
+  - The code is 256-bit, expires after 10 minutes, belongs to one project and allows at most 20 uploads. Uploads are capped at 15 MB.
+  - The main API stays on loopback.
+  - Traffic on the Wi-Fi is plain HTTP.
+  - There is no per-connection timeout yet.
+- Checked (2026-11-20, Windows 11; fixture LLM only, no real language model):
+  - Playwright end-to-end: 8 of 8 pass in 44.9 s, run on installed Chrome (`E2E_CHANNEL=chrome`) because the Playwright Chromium download stalled. The suite uses three synthetic sample photos with known cameras (`e2e/fixtures/make_photos.py`):
+    - Upload through the real file input, drag the 4 handles and calibrate. Every photo calibrated to its true camera: A4 PNG at f 1200 px and 1.30 m, Letter square to the camera at 1500 px and 1.10 m (`focal_source` "reference"), and the EXIF-rotated phone JPEG stored as 1500×2000 at 1600 px and 1.45 m.
+    - AR view: the aspect ratio matches the photo, there are no console errors, and dragging the floor and changing the turn update the placement.
+    - The snapshot PNG matches the photo size.
+    - The real MoGe estimate shows the "Approximate scale" badge.
+    - Phone link in an emulated Pixel 7: sent through the LAN address; "Photos received: 1" and a new portrait scene appeared; after "Stop linking" the link returns 404.
+    - Error cases: a collinear reference and a non-image file.
+  - pytest: 180 passed, 5 skipped. The `ar_estimator_unavailable` test now skips because torch is installed.
+  - Java (`mvnw test`): 38 run, 1 error, 7 skipped, as reported by the worker that added `PairingFlowTest`. The one error is the known Windows-only `KeysAndUsageTest`.
+- Not checked: a real phone on real Wi-Fi (the Windows firewall prompt was not seen), real site photos, the 20-upload limit, link expiry in the UI, deleting a scene, and the "Show scene boxes" toggle.
 
-## 2026-11-20 — Real-model verification of the five features (and of the callable API with a real model)
+## 2026-11-20 — Claude Code CLI adapter on Windows; every role set to Sonnet 5.5
 
-- How it was run:
-  - Real Claude through the Claude Code CLI: Opus 5.5 for spec, robot and revise; Sonnet 5.5 for scene and search.
-    About 26 model calls on the three verification projects (about 1.8 USD at list prices).
-  - A separately built jar on port 8801 used a copy of the runtime, so the user's dev server stayed the only writer
-    of the real data. Vite ran on 5191 in the browser pane, and some steps went through the `/api/v1` calls with
-    `wait` and `expand`.
-  - Checks are kinematic and static-load calculations only, not dynamics or hardware.
-- (2) and (4), question comments and answer images: verified. On a vague brief ("Move boxes from our packing table
-  onto a shelf") Opus asked 6 questions, returned in the response of `POST /design?wait&expand=resource`. In the UI
-  a comment was added to "What are the boxes like?", a round note ("stay inside a 2 m x 2 m cell") was added, and a
-  photo was attached to that question.
-  - The spec call carried 1 image (usage ledger), and the next round produced a design.
-  - The spec's assumptions cite all three: "Parallel side grip is used instead of suction, because tape ridges can
-    break the vacuum seal and the photo shows a parallel gripper" and "inside the 2 m x 2 m cell".
-- (3), jobs survive switches: verified. While a design ran, the stage was switched, the project was switched and the
-  page was reloaded. The project list showed "(working)" and the Running list showed the job. The result arrived, and
-  the project has exactly one design job (no duplicate).
-- (1), collision auto-repair: NOT exercised with a real model; covered by the fixture tests only.
-  - On the wall project (a 40 cm wall between A and B), every real design or revise came out collision-free (4
-    tries). The model kept a 0.5 m approach height, or added an over-the-wall waypoint itself, even when told to set
-    a 5 cm approach height. With no collisions, no repair log is produced, as designed.
-  - Finding: the first design split the brief's continuous 1 m wall into two 18 cm pieces. The base is placed at the
-    A–B midpoint, which lies inside the wall, and the scene validator's 0.3 m base clearance then forces the scene
-    agent to cut the wall. A revise that mounted the base on a side table (x = 0.85 m) restored the continuous wall.
-    Follow-up: place the base away from obstacles the brief names, instead of letting the scene change them.
-- (5), fleet planner: verified with these limits.
-  - Carton task: 5 kg cartons, conveyors at x = ±2.5 m, a 10 s cycle, "our arms reach at most 1.3 m". Code
-    suggested a fleet ("One robot needs 10.2 s per cycle, more than the 10 s cycle time"). Opus had already put two
-    hand-off tables into the spec.
-  - With limits of 3 robots and 1.3 m reach, auto-assign answered infeasible with reasons (sized reach 1.53–1.63 m
-    per robot, from floor-mounted bases). 4 robots is refused: the scope allows 2–3.
-  - With the reach limit relaxed to 1.7 m: 3 serial arms, 4 of 4 fleet checks pass, every robot passes its own
-    checks, smallest robot gap 0.128 m. The 3D view plays all three robots on the shared 10 s clock.
-  - The revise "Make r2 a gantry." (from v4 at t = 4 s) gave v5 based on v4, with r2 re-sized as a gantry and 4 of 4
-    fleet checks passing (gap 0.428 m).
-  - A web search for member r2 got r2's gantry requirements but returned arms that meet them (UR15 at 58,284 USD,
-    seen 2026-11-20; UR10e).
-  - Not done: a handover edit, because this split had no planner handovers (the spec's own tables are used).
-  - Findings / follow-ups:
-    1. Bases are always on the floor. A pedestal at table height would let a 1.3 m arm do this task.
-    2. `fleet.trigger` is recorded as `["user"]` even when code suggested the fleet.
-    3. The member search treats the family only as a hint.
-    4. The default 3D camera is far out for long cells.
-- Shell mistake in the verification script (not product code): zsh's `echo` broke JSON parsing, which started two
-  extra design runs (v1–v2 of the carton project are duplicates).
+- Applications: Python LLM adapter (`server/studio/llm/claude_cli.py`); the local LLM settings in `runtime/llm/` (not in git).
+- Windows support: `find_cli` now also searches the Windows install locations, newest version first:
+  - `%USERPROFILE%\.local\bin\claude.exe` and `%USERPROFILE%\.claude\local\claude.exe`;
+  - the Claude desktop app's bundled CLI, under `%LOCALAPPDATA%\Claude-Data\*\claude-code\<version>\*\claude.exe` or `%APPDATA%\Claude\claude-code\...`.
+- Environment: `cli_environment()` builds the CLI's reduced environment.
+  - On Windows it keeps only what a Windows program needs to start and find its login: SYSTEMROOT, the profile folders, TEMP/TMP and a PATH of system folders. Nothing from the project is passed (no PYTHONPATH, tokens or keys).
+  - macOS and Linux are unchanged.
+- Encoding: the system-prompt file is written as UTF-8.
+- Local settings (this machine): a profile "Claude Sonnet 5.5 (Claude Code CLI)" (`claude_cli`, model `claude-sonnet-5-5`, CLI path auto-detected) is assigned to all seven roles: spec, scene, robot, revise, search, extract and analysis.
+- Found: the desktop app's bundled CLI is 2.1.326. On its own it answers "Not logged in", so the user must sign in once (`claude /login`) before Studio can use it.
+- Checked: pytest 180 passed, 5 skipped after the change. CLI discovery finds the bundled 2.1.326 executable.
+- Not checked: no real Sonnet call has been made through Studio yet (the CLI was not signed in). The connection test and a real design run remain to do.
 
-## 2026-11-20 — Autoplaying robot animations, editable brief, images on the brief
+## 2026-11-20 — Photo AR follow-ups: phone-listener limits, CLI adapter tests, more end-to-end coverage
 
-- Client: the "Play motion" and play/pause buttons on the stage robot animations are gone. Each animation loads and plays when at least 25 % of it is in view, pauses when it leaves the view, and resumes when it returns. With the OS "reduce motion" setting it stays a still image. The image-attach UI is shared (`components/ImageAttach.tsx`) by the brief and the questions.
-- Editable brief: `PUT /api/v1/projects/{pid}/brief`. The Brief page has Edit / Save / Cancel. Saving clears pending questions so the spec rounds restart with the new brief; earlier answers, comments, notes and existing versions are kept. The page shows "Edited <date>". Editing is refused (409) once a version is approved or while a design or revise job runs.
-- Brief images (photos of the task, objects or workcell): `POST/GET/DELETE /api/v1/projects/{pid}/brief/files`. Images can be attached on the new-project form (file, drop or paste; uploaded after the project is created) and on the Brief page. The spec agent receives them first, labelled `brief:<name>`, with an instruction that text inside them is data. Brief, reference and answer images share the 8-image budget. Spec (`contracts/openapi.yaml`), protocol and generated types updated. Design: `docs/API_DESIGN.md` section 9.
-- Checks:
-  - Fixture tests: `./mvnw test` 43 passed (new `BriefFlowTest`; golden and spec-parity tests unchanged); pytest 187 passed, 4 skipped; contracts check, typecheck and build pass.
-  - Browser (dev server rebuilt and restarted, no model calls): the hero animation plays with no button. A dropped photo shows as a thumbnail, and after "Create project" it is stored with the project. Editing the brief saved and shows "Edited ...".
-  - Not yet run: a real-model design that uses a brief photo.
+- Applications: Java `pairing/PairingListener.java` and `pom.xml` (test-only surefire property); client `ArPanel.tsx`; Python tests `tests/test_claude_cli.py`; `e2e/tests/ar.spec.ts`.
+- Phone listener limits:
+  - A request may take at most 60 s, a response 30 s, and an idle connection 30 s (the JDK `sun.net.httpserver.*` properties, set only when the operator has not set them).
+  - At most 8 requests are handled at once; more get 503 "Busy, try again".
+  - New tests in `PairingFlowTest`: a stalled half-request is closed, and the 9th concurrent request gets 503.
+- Calibrator: the residual line no longer appears twice. The panel's "Calibration residual" line shows only when the calibrator is closed.
+- `tests/test_claude_cli.py` (new; no network, no real CLI):
+  - CLI discovery: the newest version wins, plus the Windows layouts, a configured path, a missing path and none found.
+  - The reduced environment never carries STUDIO_TOKEN, ANTHROPIC_API_KEY, GEMINI_API_KEY or PYTHONPATH.
+  - A stub CLI run checks the stream-json input and the result, image and error handling.
+- End-to-end, new tests 9–11:
+  - "Show scene boxes" changes the rendered pixels.
+  - Deleting a scene through the UI removes it from the list and the API, and its photo URL returns 404.
+  - The 11th upload shows "At most 10 AR scenes per project".
+- Checked (2026-11-20, Windows 11; fixture LLM only):
+  - pytest: 190 passed, 6 skipped.
+  - Playwright `npm run e2e` with `E2E_CHANNEL=chrome`: 11 of 11 pass in 54.7 s.
+  - Java: 40 run, 1 error (the known Windows-only `KeysAndUsageTest`), 7 skipped.
+  - `npm run typecheck`: passes.
+  - Core tests: 4 of 4 pass.
+- Not checked: Playwright's bundled Chromium. Its download hung twice on this machine, so the suite ran on the installed Google Chrome.
 
-## 2026-11-20 — Robot studio planned (in progress)
+## 2026-11-21 — Fix: "Link a phone" showed a stray address error in development
 
-- Plan approved for a "Robot studio" stage: from an approved design, generate parametric CAD (STEP and STL, a URDF with meshes and working joints), choose motors, gearboxes and electronics from India and global shops (or define the spec), add a controllable digital twin, and produce a manufacturer PDF and package after approval. See `docs/HANDOFF.md` and the plan referenced there.
-- Configuration: `cadquery-ocp==8.0.1.1.0` (OpenCascade), `reportlab==4.4.4` and `matplotlib==3.10.7` added to `requirements.txt` and installed in `.venv` (OCP smoke test only). No feature code yet.
+- Applications: client `client/src/components/ar/PhoneLink.tsx`.
+- Bug, found while taking UI screenshots on the dev server: the panel showed "That address is not one of this link's addresses" under a working QR code.
+  - React's double mount in development started two links at once. The second replaced the first while the first's QR code was being fetched, so that fetch was refused.
+  - The error was never cleared after the next QR code loaded.
+- Fix: starting a link is now single-flight (a concurrent start reuses the one in progress), and a QR code that loads clears the error.
+- Checked: `npm run typecheck` passes. A re-captured dev-server screenshot shows one link and no error. Playwright `npm run e2e` (Chrome) passes. The production build has no double mount, so the e2e suite could not have caught this.
+- Screenshots of the current UI: `docs/screenshots/ar/` (Design stage AR view, AR panel, calibrator, Link a phone, phone page). The link codes they show were stopped right after capture.
 
-## 2026-11-20 — Robot studio: from an approved design to a buildable robot (first delivery)
+## 2026-11-21 — Site scan (video AR): rebuild the real site in 3D and design inside it
 
-- Applications: Python (`server/studio/robot/`: `sizing.py`, `sourcing.py`, `style.py`, `cad/*`, `urdf_mesh.py`, `twin.py`, `report.py`; `pipeline/studio.py`; tasks `studio_build`, `studio_twin_move`, `studio_run_task`, `studio_pdf`), Java (`StudioController`, `StudioService`, `StudioStore`, job kinds `studio_build`/`studio_pdf`, 10 routes under `/api/v1/projects/{pid}/studio`, OpenAPI paths), core (`packages/core/src/twin.ts`, parity vectors `contracts/twin_vectors.json`, checked by `npm run contracts:check`), client (new "Robot studio" stage after Design, motor table with "Use this one", STL meshes in the 3D view, twin panel, change request, approve with snapshots, PDF and package downloads; Decision links to it). Design reference: `docs/STUDIO_ROBOT_DESIGN.md`.
-- Behaviour: a build sizes every joint in code (static load over the task frames and a stretched pose, acceleration term, RMS continuous × 1.25, peak × 1.5), searches allow-listed shops once, keeps a motor only when its deciding values are quoted on the fetched page, picks the cheapest passing motor or writes a "defined" spec to procure to, adds rule-based electronics, lets the robot role propose a structure style that code checks (beam bending and deflection, print envelope, printed-part loads), generates concept-level CAD with OpenCascade (STEP assembly and parts, STL, a mesh URDF with a gripper joint), and derives twin limits from the chosen motors. A pin-only rebuild reuses the base build's alternatives without a new search.
-- Fixture tests (scripted LLMs, saved shop pages; real CAD, kinematics and twin code), as run 2026-11-20: pytest 273 passed, 4 skipped; `./mvnw test` 47 tests, 0 failures, including `StudioApiTest` (fake engine) and `StudioFlowTest` (real Python tasks: design → approve → build → files → twin move/run → snapshots → approve → PDF/package → pinned rebuild); contracts check with twin parity (15 vector groups) up to date; client typecheck and build pass.
-- Fixes found while testing: the CAD link-envelope check failed on every real-motor arm build because it did not allow for motors that stick out of thin design envelopes (now it allows the chosen motor's length and still catches a part placed 300 mm off); the twin panel stayed on "Asking the twin" in the dev build because React StrictMode left its mounted flag false (fixed).
-- Real run (2026-11-20, browser pane on a copy of the runtime, project "Tabletop bottle transfer A to B", approved v2; search, extract and analysis roles: Claude Sonnet 5.5 via the Claude Code CLI with web search; robot role: Claude Opus 5.5): build b1 finished with 4 joints, 39 parts, 61 files, 21 of 21 checks passing, structure style machined aluminium (proposed by the model, kept by code). The shop search returned 5 stepper candidates, all from pololu.com (product pages 1478, 1474, 2267); none passed, because none states a rated speed on its page (the rule requires the deciding values to be verified), so all 4 motors are defined specs. No price was captured and no Indian shop listing came back. The twin ran the task (7.06 s, peak torque use 31 % at j3); at speed scale 2 the speed and acceleration limits bound and were shown. Approving uploaded four snapshots and produced a 13-page manufacturer PDF, `package.zip` and `bom.csv`.
-- Limitations: concept-level envelope CAD (simplified profiles, no interference analysis, no FEA); sizing is kinematic, static and acceleration only (no dynamics simulation, not tested on hardware); prices are dated web estimates; gripper fingers are not symmetric about the tool point; the client uses the server for tool moves (no local IK chain from the URDF yet). Open question for the user: how to judge stepper speed when shops publish only holding torque.
+- Applications: Python (`server/studio/scan/`; tasks `scan_probe`, `scan_reconstruct`, `scan_scale`, `scan_floor`, `apply_scene`); schemas and contracts (`SiteScan` and related models); Java (streaming video upload, `/api/v1/projects/{pid}/scans`, `/apply-scene`, the phone video route); client (Design stage "My site" view and its tools). Contract: `docs/SITE_SCAN.md`.
+- Plan:
+  - A walk-around video from any phone becomes a coloured 3D mesh, at true scale once a sheet or a measured distance is given.
+  - The pipeline: our own structure-from-motion (OpenCV + SciPy) with one shared camera, so the clip has one focal length; then MoGe-2 depth aligned to the sparse points; then TSDF fusion (Open3D).
+  - Users place the robot, add objects, move task points onto real surfaces and measure, then apply the edits as a new design version computed in code (no LLM).
+- This is a visual 3D reconstruction, not a survey. Scan geometry is not part of the pass/fail checks in this delivery; added objects are, as modelled scene boxes.
+- Environment: pycolmap was tried and rejected, because Windows Application Control blocked its native DLL. Installed into `.venv`: av 19.0.2 and open3d 0.20.0 with its dependencies (`requirements-scan.txt`).
+- What was built:
+  - **Python:** `server/studio/scan/`, covering video probe and keyframes (PyAV) and our own SfM.
+    - The SfM uses RootSIFT matching across frame offsets 1–12, essential-matrix initialisation with a field-of-view sweep, PnP registration and SciPy bundle adjustment with one shared (f, k1) camera.
+    - MoGe-2 depth is aligned to the sparse points, then fused with Open3D's tensor `VoxelBlockGrid` TSDF. The legacy `ScalableTSDFVolume` in the 0.20 wheel integrated nothing.
+    - Floor and scale come from a sheet in a frame or a measured distance.
+  - **Deterministic `apply_scene`:** no LLM unless auto-repair is asked for. It moves markers and objects, validates, re-sizes and re-simulates.
+  - **Java:** streaming video upload (500 MB, exempt from the 64 MB body filter on that route only), scan storage and routes with HTTP Range, and `/apply-scene`.
+  - **Phone link:** "Record a site video", sent to a new socket-based phone listener. Video gets a 15 min window only after a valid code; it answers wrong codes without reading the body, and has at most 32 open connections and 8 requests at a time.
+  - **Client:** a three-way view switch next to "Simulated task" (Modelled scene / My photo / My site), and the My site panel with its tools (place robot, add object, task point, measure, set scale, pick floor) and Apply to design.
+- Checked (2026-11-21, Windows 11, RTX 4050; synthetic test video, fixture LLM, no real phone footage):
+  - The synthetic room video comes from `tests/scan_synth.py`: about 5 × 4 m, ray-cast at f = 700 px, 30 s.
+    - 90 of 90 frames registered, reprojection 0.40 px.
+    - Focal 699.9 px against 700, floor normal 0.05° off.
+    - After the sheet scale (residual 0.0005), walls 5.011 m and 4.007 m (0.2% error), table top 0.738 m against 0.75 (1.6%).
+    - Mesh 300k triangles. Reconstruction about 2–4 min.
+  - The synthetic video is ideal footage (no motion blur, rolling shutter, lens distortion or bad light), so real phone clips will be less accurate. That has not been measured.
+  - pytest: 228 passed, 6 skipped (3 min 35 s, including the GPU reconstruction).
+  - Java (`mvnw test`): 55 run, 1 error (the known Windows-only `KeysAndUsageTest`), 7 skipped.
+  - Playwright `npm run e2e` (Chrome): 17 of 17 passed in 4.1 min.
+    - The scan suite uploads through the UI and reconstructs on the GPU, then sets the scale from the sheet in a frame.
+    - It measures 4.990 m between walls (true 5 m) and places the robot.
+    - It adds a table and puts drop point B on it (z = 0.750 m), then applies to the design. That gives v2 with `parent_version` 1 and "Edited in the site scan".
+    - It also sends a video from an emulated Pixel 7, and checks all three views with no console errors.
+  - `npm run typecheck` passes, and the core tests pass 12 of 12.
+- Known issue: during the worker's runs, one reconstruction failed once with an out-of-memory error in the Python job and passed on retry with nothing changed. It did not recur in the final run. The machine has 16 GB RAM, and the cause has not been investigated.
+- Not checked: real phone footage, a 180-frame clip at 1600 px, and a 500 MB phone upload over real Wi-Fi.
+- Screenshots: `docs/screenshots/site/`.
 
-## 2026-11-21 — Robot studio: conservative assumed stepper speed (user decision)
+## 2026-11-21 — Site scan: undistorted keyframes, finer lit mesh
 
-- Applications: Python `server/studio/robot/sizing.py` (`STEPPER_USABLE_RPM`, `stepper_frame`, `capability`, `evaluate`), `sourcing.py` (docstring), tests, `docs/STUDIO_ROBOT_DESIGN.md`.
-- Behaviour: a stepper whose shop page states holding torque, current and voltage but no rated speed is now judged at a conservative usable speed at 24 V (NEMA 8–23: 300 rpm, NEMA 34 and unknown frames: 200 rpm), recorded as an `assumed` value with a note and named in the speed check ("speed assumed (conservative)"). Torque and current must still be verified on the page; BLDC, servo and DC motors still need a verified speed. This is a planning assumption, not a manufacturer value.
-- Checked: pytest 277 passed, 4 skipped (fixture tests); `./mvnw test` 47, 0 failures. Re-running the selection offline on the real b1 candidates (Pololu 1478, 1474, 2267): the steppers are now evaluated instead of rejected and fail on torque and speed (for example j2 needs 98 N*m peak at 0.99 rad/s; the best candidate gives 55 N*m at 0.50 rad/s), so b1's motors stay defined specs, now for a measured reason. No new model call.
+- Applications: Python `server/studio/scan/` (dense.py, scale.py), the `ScanCamera.undistorted` field (default false; contracts regenerated), `docs/SITE_SCAN.md`.
+- Behaviour:
+  - Registered keyframes are rewritten undistorted with the recovered k1 and the same K, so they are pure pinhole images. `camera.undistorted` is true, and `scan_scale` no longer applies k1 to corners clicked on them.
+  - The mesh is finer: voxel = extent/384 (falling back to /320 when out of memory), capped at 600k triangles.
+  - The mesh is cleaned up: Taubin smoothing, removal of degenerate, duplicate and small floating parts, and vertex normals in the GLB.
+  - Vertex colours come from every depth-tested view, weighted by sharpness and viewing angle, with the blurriest 20% of frames skipped and a 2-pass bilateral filter.
+  - The TSDF's initial block capacity is cut from 100000 to 20000 (it grows on demand), after a CPU allocation failure with about 5 GB RAM free. This is a likely cause of the earlier one-off out-of-memory failure.
+- Checked (2026-11-21, synthetic clip; not real footage): 90/90 registered, focal 0.01%, floor 0.05°, walls 0.21% and 0.17%, table 1.58%. The mesh has 599,999 triangles with normals, and reconstruction took 142–153 s (was 131 s). pytest: 234 passed, 6 skipped.
 
-## 2026-11-21 — Rejected model answers are fed back up to 3 times
+## 2026-11-21 — Site scan: "Through the camera" view, Focus robot, lit 3D view
 
-- Applications: Python `server/studio/llm/base.py` (`ask_json`, `JSON_REPAIRS = 3`), used by every agent (spec, scene, robot, revise, search, extract, analysis, style).
-- Behaviour: when a model's answer is not valid JSON or a code check rejects it (for example the scene check "Marker "bottle_start" is at z = 0.75 with nothing under it: add a table or shelf ..."), the request is sent again with every earlier error listed, up to 3 repairs (4 calls in all) instead of 1. Only then does the job fail, with "... after 4 attempts: <last error>". Code still decides whether the answer is usable. A call can lower the count with `repairs=`.
-- Checked: new `tests/test_ask_json.py` (repair until a passing answer, all earlier errors listed, give up after 4, per-call limit); `tests/test_fleet_pipeline.py` updated for the new call count; pytest 280 passed, 4 skipped; `./mvnw test` 47, 0 failures. Fixture tests only. The dev server picks this up without a restart because the Python tasks run from the source tree.
-
-## 2026-11-21 — IN PROGRESS: realistic 3D models for task objects (client)
-
-- Applications: client `client/src/components/objectModels.tsx` (new), `client/src/components/SceneView.tsx` (`ObjectMesh` uses it; Player, RobotView and the Robot studio twin draw objects through it).
-- Behaviour: task objects whose id (or name, when passed) contains a known word are drawn as procedural three.js models instead of a plain box, cylinder or sphere. The models are mug, cup, bottle (lathe body, shoulder, neck, ribbed cap, label band; translucent plastic or green glass), can, apple (dimples, stem, leaf), orange, ball, egg, tote, dumbbell, book, pallet, screwdriver and box/carton (bevelled, tape strip). Each model fills the same bounding box as the primitive it replaces, so grasp points and the carried-object offset are unchanged. Unknown objects keep the old primitive. No downloaded assets and no new dependencies; noise uses a seeded hash.
-- Checked: `npm run typecheck` and `npm run build` pass. The keyword matcher was checked in a throwaway script (8 cases). NOT yet checked: how the models look in the browser (the one attempt was too small to judge), the mug handle and tote cut-outs in particular.
-- Limitation: `SceneObject` has no `name`, so matching uses the object id (e.g. `bottle`); passing the spec object's name would need a scene schema field.
-
-## 2026-11-21 — Object models generated by a small model (objects agent on Claude Haiku)
-
-- Applications: Studio server (Python agent and pipeline, Java LLM settings), client (scene rendering), contracts.
-- New `objects` role (default profile `claude_haiku`, Claude Haiku 5.5 through the Claude Code CLI) and `agents/objects.py`. From the spec's task objects (name, size, mass, shape, grip) it builds a model of each object from up to 24 primitives (box, cylinder, sphere, cone, capsule, torus) with colours and materials.
-- Code checks every model: one per object, every part inside the object's real box (2 % tolerance), at least 90 % coverage per axis (so grasp points and the carried-object offset stay right), and valid numbers and colours.
-- It runs alongside the scene and robot agents in `design()`. Models are reused on revise when an object is unchanged, and fleets carry them over. A failure never breaks a design: the scene then uses the keyword models from `objectModels.tsx`, or the plain primitive. `SceneObject` gains optional `name` and `model`, left out of the JSON when empty, so the goldens' design and revise responses are unchanged.
-- Four golden files (LLM settings responses) were edited by hand for the new role and profile; this is noted in the golden README.
-- Checks:
-  - Fixture tests: pytest 291 passed, 4 skipped (11 new); `./mvnw test` 49 passed; contracts check, typecheck and build pass.
-  - Real model: one direct Haiku call for a bottle, a carton and a mug took about 15–19 s and passed validation. The bottle came back as body, shoulder cone, neck and cap; the carton as box and tape strip; the mug as body and torus handle.
-  - Real design run (Opus, Sonnet and Haiku): "Object models: 1 made". In the browser the 4-part bottle stands upright at point A at the right size and travels with the gripper during the carry.
-- The dev server was rebuilt and restarted with Robot studio and the objects agent (studio routes answer 200).
-- The other agent's procedural bottle was too small to judge at the default camera. The generated model now takes precedence wherever the agent succeeds.
+- Applications: client `client/src/components/scan/` (SiteLayer, SiteWorkspace), `SceneView.tsx`, `styles.css`; core `packages/core/src/scan.ts`; `e2e/` (E2E_PORT and E2E_RUNTIME overrides).
+- Behaviour:
+  - "Through the camera" shows an undistorted keyframe as the background, with the camera from the shared intrinsics and the frame pose. The scan mesh is drawn depth-only, so real walls hide the robot, and it catches the robot's shadow. A walk scrubber, Play walk (6 fps) and "Best view of the robot" move along the recording.
+  - The 3D view zooms to the cursor, with a scale-aware minDistance and damping. "Focus robot" and "Reset view" buttons; double-click sets the orbit target. The mesh is lit with hemisphere and directional light, with shadows and fog.
+- Checked (2026-11-21, synthetic clip, fixture LLM): e2e 19 of 19 (Chrome). The robot fills 60.5% of the canvas height after Focus robot (15.7% before). Camera-view reprojection is 2.56 px mean and 2.85 px worst (limit 4 px) on one frame pair. Typecheck is clean and core tests pass 15 of 15. Not checked: real phone footage.

@@ -8,7 +8,6 @@ Roles:
 - search:   finds real robots and prices on the web
 - extract:  reads a manufacturer datasheet
 - analysis: explains differences
-- objects:  makes simple 3D models of the task objects (a small model)
 
 Providers are plugged in through PROVIDERS (kind -> factory(profile)). Adding a provider means adding one adapter
 module with `invoke(input, system_prompt)` and one entry here; nothing else in the studio changes.
@@ -25,8 +24,8 @@ from .claude_cli import MODELS, ClaudeCLI
 from .keys import KeyStore
 from .usage import UsageLedger
 
-ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis', 'objects')
-DEFAULT_ROLES = {'spec': 'claude_opus', 'scene': 'claude_sonnet', 'robot': 'claude_opus', 'revise': 'claude_opus', 'search': 'claude_sonnet', 'extract': 'claude_sonnet', 'analysis': 'claude_sonnet', 'objects': 'claude_haiku'}
+ROLES = ('spec', 'scene', 'robot', 'revise', 'search', 'extract', 'analysis')
+DEFAULT_ROLES = {'spec': 'claude_opus', 'scene': 'claude_sonnet', 'robot': 'claude_opus', 'revise': 'claude_opus', 'search': 'claude_sonnet', 'extract': 'claude_sonnet', 'analysis': 'claude_sonnet'}
 
 
 def claude_cli(profile):
@@ -55,7 +54,6 @@ class Profile(BaseModel):
 DEFAULTS = [
     {'id': 'claude_opus', 'name': 'Claude Opus 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-opus-5-5'},
     {'id': 'claude_sonnet', 'name': 'Claude Sonnet 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-sonnet-5-5'},
-    {'id': 'claude_haiku', 'name': 'Claude Haiku 5.5 (Claude Code CLI)', 'kind': 'claude_cli', 'model': 'claude-haiku-5-5'},
 ]
 
 
@@ -76,10 +74,6 @@ class LLMRegistry:
             data = {'profiles': default_profiles(),
                     'roles': dict(DEFAULT_ROLES)}
         data['roles'] = {**DEFAULT_ROLES, **data['roles']}  # roles added later get their default
-        have = {p['id'] for p in data['profiles']}
-        for default in default_profiles():  # a default profile a role points to (a role added later) is added when missing
-            if default['id'] not in have and default['id'] in data['roles'].values():
-                data['profiles'] = [*data['profiles'], default]
         return data
 
     def save(self, data):

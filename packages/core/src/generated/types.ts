@@ -3,6 +3,11 @@
 
 export interface Contracts {
   Analysis?: Analysis;
+  ArCalibration?: ArCalibration;
+  ArIntrinsics?: ArIntrinsics;
+  ArPlacement?: ArPlacement;
+  ArReference?: ArReference;
+  ArScene?: ArScene;
   Candidate?: Candidate;
   Check?: Check;
   DesignVersion?: DesignVersion;
@@ -17,12 +22,17 @@ export interface Contracts {
   RepairLog?: RepairLog;
   Requirement?: Requirement;
   RobotConcept?: RobotConcept;
+  ScanCamera?: ScanCamera;
+  ScanFrame?: ScanFrame;
+  ScanMesh?: ScanMesh;
+  ScanPlane?: ScanPlane;
+  ScanScale?: ScanScale;
+  ScanStats?: ScanStats;
+  ScanVideo?: ScanVideo;
   SceneSpec?: SceneSpec;
   SimResult?: SimResult;
-  StudioBuild?: StudioBuild;
+  SiteScan?: SiteScan;
   TechnicalSpec?: TechnicalSpec;
-  TwinMoveRequest?: TwinMoveRequest;
-  TwinMoveResult?: TwinMoveResult;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -171,6 +181,67 @@ export interface Difference {
   candidate: string;
   impact: string;
   severity: "ok" | "minor" | "major" | "blocking";
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArCalibration".
+ */
+export interface ArCalibration {
+  intrinsics: ArIntrinsics;
+  world_from_camera: number[][];
+  scale_source: "reference" | "estimate";
+  focal_source: "reference" | "estimate" | "default";
+  residual_px: number | null;
+  camera_height_m: number;
+  warnings: string[];
+}
+/**
+ * Pinhole camera in pixels of the stored photo (top-left origin, no distortion).
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArIntrinsics".
+ */
+export interface ArIntrinsics {
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  width: number;
+  height: number;
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArPlacement".
+ */
+export interface ArPlacement {
+  x: number;
+  y: number;
+  yaw_deg: number;
+}
+/**
+ * A known rectangle on the floor: 4 corner pixels [u, v] in order around it, and its side lengths in metres.
+ *
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArReference".
+ */
+export interface ArReference {
+  corners_px: number[][];
+  size_m: number[];
+}
+/**
+ * This interface was referenced by `Contracts`'s JSON-Schema
+ * via the `definition` "ArScene".
+ */
+export interface ArScene {
+  id: string;
+  image: string;
+  width: number;
+  height: number;
+  created: string;
+  reference: ArReference | null;
+  calibration: ArCalibration | null;
+  estimate: ArCalibration | null;
+  placement: ArPlacement;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -431,52 +502,6 @@ export interface SceneObject {
    */
   size: [number, number, number];
   color: string;
-  name?: string;
-  model?: ObjectModel | null;
-}
-/**
- * A recognisable model of a task object made of simple primitives (objects agent).
- *
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "ObjectModel".
- */
-export interface ObjectModel {
-  object_id: string;
-  /**
-   * @minItems 1
-   * @maxItems 24
-   */
-  parts: [ObjectModelPart, ...ObjectModelPart[]];
-  note: string;
-}
-/**
- * One primitive of an object model, in the object's own frame: origin at the centre of the object's box, z up.
- *
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "ObjectModelPart".
- */
-export interface ObjectModelPart {
-  shape: "box" | "cylinder" | "sphere" | "cone" | "capsule" | "torus";
-  /**
-   * @minItems 3
-   * @maxItems 3
-   */
-  center: [number, number, number];
-  /**
-   * @minItems 3
-   * @maxItems 3
-   */
-  size: [number, number, number];
-  /**
-   * @minItems 3
-   * @maxItems 3
-   */
-  rotation: [number, number, number];
-  color: string;
-  roughness: number;
-  metalness: number;
-  opacity: number;
-  label: string;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
@@ -607,262 +632,104 @@ export interface Question {
   why: string;
 }
 /**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "StudioBuild".
- */
-export interface StudioBuild {
-  build: number;
-  design_version: number;
-  member: string | null;
-  parent_build: number | null;
-  created: string;
-  request: string;
-  summary: string;
-  family: string;
-  search_date: string;
-  sizing: JointSizing[];
-  motors: MotorChoice[];
-  electronics: ElectronicsItem[];
-  style: StructureStyle;
-  parts: BuildPart[];
-  urdf: string;
-  twin_limits: TwinLimits;
-  checks: Check[];
-  files: BuildFile[];
-  approved: boolean;
-  approved_at: string | null;
-}
-/**
- * What a joint needs, computed in code from the design (gravity_torques over the task frames and a stretched pose,
- * link inertia times acceleration, RMS over the frames, safety factors).
+ * ONE camera for the whole clip, at keyframe resolution (OpenCV convention).
  *
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "JointSizing".
+ * via the `definition` "ScanCamera".
  */
-export interface JointSizing {
-  joint: string;
-  kind: "revolute" | "prismatic" | "wheel";
-  static_torque: number;
-  accel_torque: number;
-  continuous: number;
-  peak: number;
-  speed: number;
-  torque_unit: string;
-  speed_unit: string;
-  calcs: Calc[];
+export interface ScanCamera {
+  model: "SIMPLE_RADIAL";
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  k1: number;
+  width: number;
+  height: number;
+  undistorted: boolean;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "MotorChoice".
+ * via the `definition` "ScanFrame".
  */
-export interface MotorChoice {
-  joint: string;
-  source: "shop" | "defined";
-  alternative_id: string | null;
-  name: string;
-  shop: string;
-  url: string;
-  price: ShopPrice | null;
-  motor_type: "stepper" | "bldc" | "servo" | "dc_gear" | "other";
-  values: SpecValue[];
-  drive: Drive;
-  required: {
-    [k: string]: number;
-  };
-  provided: {
-    [k: string]: number;
-  };
-  margins: {
-    [k: string]: number;
-  };
-  checks: Check[];
-  alternatives: MotorAlternative[];
-  pinned: boolean;
-}
-/**
- * A price as a shop listed it on a date: an estimate for planning, never a quote.
- *
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "ShopPrice".
- */
-export interface ShopPrice {
-  amount: number | null;
-  currency: string;
-  seen: string;
-  shop: string;
-  source_url: string;
-  quote: string;
-}
-/**
- * One value of a motor or part. verified = quoted on the shop/datasheet page and the quote contains the number
- * (checked in code); assumed = from a standard table or rule (e.g. NEMA frame size); defined = a value we specify
- * for procurement because nothing suitable was found.
- *
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "SpecValue".
- */
-export interface SpecValue {
-  key: string;
-  value: number | null;
-  text: string;
-  unit: string;
-  status: "verified" | "assumed" | "defined";
-  quote: string;
-  source_url: string;
-  note: string;
-}
-/**
- * The transmission between motor and joint. ratio = motor turns per joint turn; for a leadscrew or belt-driven
- * linear axis, ratio = motor rad per metre of travel (2*pi/lead or 2*pi/(pulley pitch circumference)).
- *
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "Drive".
- */
-export interface Drive {
-  type: "direct" | "planetary" | "harmonic" | "belt" | "leadscrew" | "rack" | "wheel_gearbox";
-  ratio: number;
-  efficiency: number;
-  lead_m: number | null;
-  name: string;
+export interface ScanFrame {
+  index: number;
+  t_s: number;
+  image: string;
+  world_from_camera: number[][] | null;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "MotorAlternative".
+ * via the `definition` "ScanMesh".
  */
-export interface MotorAlternative {
-  id: string;
-  name: string;
-  shop: string;
-  url: string;
-  price: ShopPrice | null;
-  motor_type: "stepper" | "bldc" | "servo" | "dc_gear" | "other";
-  values: SpecValue[];
-  drive: Drive | null;
-  passes: boolean;
-  reason: string;
+export interface ScanMesh {
+  file: string;
+  vertices: number;
+  triangles: number;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "ElectronicsItem".
+ * via the `definition` "ScanPlane".
  */
-export interface ElectronicsItem {
-  id: string;
-  role: "driver" | "controller" | "power_supply" | "battery" | "other";
-  name: string;
-  source: "shop" | "defined";
-  qty: number;
-  for_joints: string[];
-  shop: string;
-  url: string;
-  price: ShopPrice | null;
-  values: SpecValue[];
-  checks: Check[];
+export interface ScanPlane {
+  normal: number[];
+  d: number;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "StructureStyle".
+ * via the `definition` "ScanScale".
  */
-export interface StructureStyle {
-  style: "extrusion_printed" | "machined_aluminium";
-  proposed: "extrusion_printed" | "machined_aluminium";
-  reasons: string[];
-  forced: boolean;
-  checks: Check[];
+export interface ScanScale {
+  method: "sheet" | "distance";
+  factor: number;
+  residual: number;
+  frame: number | null;
+  corners_px: number[][] | null;
+  size_m: number[] | null;
+  p1: number[] | null;
+  p2: number[] | null;
+  distance_m: number | null;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "BuildPart".
+ * via the `definition` "ScanStats".
  */
-export interface BuildPart {
-  id: string;
-  name: string;
-  qty: number;
-  material: string;
-  process: "printed" | "machined" | "cut" | "purchased" | "standard";
-  source: "custom" | "standard" | "purchased";
-  mass_kg: number;
-  link: string | null;
-  joint: string | null;
-  files: BuildFile[];
-  spec: string;
-  url: string;
+export interface ScanStats {
+  frames_total: number;
+  frames_registered: number;
+  reproj_px: number;
+  points3d: number;
+  extent: number[];
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "BuildFile".
+ * via the `definition` "ScanVideo".
  */
-export interface BuildFile {
-  path: string;
-  kind: "step" | "stl" | "urdf" | "pdf" | "zip" | "csv" | "png" | "json";
-  sha256: string;
+export interface ScanVideo {
+  file: string;
   bytes: number;
-}
-/**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinLimits".
- */
-export interface TwinLimits {
-  joints: TwinJointLimit[];
-  gripper: TwinJointLimit | null;
-  dt_s: number;
-  accel_ramp_s: number;
-}
-/**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinJointLimit".
- */
-export interface TwinJointLimit {
-  joint: string;
-  kind: "revolute" | "prismatic" | "wheel";
-  lower: number;
-  upper: number;
-  max_speed: number;
-  max_accel: number;
-  max_torque: number;
-}
-/**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinMoveRequest".
- */
-export interface TwinMoveRequest {
-  q0: {
-    [k: string]: number;
-  };
-  target: TwinTarget;
-  speed_scale: number;
-}
-/**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinTarget".
- */
-export interface TwinTarget {
-  joints: {
-    [k: string]: number;
-  } | null;
-  cartesian: [number, number, number] | null;
-  gripper: number | null;
-}
-/**
- * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinMoveResult".
- */
-export interface TwinMoveResult {
-  frames: Frame[];
-  reached: boolean;
   duration_s: number;
-  limits: TwinLimitHit[];
-  torque_use: {
-    [k: string]: number;
-  };
-  ik_error_m: number | null;
+  width: number;
+  height: number;
+  fps: number;
+  rotation_deg: number;
 }
 /**
  * This interface was referenced by `Contracts`'s JSON-Schema
- * via the `definition` "TwinLimitHit".
+ * via the `definition` "SiteScan".
  */
-export interface TwinLimitHit {
-  t: number;
-  joint: string;
-  limit: "position" | "speed" | "acceleration" | "torque" | "ik";
-  detail: string;
+export interface SiteScan {
+  id: string;
+  created: string;
+  video: ScanVideo;
+  status: "uploaded" | "reconstructing" | "reconstructed" | "failed";
+  error: string | null;
+  camera: ScanCamera | null;
+  frames: ScanFrame[];
+  floor: ScanPlane | null;
+  alignment: number[][] | null;
+  scale: ScanScale | null;
+  mesh: ScanMesh | null;
+  placement: ArPlacement;
+  stats: ScanStats | null;
 }
