@@ -1,5 +1,7 @@
 # Handoff — Java + React migration (living document; newest state at the top)
 
+**2026-11-21 — Published.** google-gemini is pushed as `main` of the NEW private repo https://github.com/Theboss12k/RoboDE-Studio (remote `origin`). The previous repo was renamed to https://github.com/Theboss12k/RoboDE-Studio-old (remote `old`; it keeps main, AR_review, Front and ui-revamp). The local branch google-gemini tracks origin/main.
+
 **2026-11-21 ~07:35 IST — AR_review MERGED into google-gemini (cb72f69). google-gemini is the FINAL branch (user decision).**
 - The merge kept both sides: the AR view, calibrator, pairing, site scans and `ar_*` tasks, plus Gemini, Gemini CLI,
   Antigravity, Vertex, Robot studio, fleets, savings, vendors, the checks agent and the Ask bar. Generated files were
